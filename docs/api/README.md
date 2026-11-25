@@ -52,8 +52,9 @@ Service responses use the standard envelope where practical:
 
 Shared health response contracts live in `packages/api-contracts`. The `/info`
 endpoints expose validated architecture DTOs. The IAM, organization, user, farm,
-and agriculture workflows described below are implemented; product-specific
-commercial policies remain outside this scaffold.
+agriculture, catalog, marketplace, warehouse, and cooperative workflows described
+below are implemented; product-specific commercial policies remain outside this
+scaffold.
 
 ## Organization routes
 
@@ -143,6 +144,68 @@ profile and multiple irrigation records. Spatial queries accept
 `mode=bbox|near|within`, `includeArchived`, and mode-specific bounds/origin/
 JSON polygon parameters; all coordinates must be inside Bangladesh.
 
+## Farmer cooperative routes
+
+All routes below are under `/api/v1/farmers`. Only `/info` and
+`/info/:moduleId` are public; every other route requires a valid access token
+and is default-deny. Group, campaign, contribution, allocation, and earnings
+routes reuse `farms.read` for reads and `farms.manage` for mutations. Purchase
+request reads reuse `orders.read`, creation reuses `orders.manage`, and group
+decisions/finalization reuse `farms.manage`. Tenant-scoped records require the
+active tenant to match unless the caller is a super admin.
+
+| Endpoint | Required permission | Purpose |
+| --- | --- | --- |
+| `GET /farmers/groups` | `farms.read` | List groups visible to the caller |
+| `POST /farmers/groups` | `farms.manage` | Create a group; the creator becomes owner/leader |
+| `GET /farmers/groups/:groupId` | `farms.read` | Read one group |
+| `PATCH /farmers/groups/:groupId` | `farms.manage` | Update a group owned/led by the caller |
+| `GET /farmers/groups/:groupId/members` | `farms.read` | List group members |
+| `POST /farmers/groups/:groupId/members` | `farms.manage` | Join a group, or add another user as leader |
+| `PATCH /farmers/groups/:groupId/members/:userId` | `farms.manage` | Accept or reject a pending member as leader |
+| `DELETE /farmers/groups/:groupId/members/:userId` | `farms.manage` | Remove a member as leader |
+| `GET /farmers/groups/:groupId/campaigns` | `farms.read` | List a group's campaigns |
+| `POST /farmers/groups/:groupId/campaigns` | `farms.manage` | Create a campaign as leader |
+| `GET /farmers/campaigns` | `farms.read` | List visible campaigns |
+| `GET /farmers/campaigns/:campaignId` | `farms.read` | Read one campaign |
+| `PATCH /farmers/campaigns/:campaignId` | `farms.manage` | Update a campaign as leader |
+| `GET /farmers/campaigns/:campaignId/contributions` | `farms.read` | List campaign contributions |
+| `POST /farmers/campaigns/:campaignId/contributions` | `farms.manage` | Contribute product, quantity, and quality as an active member |
+| `GET /farmers/contributions` | `farms.read` | List visible contributions |
+| `GET /farmers/contributions/:contributionId` | `farms.read` | Read one contribution |
+| `PATCH /farmers/contributions/:contributionId` | `farms.manage` | Update the caller's own contribution |
+| `POST /farmers/contributions/:contributionId/confirm` | `farms.manage` | Confirm a pending contribution as leader |
+| `POST /farmers/contributions/:contributionId/reject` | `farms.manage` | Reject a pending contribution as leader |
+| `GET /farmers/campaigns/:campaignId/purchase-requests` | `orders.read` | List a campaign's purchase requests |
+| `POST /farmers/campaigns/:campaignId/purchase-requests` | `orders.manage` | Create a group purchase request |
+| `GET /farmers/purchase-requests` | `orders.read` | List visible purchase requests |
+| `GET /farmers/purchase-requests/:requestId` | `orders.read` | Read one purchase request |
+| `PATCH /farmers/purchase-requests/:requestId` | `farms.manage` | Accept, reject, or cancel as leader |
+| `POST /farmers/purchase-requests/:requestId/allocations` | `farms.manage` | Propose transparent allocations as leader |
+| `GET /farmers/allocations` | `farms.read` | List visible allocations |
+| `POST /farmers/purchase-requests/:requestId/finalize` | `farms.manage` | Finalize allocations and accrue earnings |
+| `GET /farmers/earnings/me` | `farms.read` | List the caller's individual earnings |
+| `GET /farmers/earnings` | `farms.read` | List visible group earnings |
+
+A group owner or an active `LEADER` member manages the group and its campaigns,
+membership decisions, contribution decisions, purchase-request decisions,
+allocations, and finalization. Active members may contribute to `OPEN` campaigns;
+a contribution may be updated only by its contributor or a super admin. Joining
+creates a `PENDING` membership until a leader accepts it. Contribution product,
+unit, quality grade, and optional warehouse inventory references are validated
+through read-only catalog/warehouse ports, and `referenceKey` is idempotent for
+the contributor.
+
+Campaign allocation is caller-configurable: `PROPORTIONAL` divides by confirmed
+quantity, while `QUALITY_WEIGHTED` requires `allocationPolicyConfig.weights`
+keyed by contributor user id or quality grade code. Remainders are assigned
+deterministically. Finalization requires caller-supplied `salesAmount` and
+`currency`; earnings are split by allocated quantity and retain the allocation,
+purchase-request, contributor, policy, and policy-snapshot references. No
+commission rate, payment provider, payout rule, tax, or settlement policy is
+invented. Cooperative DTOs expose ids and business fields only; user contact
+details, private addresses, coordinates, and password hashes are never returned.
+
 ## Agriculture routes
 
 All routes below are under `/api/v1/agriculture`. Only `/info` and
@@ -206,6 +269,153 @@ and profit are `null`. Farm-level expenses that cannot be attributed to a
 cultivation are reported as `unallocatedFarmCost` rather than double-counted. No
 commission rates, payment providers, subscription prices, settlement rules, or
 land-conversion policies are invented here.
+
+## Catalog routes
+
+All routes below are under `/api/v1/catalog`. Only `/info` and
+`/info/:moduleId` are public; every other route requires a valid access token
+and is default-deny. Reads require `products.read`; mutations require
+`products.manage`. Tenant-scoped rows require the active tenant to match unless
+the caller is a super admin. Platform-scoped reference rows are visible by
+default (`includeGlobal=true`).
+
+| Endpoint | Required permission | Purpose |
+| --- | --- | --- |
+| `GET /catalog/categories` | `products.read` | List categories and subcategories |
+| `POST /catalog/categories` | `products.manage` | Create a category |
+| `PATCH /catalog/categories/:id` | `products.manage` | Update a category |
+| `GET /catalog/units` | `products.read` | List configurable units of measure |
+| `POST /catalog/units` | `products.manage` | Create a unit |
+| `PATCH /catalog/units/:id` | `products.manage` | Update a unit |
+| `GET /catalog/quality-grades` | `products.read` | List configurable quality grades |
+| `POST /catalog/quality-grades` | `products.manage` | Create a quality grade |
+| `PATCH /catalog/quality-grades/:id` | `products.manage` | Update a quality grade |
+| `GET /catalog/attributes` | `products.read` | List flexible attribute definitions |
+| `POST /catalog/attributes` | `products.manage` | Create an attribute definition |
+| `PATCH /catalog/attributes/:id` | `products.manage` | Update an attribute definition |
+| `GET /catalog/products` | `products.read` | Search products |
+| `POST /catalog/products` | `products.manage` | Create a product with attributes/images |
+| `GET /catalog/products/:productId` | `products.read` | Read one product bundle |
+| `PATCH /catalog/products/:productId` | `products.manage` | Update a product |
+| `PUT /catalog/products/:productId/attributes` | `products.manage` | Replace a product's attribute values |
+| `POST /catalog/products/:productId/images` | `products.manage` | Add a product image |
+| `DELETE /catalog/products/:productId/images/:imageId` | `products.manage` | Remove a product image |
+| `GET /catalog/products/:productId/varieties` | `products.read` | List varieties |
+| `POST /catalog/products/:productId/varieties` | `products.manage` | Create a variety with attribute values |
+| `PATCH /catalog/products/:productId/varieties/:varietyId` | `products.manage` | Update a variety |
+| `PUT /catalog/products/:productId/varieties/:varietyId/attributes` | `products.manage` | Replace a variety's attribute values |
+
+List queries accept `organizationId`, `includeGlobal`, `search`, and
+`isActive`; categories also accept `parentId` and `code`, attributes accept
+`categoryId` and `valueType`, and products accept `categoryId`,
+`categoryCode`, `unitCode`, `isAvailable`, and `attributeCode` plus
+`attributeValue`. Attribute values are typed as `TEXT`, `NUMBER`, `BOOLEAN`,
+`DATE`, or `ENUM`; `ENUM` definitions require `allowedValues`, and required
+definitions are validated on product/variety writes. Image URLs must use
+`http`/`https` and sort order cannot be negative. Names and descriptions may
+be supplied in English and Bengali (`nameBn`, `descriptionBn`, `altTextBn`).
+The seed contains 13 reference categories covering Grains, Vegetables,
+Fruits, Spices, Pulses, Seeds, Agricultural inputs, and Other approved
+agricultural products plus legacy produce families; it does not seed products.
+
+## Marketplace routes
+
+All routes below are under `/api/v1/marketplace`. Only `/info` and
+`/info/:moduleId` are public; every other route requires a valid access token
+and is default-deny. Discovery, favorites, seller profiles, reports, and
+messages require `listings.read`; listing mutations and report review require
+`listings.manage`. `ACTIVE` listings are visible to every `listings.read`
+holder. A non-active listing is visible only to its seller, a super admin, or
+a caller with `listings.manage` in the listing's active tenant.
+
+| Endpoint | Required permission | Purpose |
+| --- | --- | --- |
+| `GET /marketplace/listings` | `listings.read` | Search listings with filters and sorting |
+| `POST /marketplace/listings` | `listings.manage` | Create a seller listing |
+| `GET /marketplace/listings/:listingId` | `listings.read` | Read one listing bundle |
+| `PATCH /marketplace/listings/:listingId` | `listings.manage` | Edit quantity, price, grade, dates, or location |
+| `POST /marketplace/listings/:listingId/deactivate` | `listings.manage` | Deactivate a listing |
+| `POST /marketplace/listings/:listingId/locations` | `listings.manage` | Add a listing location |
+| `DELETE /marketplace/listings/:listingId/locations/:locationId` | `listings.manage` | Remove a listing location |
+| `POST /marketplace/listings/:listingId/images` | `listings.manage` | Add a listing image |
+| `DELETE /marketplace/listings/:listingId/images/:imageId` | `listings.manage` | Remove a listing image |
+| `GET /marketplace/favorites` | `listings.read` | List the caller's favorites |
+| `POST /marketplace/favorites/:listingId` | `listings.read` | Favorite a listing |
+| `DELETE /marketplace/favorites/:listingId` | `listings.read` | Remove a favorite |
+| `GET /marketplace/sellers/:sellerId` | `listings.read` | Read a public seller profile |
+| `POST /marketplace/listings/:listingId/reports` | `listings.read` | Report a suspicious listing |
+| `GET /marketplace/reports` | `listings.read` | List reports visible to the caller |
+| `PATCH /marketplace/reports/:reportId/review` | `listings.manage` | Review a report |
+| `POST /marketplace/listings/:listingId/messages` | `listings.read` | Send a platform-mediated message |
+| `GET /marketplace/messages` | `listings.read` | List messages involving the caller |
+| `PATCH /marketplace/messages/:messageId/read` | `listings.read` | Mark a received message as read |
+
+`GET /marketplace/listings` accepts `search`, `productId`, `categoryId`,
+`categoryCode`, `sellerUserId`, `organizationId`, `status`, `minPrice`,
+`maxPrice`, `location`, `latitude`, `longitude`, `radiusMeters`,
+`sort=newest|price_asc|price_desc|distance`, `limit`, and `offset`.
+`latitude`, `longitude`, and `radiusMeters` must be supplied together. The
+Prisma store uses PostGIS `ST_DWithin`/`ST_Distance` for meter-based proximity;
+the in-memory store uses haversine for local tests. Report reasons are
+`MISLEADING`, `PROHIBITED`, `DUPLICATE`, `FRAUD`, and `OTHER`; review moves a
+report to `UNDER_REVIEW`, `RESOLVED`, or `DISMISSED`.
+
+Listing and seller DTOs expose only public data: display name, Bengali display
+name, avatar, organization id/name/slug, farmer verification status,
+location label/administrative ids/radius, and optional distance. Exact
+coordinates, email addresses, phone numbers, password hashes, and private
+addresses are never returned. Messages are restricted to the listing's buyer
+and seller, and send/read events are audited. No listings are seeded: sellers
+create them from catalog products, and price, quantity, grade, harvest date,
+and location are caller-supplied. Commission, payment, and settlement rules
+remain unimplemented policy.
+
+## Warehouse and inventory routes
+
+All routes below are under `/api/v1/warehouse`. Only `/info` and
+`/info/:moduleId` are public; every other route requires a valid access token
+and is default-deny. Reads require `warehouses.read`; mutations require
+`warehouses.manage`. Warehouse, inventory, reservation, movement, and alert rows
+are tenant-scoped and require the active tenant to match unless the caller is a
+super admin.
+
+| Endpoint | Required permission | Purpose |
+| --- | --- | --- |
+| `GET /warehouse/warehouses` | `warehouses.read` | List warehouses by tenant/status/search |
+| `POST /warehouse/warehouses` | `warehouses.manage` | Register a warehouse |
+| `GET /warehouse/warehouses/:warehouseId` | `warehouses.read` | Read one warehouse |
+| `PATCH /warehouse/warehouses/:warehouseId` | `warehouses.manage` | Update a warehouse |
+| `GET /warehouse/inventories` | `warehouses.read` | List stock by warehouse/product/batch/status |
+| `POST /warehouse/inventories` | `warehouses.manage` | Register a product batch in a warehouse |
+| `GET /warehouse/inventories/:inventoryId` | `warehouses.read` | Read one inventory row with related warehouse/product/alert |
+| `PATCH /warehouse/inventories/:inventoryId` | `warehouses.manage` | Set on-hand quantity or low-stock threshold |
+| `POST /warehouse/inventories/:inventoryId/adjustments` | `warehouses.manage` | Apply a signed stock adjustment |
+| `POST /warehouse/inventories/:inventoryId/damaged` | `warehouses.manage` | Deduct damaged stock |
+| `POST /warehouse/inventories/:inventoryId/expired` | `warehouses.manage` | Deduct expired stock |
+| `POST /warehouse/inventories/:inventoryId/deductions` | `warehouses.manage` | Deduct available stock |
+| `POST /warehouse/inventories/:inventoryId/reservations` | `warehouses.manage` | Reserve available stock with a caller reference key |
+| `GET /warehouse/reservations` | `warehouses.read` | List reservations by tenant/warehouse/product/status |
+| `GET /warehouse/reservations/:reservationId` | `warehouses.read` | Read one reservation |
+| `POST /warehouse/reservations/:reservationId/release` | `warehouses.manage` | Release all or part of a reservation |
+| `POST /warehouse/reservations/:reservationId/deduct` | `warehouses.manage` | Deduct all or part of a reservation |
+| `GET /warehouse/movements` | `warehouses.read` | Query append-only stock movement history |
+| `GET /warehouse/alerts` | `warehouses.read` | List low-stock alerts |
+| `POST /warehouse/alerts/:alertId/acknowledge` | `warehouses.manage` | Acknowledge an alert |
+| `POST /warehouse/alerts/:alertId/resolve` | `warehouses.manage` | Resolve an alert |
+
+Warehouses may hold multiple product batches and units; batch rows are unique
+per `(warehouseId, productId, batchCode)`, and unit codes are validated against
+configurable catalog units. `quantityOnHand`, `quantityReserved`, and
+`availableQuantity` are maintained together with `available = on hand -
+reserved`. Every movement records its type (`REGISTER`, `UPDATE`, `RESERVE`,
+`RELEASE`, `DEDUCT`, `ADJUSTMENT`, `DAMAGED`, `EXPIRED`), before/after
+quantities, unit, reason, reference, actor, and timestamp. Reserve, release, and
+deduct operations run in transactions that lock the inventory/reservation row,
+prevent overselling, and maintain at most one open low-stock alert per batch.
+Reservation `referenceKey` values are idempotent for concurrent order attempts;
+partial release/deduction updates `settledQuantity` and finalizes status when
+the reservation is exhausted. Movement history is append-only, and every stock
+or alert mutation is audited. No price, commission, or settlement rule is added.
 
 ## User and profile routes
 

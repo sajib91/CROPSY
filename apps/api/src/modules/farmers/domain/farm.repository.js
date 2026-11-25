@@ -2,6 +2,37 @@ const { defineRepositoryToken } = require('../../../shared/domain/repository');
 
 const FarmStoreToken = defineRepositoryToken('farmers.farm-store');
 
+const COOPERATIVE_STORE_METHODS = Object.freeze([
+  'listFarmerGroups',
+  'findFarmerGroup',
+  'createFarmerGroup',
+  'updateFarmerGroup',
+  'findGroupMember',
+  'listGroupMembers',
+  'createGroupMember',
+  'updateGroupMember',
+  'listCampaigns',
+  'findCampaign',
+  'createCampaign',
+  'updateCampaign',
+  'listContributions',
+  'findContribution',
+  'createContribution',
+  'updateContribution',
+  'listPurchaseRequests',
+  'findPurchaseRequest',
+  'createPurchaseRequest',
+  'updatePurchaseRequest',
+  'listAllocations',
+  'findAllocation',
+  'createAllocation',
+  'updateAllocation',
+  'listEarnings',
+  'findEarning',
+  'createEarning',
+  'updateEarning',
+]);
+
 /**
  * Persistence port for farm management. Implementations must return plain
  * records in snake_case so that in-memory and Prisma adapters are
@@ -25,10 +56,10 @@ const FarmStoreToken = defineRepositoryToken('farmers.farm-store');
  * @property {(id: string, patch: object) => Promise<object>} updateIrrigation
  * @property {() => Promise<object[]>} listDivisions
  * @property {(divisionId: string) => Promise<object[]>} listDistricts
- * @property {(districtId: string) => Promise<object[]>} listUpazilas
- * @property {(upazilaId: string) => Promise<object[]>} listUnions
+ * @property {(upazilaId: string) => Promise<object[]>} listUpazilas
+ * @property {(unionId: string) => Promise<object[]>} listUnions
  * @property {(ids: object) => Promise<object|null>} findGeoContext
  * @property {(query: object) => Promise<object[]>} querySpatial
  */
 
-module.exports = { FarmStoreToken };
+module.exports = { FarmStoreToken, COOPERATIVE_STORE_METHODS };

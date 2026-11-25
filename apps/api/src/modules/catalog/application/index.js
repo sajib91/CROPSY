@@ -1,9 +1,9 @@
-const { CatalogService, CatalogServiceToken } = require('./catalog.service');
-const { moduleInfoSchema, toModuleInfoDto } = require('./catalog.dto');
+const { CatalogService, CatalogServiceToken, EVENTS } = require('./catalog.service');
+const dto = require('./catalog.dto');
 
 module.exports = {
   CatalogService,
   CatalogServiceToken,
-  moduleInfoSchema,
-  toModuleInfoDto,
+  EVENTS,
+  ...dto,
 };

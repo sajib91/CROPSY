@@ -2,7 +2,8 @@ const { Prisma } = require('@prisma/client');
 
 const { assertRepository } = require('../../../shared/domain/repository');
 const { ConflictError } = require('../../../shared/kernel/errors');
-const { FarmStoreToken } = require('../domain/farm.repository');
+const { FarmStoreToken, COOPERATIVE_STORE_METHODS } = require('../domain/farm.repository');
+const { attachPrismaCooperative } = require('./cooperative.store');
 
 function conflict(message) {
   return new ConflictError({ message });
@@ -110,6 +111,7 @@ class FarmPrismaStore {
   constructor({ prisma }) {
     if (!prisma) throw new TypeError('FarmPrismaStore requires a Prisma client.');
     this.prisma = prisma;
+    attachPrismaCooperative(this);
     assertRepository(
       this,
       [
@@ -133,6 +135,7 @@ class FarmPrismaStore {
         'listUnions',
         'findGeoContext',
         'querySpatial',
+        ...COOPERATIVE_STORE_METHODS,
       ],
       FarmStoreToken,
     );

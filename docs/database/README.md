@@ -11,6 +11,11 @@ Source of truth:
 - [`apps/api/prisma/migrations/20261125000000_init/migration.sql`](../../apps/api/prisma/migrations/20261125000000_init/migration.sql) — immutable baseline
 - [`apps/api/prisma/migrations/20261125120000_review_hardening/migration.sql`](../../apps/api/prisma/migrations/20261125120000_review_hardening/migration.sql) — review-driven indexes, tenant/financial/ledger/audit invariants, and inventory helpers
 - [`apps/api/prisma/migrations/20261125130000_auth_identity/migration.sql`](../../apps/api/prisma/migrations/20261125130000_auth_identity/migration.sql) — nullable `users.email`, partial unique email index, and `ACCOUNT_RECOVERY` OTP purpose
+- [`apps/api/prisma/migrations/20261125140000_organization_profile_management/migration.sql`](../../apps/api/prisma/migrations/20261125140000_organization_profile_management/migration.sql) — organization profile, documents, preferences, and role extensions
+- [`apps/api/prisma/migrations/20261125150000_farm_management/migration.sql`](../../apps/api/prisma/migrations/20261125150000_farm_management/migration.sql) — farm profile, soil, irrigation, and geographic guards
+- [`apps/api/prisma/migrations/20261125160000_crop_cultivation_expense_management/migration.sql`](../../apps/api/prisma/migrations/20261125160000_crop_cultivation_expense_management/migration.sql) — calendars, cultivations, activities, recommendations, and expenses
+- [`apps/api/prisma/migrations/20261125170000_catalog_marketplace/migration.sql`](../../apps/api/prisma/migrations/20261125170000_catalog_marketplace/migration.sql) — catalog taxonomy/attributes and marketplace listings, favorites, reports, and messages
+- [`apps/api/prisma/migrations/20261125180000_inventory_cooperative/migration.sql`](../../apps/api/prisma/migrations/20261125180000_inventory_cooperative/migration.sql) — warehouse inventory movements/reservations/alerts and cooperative groups/campaigns/contributions/allocations/earnings
 - [`apps/api/prisma/seed.js`](../../apps/api/prisma/seed.js)
 
 ## Quick commands

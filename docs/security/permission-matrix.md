@@ -13,6 +13,14 @@ request because the authorization context is rebuilt from the store each time.
 Re-running the seed removes stale role-permission rows and restores the
 configured default policy.
 
+Catalog and marketplace reuse the existing `products.read`, `products.manage`,
+`listings.read`, and `listings.manage` codes; neither module introduced a new
+permission or changed the 50-permission / 479-assignment seed totals. Warehouse
+routes reuse `warehouses.read`/`warehouses.manage`, and cooperative routes reuse
+`farms.read`/`farms.manage` plus `orders.read`/`orders.manage` for group purchase
+requests. These additions also introduce no permissions and keep the stable
+22-role / 50-permission / 479-assignment seed state.
+
 ## Canonical role metadata
 
 | Role code | Scope | Self-registerable | Multiple grants allowed |
@@ -131,10 +139,22 @@ restrictions, and audit events. `apps/api/test/farms.test.js` covers farm
 registration, tenant isolation, coordinate privacy, map/spatial filtering, and
 soil/irrigation validation. `apps/api/test/agriculture.test.js` covers crop and
 calendar configuration, tenant/farm isolation, cultivation activity, harvests,
-expense sources, and cost/profitability reports. Database integrity and migration
-tests live in `apps/api/test/database/integrity.test.js`; farm persistence and
-PostGIS tests live in `apps/api/test/database/farms.test.js`; crop/expense guard
-tests live in `apps/api/test/database/agriculture.test.js`.
+expense sources, and cost/profitability reports. `apps/api/test/catalog.test.js`
+and `apps/api/test/marketplace.test.js` cover taxonomy/attribute validation,
+listing CRUD and discovery, proximity, ownership, favorites, reports, messages,
+and private-data redaction. `apps/api/test/warehouse.test.js` covers stock
+registration, idempotent reservations, oversell prevention, adjustments, damaged
+and expired stock, low-stock alerts, history, and authorization;
+`apps/api/test/cooperative.test.js` covers group ownership, membership,
+contribution ownership, allocation policies, earnings, tenant isolation, and
+authorization. Database integrity and migration tests live in
+`apps/api/test/database/integrity.test.js`; farm persistence and PostGIS tests
+live in `apps/api/test/database/farms.test.js`; crop/expense guard tests live in
+`apps/api/test/database/agriculture.test.js`; catalog/marketplace typed values,
+tenant triggers, constraints, proximity, and adapter normalization live in
+`apps/api/test/database/catalog-marketplace.test.js`, and warehouse concurrency, settlement,
+idempotency, append-only movement, and final-consistency checks live in
+`apps/api/test/database/integrity.test.js`.
 
 The generated matrix contains 50 permissions and 12 canonical roles; the seed
 creates 22 role rows (12 canonical plus 10 legacy aliases) and 479

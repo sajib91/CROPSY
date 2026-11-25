@@ -10,7 +10,7 @@ const {
 const { validate } = require('../../../shared/validation/validate');
 const { MODULE_ID, FarmersEntity } = require('../domain/farmers.entity');
 const { FarmersRepositoryToken } = require('../domain/farmers.repository');
-const { FarmStoreToken } = require('../domain/farm.repository');
+const { FarmStoreToken, COOPERATIVE_STORE_METHODS } = require('../domain/farm.repository');
 const {
   assertBangladeshPoint,
   assertValidPolygon,
@@ -42,10 +42,11 @@ const {
   toParcelDto,
   toSoilDto,
 } = require('./farm.dto');
+const { createCooperativeApi, COOPERATIVE_EVENTS } = require('./cooperative.service');
 
 const FarmersServiceToken = Symbol.for('cropsy.service.farmers');
 
-const EVENTS = Object.freeze({
+const FARMER_EVENTS = Object.freeze({
   CREATED: 'farmers.farm.created',
   UPDATED: 'farmers.farm.updated',
   ARCHIVED: 'farmers.farm.archived',
@@ -58,6 +59,8 @@ const EVENTS = Object.freeze({
   COORDINATES_READ: 'farmers.coordinates.read',
   COORDINATES_DENIED: 'farmers.coordinates.denied',
 });
+
+const EVENTS = Object.freeze({ ...FARMER_EVENTS, ...COOPERATIVE_EVENTS });
 
 function requestMeta(request) {
   const forwarded = request?.headers?.['x-forwarded-for'];
@@ -102,6 +105,8 @@ class FarmersService {
     identityStore,
     authorization,
     config,
+    catalog,
+    warehouseAccess,
   }) {
     assertRepository(repository, ['get', 'save'], FarmersRepositoryToken);
     assertRepository(
@@ -127,6 +132,7 @@ class FarmersService {
         'listUnions',
         'findGeoContext',
         'querySpatial',
+        ...COOPERATIVE_STORE_METHODS,
       ],
       FarmStoreToken,
     );
@@ -139,6 +145,8 @@ class FarmersService {
       identityStore,
       authorization,
       config,
+      catalog,
+      warehouseAccess,
     })) {
       if (!dependency) throw new TypeError(`FarmersService requires ${name}.`);
     }
@@ -150,6 +158,23 @@ class FarmersService {
     this.identityStore = identityStore;
     this.authorization = authorization;
     this.config = config;
+    this.catalog = catalog;
+    this.warehouseAccess = warehouseAccess;
+
+    // Cooperative selling extends this service without introducing another
+    // module or service token. All cross-module dependencies are read-only DI
+    // ports resolved by the module definition.
+    Object.assign(
+      this,
+      createCooperativeApi({
+        service: this,
+        farmStore,
+        warehouseAccess,
+        catalog,
+        identityStore,
+        authorization,
+      }),
+    );
   }
 
   async describe() {

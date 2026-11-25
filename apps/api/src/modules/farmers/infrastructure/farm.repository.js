@@ -9,8 +9,9 @@ const {
   polygonIntersectsBbox,
   toHectares,
 } = require('../domain/farm.entity');
-const { FarmStoreToken } = require('../domain/farm.repository');
+const { FarmStoreToken, COOPERATIVE_STORE_METHODS } = require('../domain/farm.repository');
 const { createBangladeshGeoFixture } = require('./bangladesh-geo');
+const { attachInMemoryCooperative } = require('./cooperative.store');
 
 function clone(value) {
   return value === undefined ? undefined : structuredClone(value);
@@ -37,6 +38,7 @@ class FarmInMemoryStore {
     this.soilProfiles = new Map();
     this.irrigations = new Map();
     this.geo = createBangladeshGeoFixture();
+    attachInMemoryCooperative(this);
     assertRepository(
       this,
       [
@@ -60,6 +62,7 @@ class FarmInMemoryStore {
         'listUnions',
         'findGeoContext',
         'querySpatial',
+        ...COOPERATIVE_STORE_METHODS,
       ],
       FarmStoreToken,
     );

@@ -36,6 +36,9 @@ const apiSchema = sharedSchema
     AUTH_STORE: z.enum(['memory', 'prisma']).default('memory'),
     FARM_STORE: z.enum(['memory', 'prisma']).default('memory'),
     AGRICULTURE_STORE: z.enum(['memory', 'prisma']).default('memory'),
+    CATALOG_STORE: z.enum(['memory', 'prisma']).default('memory'),
+    MARKETPLACE_STORE: z.enum(['memory', 'prisma']).default('memory'),
+    WAREHOUSE_STORE: z.enum(['memory', 'prisma']).default('memory'),
     AUTH_JWT_SECRET: z.string().trim().min(1).default('dev-only-cropsy-access-token-secret'),
     AUTH_ACCESS_TOKEN_TTL_SECONDS: z.coerce.number().int().positive().default(900),
     AUTH_REFRESH_TOKEN_TTL_SECONDS: z.coerce.number().int().positive().default(2592000),
@@ -98,6 +101,27 @@ const apiSchema = sharedSchema
           code: z.ZodIssueCode.custom,
           path: ['AGRICULTURE_STORE'],
           message: 'Production must use the Prisma agriculture store',
+        });
+      }
+      if (value.CATALOG_STORE !== 'prisma') {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['CATALOG_STORE'],
+          message: 'Production must use the Prisma catalog store',
+        });
+      }
+      if (value.MARKETPLACE_STORE !== 'prisma') {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['MARKETPLACE_STORE'],
+          message: 'Production must use the Prisma marketplace store',
+        });
+      }
+      if (value.WAREHOUSE_STORE !== 'prisma') {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['WAREHOUSE_STORE'],
+          message: 'Production must use the Prisma warehouse store',
         });
       }
       if (value.AUTH_OTP_PROVIDER_MODE !== 'http') {

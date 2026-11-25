@@ -145,15 +145,18 @@ const ROLE_PERMISSIONS = {
 
 const PRODUCT_CATEGORIES = [
   ['CEREALS', 'Cereals', 'শস্য'],
+  ['GRAINS', 'Grains', 'শস্য ও গ্রেইন'],
   ['PULSES', 'Pulses', 'ডাল'],
   ['VEGETABLES', 'Vegetables', 'শাকসবজি'],
   ['FRUITS', 'Fruits', 'ফল'],
   ['ROOT_CROPS', 'Root Crops', 'কন্দজাতীয় ফসল'],
   ['SPICES', 'Spices', 'মসলা'],
+  ['SEEDS', 'Seeds', 'বীজ'],
+  ['AGRICULTURAL_INPUTS', 'Agricultural inputs', 'কৃষি উপকরণ'],
   ['LIVESTOCK', 'Livestock Products', 'পশুজাত পণ্য'],
   ['FISHERY', 'Fishery Products', 'মৎস্যজাত পণ্য'],
   ['DAIRY', 'Dairy Products', 'দুগ্ধজাত পণ্য'],
-  ['OTHER_PRODUCE', 'Other Produce', 'অন্যান্য কৃষিপণ্য'],
+  ['OTHER_PRODUCE', 'Other approved agricultural products', 'অনুমোদিত অন্যান্য কৃষিপণ্য'],
 ];
 
 const LEDGER_ACCOUNTS = [

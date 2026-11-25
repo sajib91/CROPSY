@@ -1,6 +1,6 @@
 const { MODULE_ID, MODULE_NAME, FarmersEntity } = require('./farmers.entity');
 const { FarmersRepositoryToken } = require('./farmers.repository');
-const { FarmStoreToken } = require('./farm.repository');
+const { FarmStoreToken, COOPERATIVE_STORE_METHODS } = require('./farm.repository');
 const farmDomain = require('./farm.entity');
 
 module.exports = {
@@ -9,5 +9,6 @@ module.exports = {
   FarmersEntity,
   FarmersRepositoryToken,
   FarmStoreToken,
+  COOPERATIVE_STORE_METHODS,
   ...farmDomain,
 };

@@ -505,7 +505,7 @@ erDiagram
 
 `crop_calendars` and `agronomic_recommendations` are unique on `(scope_key, code)`, and cultivations are unique on `(farm_id, code)`. `scope_key` is `GLOBAL` only when `organization_id` is null; tenant rows use the organization UUID as both values. Cultivations and expenses carry `organization_id` from their farm, and constraint triggers reject mixed crop/variety pairs, mismatched recommendation calendars, and tenant reassignment while expenses still reference the old tenant. `farm_expenses.source` separates `RECORDED` actual costs from `AI_ESTIMATED` values; estimates require `estimate_rule_key`, while recorded rows must not carry estimate metadata. A cultivation may omit `cultivation_id` on an expense, in which case the farm-level cost remains unallocated in per-cultivation reports.
 
-## Marketplace
+## Catalog and marketplace
 
 ```mermaid
 erDiagram
@@ -515,6 +515,9 @@ erDiagram
     uuid parent_id FK
     varchar code UK
     varchar name
+    varchar name_bn
+    text description
+    text description_bn
     boolean is_active
   }
   products {
@@ -522,14 +525,77 @@ erDiagram
     uuid organization_id FK
     uuid category_id FK
     uuid farmer_profile_id FK
+    uuid unit_id FK
     varchar sku UK
     varchar name
+    varchar name_bn
+    text description
+    text description_bn
+    boolean is_available
     timestamp deleted_at
+  }
+  units_of_measure {
+    uuid id PK
+    uuid organization_id FK
+    varchar code UK
+    varchar name
+    varchar name_bn
+    varchar dimension
+    boolean is_active
+  }
+  product_varieties {
+    uuid id PK
+    uuid organization_id FK
+    uuid product_id FK
+    varchar code
+    varchar name
+    varchar name_bn
+    text description
+    text description_bn
+    boolean is_active
+  }
+  product_attributes {
+    uuid id PK
+    uuid organization_id FK
+    uuid category_id FK
+    varchar code UK
+    varchar name
+    varchar name_bn
+    AttributeValueType value_type
+    jsonb allowed_values
+    varchar unit_code
+    varchar group_code
+    boolean is_required
+    boolean is_active
+  }
+  product_attribute_values {
+    uuid id PK
+    uuid organization_id FK
+    uuid attribute_id FK
+    CatalogEntityType entity_type
+    uuid entity_id
+    text value_text
+    decimal value_number
+    boolean value_boolean
+    date value_date
+    jsonb value_json
+  }
+  quality_grades {
+    uuid id PK
+    uuid organization_id FK
+    varchar code UK
+    varchar name
+    varchar name_bn
+    text description
+    decimal min_score
+    boolean is_active
   }
   product_images {
     uuid id PK
     uuid product_id FK
     text url
+    varchar alt_text
+    varchar alt_text_bn
     int sort_order
   }
   product_inventories {
@@ -548,11 +614,17 @@ erDiagram
     uuid product_id FK
     uuid seller_user_id FK
     uuid inventory_id FK
+    uuid quality_grade_id FK
     ListingStatus status
+    varchar title
     decimal unit_price
     char currency
     decimal quantity_available
     decimal min_order_quantity
+    date harvest_date
+    varchar available_location
+    timestamp starts_at
+    timestamp ends_at
   }
   listing_locations {
     uuid id PK
@@ -562,7 +634,40 @@ erDiagram
     uuid upazila_id FK
     uuid union_id FK
     geometry location
+    varchar location_label
     int radius_meters
+  }
+  listing_images {
+    uuid id PK
+    uuid listing_id FK
+    text url
+    varchar alt_text
+    int sort_order
+  }
+  favorite_listings {
+    uuid id PK
+    uuid user_id FK
+    uuid listing_id FK
+    timestamp created_at
+  }
+  listing_reports {
+    uuid id PK
+    uuid listing_id FK
+    uuid reporter_user_id FK
+    ListingReportReason reason
+    text details
+    ListingReportStatus status
+    uuid reviewed_by_user_id FK
+    timestamp reviewed_at
+  }
+  listing_messages {
+    uuid id PK
+    uuid listing_id FK
+    uuid sender_user_id FK
+    uuid recipient_user_id FK
+    text body
+    timestamp read_at
+    timestamp created_at
   }
   price_history {
     uuid id PK
@@ -579,7 +684,16 @@ erDiagram
   organizations |o--o{ products : organization
   product_categories ||--o{ products : category
   farmer_profiles |o--o{ products : farmer_profile
+  units_of_measure |o--o{ products : unit
   products ||--o{ product_images : product
+  products ||--o{ product_varieties : product
+  organizations |o--o{ product_varieties : organization
+  organizations |o--o{ product_attributes : organization
+  product_categories |o--o{ product_attributes : category
+  organizations |o--o{ product_attribute_values : organization
+  product_attributes ||--o{ product_attribute_values : definition
+  organizations |o--o{ quality_grades : organization
+  quality_grades |o--o{ product_listings : quality_grade
   organizations |o--o{ product_inventories : organization
   products ||--o{ product_inventories : product
   warehouses |o--o{ product_inventories : warehouse
@@ -592,12 +706,229 @@ erDiagram
   districts |o--o{ listing_locations : district
   upazilas |o--o{ listing_locations : upazila
   unions |o--o{ listing_locations : union
+  product_listings ||--o{ listing_images : listing
+  users ||--o{ favorite_listings : user
+  product_listings ||--o{ favorite_listings : listing
+  product_listings ||--o{ listing_reports : listing
+  users ||--o{ listing_reports : reporter
+  users |o--o{ listing_reports : reviewer
+  product_listings ||--o{ listing_messages : listing
+  users ||--o{ listing_messages : sender
+  users ||--o{ listing_messages : recipient
   organizations |o--o{ price_history : organization
   products ||--o{ price_history : product
   product_listings |o--o{ price_history : listing
 ```
 
-`product_categories.parent_id` is the self-FK; Prisma exposes the inverse side as `children`.
+`product_categories.parent_id` is the self-FK; Prisma exposes the inverse side as `children`. `product_attribute_values.entity_id` is polymorphic (`PRODUCT` or `VARIETY`) and has no FK; constraint triggers check the entity exists, matches the value's tenant, and uses the typed column required by its definition. `units_of_measure` and `quality_grades` are configurable and not seeded with conversions or prices. Favorites are unique per `(user_id, listing_id)`, reports per `(listing_id, reporter_user_id)`, and images per `(listing_id, sort_order)` or `(product_id, sort_order)`. Listing coordinates are stored only in `listing_locations`; public listing/seller DTOs expose location labels, administrative ids, radius, and optional distance, never raw points or seller contact data. The seed contains 13 reference categories and no product or listing rows.
+
+## Warehouse inventory
+
+```mermaid
+erDiagram
+  warehouses {
+    uuid id PK
+    uuid organization_id FK
+    varchar code UK
+    WarehouseStatus status
+  }
+  warehouse_inventories {
+    uuid id PK
+    uuid warehouse_id FK
+    uuid product_id FK
+    varchar batch_code
+    decimal quantity_on_hand
+    decimal quantity_reserved
+    decimal available_quantity
+    decimal low_stock_threshold
+    varchar unit_code
+  }
+  inventory_movements {
+    uuid id PK
+    uuid organization_id FK
+    uuid warehouse_id FK
+    uuid warehouse_inventory_id FK
+    uuid product_id FK
+    InventoryMovementType movement_type
+    decimal quantity
+    decimal quantity_before
+    decimal quantity_after
+    varchar unit_code
+    varchar reference_key UK
+    uuid actor_user_id FK
+  }
+  inventory_reservations {
+    uuid id PK
+    uuid organization_id FK
+    uuid warehouse_id FK
+    uuid warehouse_inventory_id FK
+    uuid product_id FK
+    decimal quantity
+    decimal settled_quantity
+    InventoryReservationStatus status
+    varchar reference_key UK
+    timestamp expires_at
+  }
+  inventory_alerts {
+    uuid id PK
+    uuid organization_id FK
+    uuid warehouse_id FK
+    uuid warehouse_inventory_id FK
+    uuid product_id FK
+    decimal threshold_quantity
+    decimal available_quantity
+    InventoryAlertStatus status
+  }
+
+  organizations ||--o{ warehouses : organization
+  warehouses ||--o{ warehouse_inventories : warehouse
+  products ||--o{ warehouse_inventories : product
+  warehouses ||--o{ inventory_movements : warehouse
+  warehouse_inventories |o--o{ inventory_movements : inventory
+  products ||--o{ inventory_movements : product
+  organizations |o--o{ inventory_movements : organization
+  users |o--o{ inventory_movements : actor
+  warehouses ||--o{ inventory_reservations : warehouse
+  warehouse_inventories ||--o{ inventory_reservations : inventory
+  products ||--o{ inventory_reservations : product
+  organizations |o--o{ inventory_reservations : organization
+  users |o--o{ inventory_reservations : actor
+  warehouses ||--o{ inventory_alerts : warehouse
+  warehouse_inventories ||--o{ inventory_alerts : inventory
+  products ||--o{ inventory_alerts : product
+  organizations |o--o{ inventory_alerts : organization
+```
+
+`warehouse_inventories` is unique on `(warehouse_id, product_id, batch_code)`. Movement and
+reservation `reference_key` values are unique, movement history is append-only, and a partial
+unique index permits only one `OPEN` alert per inventory row. Movement organization ids are copied
+from the warehouse so tenant filters match the row's warehouse. `available_quantity` always equals
+`quantity_on_hand - quantity_reserved`; `cropsy_apply_warehouse_stock_movement` and
+`cropsy_settle_inventory_reservation` update quantities, movements, and alerts in one locked
+transaction.
+
+## Cooperative selling
+
+```mermaid
+erDiagram
+  farmer_groups {
+    uuid id PK
+    uuid organization_id FK
+    uuid owner_user_id FK
+    varchar code UK
+    varchar name
+    FarmerGroupStatus status
+  }
+  farmer_group_members {
+    uuid id PK
+    uuid group_id FK
+    uuid user_id FK
+    FarmerGroupMemberRole role
+    FarmerGroupMemberStatus status
+    timestamp joined_at
+  }
+  cooperative_campaigns {
+    uuid id PK
+    uuid organization_id FK
+    uuid group_id FK
+    uuid created_by_user_id FK
+    uuid product_id FK
+    varchar code UK
+    CooperativeCampaignStatus status
+    varchar unit_code
+    varchar allocation_policy_code
+    jsonb allocation_policy_config
+  }
+  group_contributions {
+    uuid id PK
+    uuid organization_id FK
+    uuid group_id FK
+    uuid campaign_id FK
+    uuid contributor_user_id FK
+    uuid product_id FK
+    uuid warehouse_inventory_id FK
+    decimal quantity
+    varchar quality_grade_code
+    GroupContributionStatus status
+    varchar reference_key UK
+  }
+  group_purchase_requests {
+    uuid id PK
+    uuid organization_id FK
+    uuid group_id FK
+    uuid campaign_id FK
+    uuid buyer_user_id FK
+    decimal quantity
+    GroupPurchaseRequestStatus status
+    decimal sales_amount
+    char currency
+    varchar reference_key UK
+  }
+  group_allocations {
+    uuid id PK
+    uuid organization_id FK
+    uuid group_id FK
+    uuid campaign_id FK
+    uuid purchase_request_id FK
+    uuid contribution_id FK
+    uuid contributor_user_id FK
+    decimal allocated_quantity
+    GroupAllocationStatus status
+    varchar policy_code
+    jsonb policy_snapshot
+  }
+  group_earnings {
+    uuid id PK
+    uuid organization_id FK
+    uuid group_id FK
+    uuid campaign_id FK
+    uuid allocation_id FK
+    uuid contribution_id FK
+    uuid purchase_request_id FK
+    uuid contributor_user_id FK
+    decimal amount
+    char currency
+    GroupEarningStatus status
+    varchar policy_code
+    jsonb metadata
+  }
+
+  organizations |o--o{ farmer_groups : organization
+  users ||--o{ farmer_groups : owner
+  farmer_groups ||--o{ farmer_group_members : group
+  users ||--o{ farmer_group_members : user
+  farmer_groups ||--o{ cooperative_campaigns : group
+  users ||--o{ cooperative_campaigns : creator
+  products ||--o{ cooperative_campaigns : product
+  organizations |o--o{ cooperative_campaigns : organization
+  cooperative_campaigns ||--o{ group_contributions : campaign
+  farmer_groups ||--o{ group_contributions : group
+  users ||--o{ group_contributions : contributor
+  products ||--o{ group_contributions : product
+  warehouse_inventories |o--o{ group_contributions : inventory
+  organizations |o--o{ group_contributions : organization
+  cooperative_campaigns ||--o{ group_purchase_requests : campaign
+  farmer_groups ||--o{ group_purchase_requests : group
+  users ||--o{ group_purchase_requests : buyer
+  organizations |o--o{ group_purchase_requests : organization
+  group_purchase_requests ||--o{ group_allocations : request
+  group_contributions ||--o{ group_allocations : contribution
+  users ||--o{ group_allocations : contributor
+  organizations |o--o{ group_allocations : organization
+  group_allocations ||--o{ group_earnings : allocation
+  group_contributions |o--o{ group_earnings : contribution
+  group_purchase_requests |o--o{ group_earnings : request
+  users ||--o{ group_earnings : contributor
+  organizations |o--o{ group_earnings : organization
+```
+
+`farmer_group_members` is unique on `(group_id, user_id)`, group and campaign codes are unique,
+contribution/request reference keys are unique, and `group_allocations` is unique on
+`(purchase_request_id, contribution_id)`. `allocation_policy_code` is stored as configurable text;
+`PROPORTIONAL` and `QUALITY_WEIGHTED` are implemented by the application, and weighted allocations
+require caller-supplied weights. Each earning retains the allocation, contribution, purchase
+request, contributor, currency, policy code, and policy snapshot so sales distribution is
+traceable. No commission, payout, tax, or settlement policy is seeded.
 
 ## Commerce
 

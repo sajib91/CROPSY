@@ -14,6 +14,16 @@ const PlatformTokenManagerToken = Symbol.for('cropsy.platform.tokenManager');
 // validate farm ownership/tenant scope without importing another module.
 const FarmAccessPortToken = Symbol.for('cropsy.platform.farmAccess');
 
+// Read-only catalog lookup port published by the catalog module so marketplace
+// can validate product, category, unit, and quality-grade references without
+// importing another module.
+const CatalogAccessPortToken = Symbol.for('cropsy.platform.catalogAccess');
+
+// Read-only warehouse inventory lookup port published by the warehouse module
+// so farmers can validate cooperative stock references without importing
+// another module or gaining mutation capabilities.
+const WarehouseAccessPortToken = Symbol.for('cropsy.platform.warehouseAccess');
+
 module.exports = {
   ConfigToken,
   LoggerToken,
@@ -23,4 +33,6 @@ module.exports = {
   PlatformAuthorizationToken,
   PlatformTokenManagerToken,
   FarmAccessPortToken,
+  CatalogAccessPortToken,
+  WarehouseAccessPortToken,
 };

@@ -26,7 +26,7 @@ detail live in the API docs.
 - Web clients receive HttpOnly `cropsy_access` and `cropsy_refresh` cookies with `SameSite=Lax` and
   `Secure` in production/HTTPS. Cookie-authenticated mutations require a matching `x-csrf-token`;
   mobile clients use bearer tokens returned in the JSON body.
-- Production requires `AUTH_STORE=prisma`, `FARM_STORE=prisma`, `AGRICULTURE_STORE=prisma`, a strong `AUTH_JWT_SECRET`, and HTTP OTP provider URLs.
+- Production requires `AUTH_STORE=prisma`, `FARM_STORE=prisma`, `AGRICULTURE_STORE=prisma`, `CATALOG_STORE=prisma`, `MARKETPLACE_STORE=prisma`, `WAREHOUSE_STORE=prisma`, a strong `AUTH_JWT_SECRET`, and HTTP OTP provider URLs.
   The preview provider exists only for local/test use; it is disabled by production config and
   never accepts a client-supplied code as proof of verification.
 
@@ -50,6 +50,26 @@ detail live in the API docs.
   harvests, and expenses. Cultivation/activity/harvest/expense access requires farm ownership or an
   active organization membership, and cross-tenant references are rejected. Only super admins may
   create platform-scoped calendars or recommendations.
+- Catalog and marketplace routes are default-deny and reuse the existing `products.*` and
+  `listings.*` permissions; no permission was added. Catalog writes require matching tenant scope,
+  and marketplace listing writes require seller ownership, super admin, or same-tenant
+  `listings.manage`. Buyer DTOs expose only public seller/location summaries; exact coordinates,
+  email, phone, password hashes, and private addresses are redacted.
+- Warehouse routes are default-deny and reuse `warehouses.read`/`warehouses.manage`. Warehouses,
+  inventory batches, reservations, movements, and alerts require the active tenant to match or a
+  super admin. Product and unit references are validated through read-only catalog data, stock
+  changes are transactional and audited, movement history is append-only, and reservation
+  `referenceKey` values guard concurrent order attempts against duplicate reservations.
+- Cooperative routes are default-deny and reuse `farms.read`/`farms.manage` plus `orders.read`/
+  `orders.manage` for group purchase requests; no permission was added. Group owner/leader status,
+  active membership, and tenant scope are checked before group/campaign mutations, contribution
+  decisions, purchase decisions, allocation, or finalization. A contribution may be updated only
+  by its own contributor or a super admin; other farmers cannot change its quantity, quality, or
+  status. Catalog and warehouse references are read-only, and cooperative DTOs expose ids and
+  business fields only, never user contact details, private addresses, coordinates, or password
+  hashes. Allocation policies and weights are caller-configurable; earnings require caller-supplied
+  sales amount/currency and retain allocation/policy traceability rather than applying invented
+  commission or settlement rules.
 - `AI_ESTIMATED` expenses and recommendations require a rule key plus `ai.feedback` (or super
   admin). Reports keep these estimates separate from `RECORDED` production costs; profitability
   uses a caller-supplied `pricePerKg` and never invents market prices.
@@ -69,5 +89,13 @@ role-specific storage, verification restrictions, and audit events. Farm suites
 cover tenant-scoped farm CRUD, coordinate redaction, spatial/map privacy, soil
 and irrigation validation, and audited coordinate denials. Agriculture API suites
 cover catalog/calendar configuration, tenant and farm isolation, cultivation
-history, harvests, recorded-vs-AI expenses, and cost/profitability reports; the
-database suite checks crop/expense constraints and store normalization.
+history, harvests, recorded-vs-AI expenses, and cost/profitability reports. Catalog
+suites cover bilingual taxonomy, typed attributes, tenant isolation, and default-deny;
+marketplace suites cover seller/buyer flows, filters, proximity, ownership, favorite/report rules,
+and DTO privacy. Warehouse suites cover registration, reservation idempotency/oversell prevention,
+adjustments, damaged/expired stock, alerts, movement history, and default-deny/tenant checks;
+cooperative suites cover group ownership, membership, contribution ownership, configurable
+allocation policies, earnings, tenant isolation, and authorization. Database suites check
+crop/expense and catalog/marketplace constraints, PostGIS proximity, Prisma adapter normalization,
+warehouse reservation/settlement concurrency, duplicate reference keys, append-only movements, and
+final stock consistency.

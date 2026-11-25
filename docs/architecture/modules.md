@@ -4,7 +4,7 @@ The business API is a **modular monolith** under `apps/api/src`. Each bounded mo
 explicit layers: `domain`, `application`, `infrastructure`, and `presentation`. A module's
 `index.js` is its composition seam. Cross-module source imports are forbidden; integration intent
 is declared in `apps/api/src/modules/registry.js` and implemented through the shared in-process
-event bus, never through another module's service class.
+event bus or narrow read-only DI ports, never through another module's service class.
 
 The scaffolding establishes boundaries and service seams; IAM authentication/RBAC and the
 organization/user profile workflows are implemented inside those boundaries. It does not
@@ -35,16 +35,16 @@ boundary.
 | `iam` | `/iam` | Identity and Access Management | — | `iam.initialized`, `iam.role.assigned`, `iam.permission.granted` | — |
 | `users` | `/users` | User Management | `iam` | `users.initialized`, `users.profile.updated` | — |
 | `organizations` | `/organizations` | Organization Management | `iam`, `users` | `organizations.initialized`, `organizations.created` | — |
-| `farmers` | `/farmers` | Farmer Management | `iam`, `users`, `organizations` | `farmers.initialized`, `farmers.registered`, `farmers.farm.created`, `farmers.farm.updated`, `farmers.farm.archived`, `farmers.farm.location.updated`, `farmers.parcel.created`, `farmers.parcel.updated`, `farmers.soil.updated`, `farmers.irrigation.created`, `farmers.irrigation.updated`, `farmers.coordinates.denied` | — |
+| `farmers` | `/farmers` | Farmer Management | `iam`, `users`, `organizations`, `catalog`, `warehouse` | `farmers.initialized`, `farmers.registered`, `farmers.farm.created`, `farmers.farm.updated`, `farmers.farm.archived`, `farmers.farm.location.updated`, `farmers.parcel.created`, `farmers.parcel.updated`, `farmers.soil.updated`, `farmers.irrigation.created`, `farmers.irrigation.updated`, `farmers.coordinates.read`, `farmers.coordinates.denied`, `farmers.group.created`, `farmers.group.updated`, `farmers.group.member-joined`, `farmers.group.member-decided`, `farmers.group.member-removed`, `farmers.campaign.created`, `farmers.campaign.updated`, `farmers.contribution.created`, `farmers.contribution.updated`, `farmers.contribution.confirmed`, `farmers.contribution.rejected`, `farmers.purchase-request.created`, `farmers.purchase-request.decided`, `farmers.allocations.proposed`, `farmers.allocations.finalized`, `farmers.earnings.accrued` | — |
 | `buyers` | `/buyers` | Buyer Management | `users`, `organizations` | `buyers.initialized`, `buyers.registered` | — |
 | `agriculture` | `/agriculture` | Agriculture and Crop Management | `organizations`, `farmers` | `agriculture.initialized`, `agriculture.season.created`, `agriculture.crop.created`, `agriculture.crop.updated`, `agriculture.variety.created`, `agriculture.variety.updated`, `agriculture.calendar.created`, `agriculture.calendar.updated`, `agriculture.recommendation.created`, `agriculture.recommendation.updated`, `agriculture.cultivation.created`, `agriculture.cultivation.updated`, `agriculture.activity.recorded`, `agriculture.harvest.recorded`, `agriculture.expense.recorded`, `agriculture.expense.updated`, `agriculture.expense.estimated` | — |
-| `catalog` | `/catalog` | Product Catalog | `organizations`, `farmers`, `agriculture` | `catalog.initialized`, `catalog.product.published` | — |
-| `marketplace` | `/marketplace` | Marketplace | `catalog`, `organizations`, `buyers` | `marketplace.initialized`, `marketplace.listing.created` | — |
+| `catalog` | `/catalog` | Product Catalog | `organizations`, `farmers` | `catalog.initialized`, `catalog.category.created`, `catalog.category.updated`, `catalog.unit.created`, `catalog.unit.updated`, `catalog.quality-grade.created`, `catalog.quality-grade.updated`, `catalog.attribute.created`, `catalog.attribute.updated`, `catalog.product.created`, `catalog.product.updated`, `catalog.product.published`, `catalog.variety.created`, `catalog.variety.updated`, `catalog.attribute-values.updated`, `catalog.image.added`, `catalog.image.removed` | — |
+| `marketplace` | `/marketplace` | Marketplace | `catalog`, `organizations`, `buyers` | `marketplace.initialized`, `marketplace.listing.created`, `marketplace.listing.updated`, `marketplace.listing.published`, `marketplace.listing.deactivated`, `marketplace.listing.location-added`, `marketplace.listing.location-removed`, `marketplace.listing.image-added`, `marketplace.listing.image-removed`, `marketplace.favorite.added`, `marketplace.favorite.removed`, `marketplace.report.created`, `marketplace.report.reviewed`, `marketplace.message.sent`, `marketplace.message.read` | — |
 | `orders` | `/orders` | Orders | `marketplace`, `buyers`, `catalog` | `orders.initialized`, `orders.order.placed` | — |
 | `payments` | `/payments` | Payments | `orders`, `organizations` | `payments.initialized`, `payments.payment.recorded` | — |
 | `ledger` | `/ledger` | Financial Ledger | `payments`, `orders`, `organizations` | `ledger.initialized`, `ledger.entry.posted` | — |
 | `logistics` | `/logistics` | Logistics | `orders`, `organizations`, `warehouse` | `logistics.initialized`, `logistics.shipment.created` | — |
-| `warehouse` | `/warehouse` | Warehouse | `organizations`, `catalog`, `quality` | `warehouse.initialized`, `warehouse.stock.moved` | — |
+| `warehouse` | `/warehouse` | Warehouse | `organizations`, `catalog`, `iam` | `warehouse.initialized`, `warehouse.warehouse.created`, `warehouse.warehouse.updated`, `warehouse.stock.registered`, `warehouse.stock.updated`, `warehouse.stock.adjusted`, `warehouse.stock.damaged`, `warehouse.stock.expired`, `warehouse.stock.deducted`, `warehouse.stock.reserved`, `warehouse.reservation.released`, `warehouse.reservation.deducted`, `warehouse.alert.acknowledged`, `warehouse.alert.resolved` | — |
 | `quality` | `/quality` | Quality Inspection | `organizations`, `catalog`, `farmers` | `quality.initialized`, `quality.inspection.completed` | — |
 | `traceability` | `/traceability` | Traceability | `agriculture`, `quality`, `logistics`, `warehouse` | `traceability.initialized`, `traceability.record.updated` | — |
 | `intelligence` | `/intelligence` | Agricultural Intelligence | `agriculture`, `traceability`, `orders` | `intelligence.initialized`, `intelligence.forecast.generated` | — |
@@ -61,6 +61,8 @@ observability only. Their handlers log events; they do not emit new events or mu
 ```text
 iam ──> users ──> organizations ──> farmers ──> agriculture ──> catalog ──> marketplace ──> orders
   │                   │                │              │             │
+  │                   │                ├─────────────> catalog (read-only reference port)
+  │                   │                └─────────────> warehouse (read-only inventory port)
   └──> notifications <┘                └──> quality ──> warehouse ──> logistics ──> traceability
                                                                │                 │
                           payments ──> ledger ──> billing       └──────────────────┴──> intelligence ──> knowledge
@@ -96,12 +98,23 @@ publishes narrow composition ports (`IdentityStoreToken`, `PlatformAuthorization
 `PlatformTokenManagerToken`) so `users`, `organizations`, and `farmers` can share identity and
 authorization without importing another module's source. The `farmers` module publishes a
 read-only `FarmAccessPortToken`; agriculture consumes that port through DI to validate farm
-ownership and tenant scope without importing farmer source. The shared `ConfigToken` supplies
-`FARM_STORE` and `AGRICULTURE_STORE`; each module registers its own store token and defaults to
-`memory` for development/tests while production requires `prisma`. All farm CRUD, parcel,
-soil, irrigation, map, spatial, and Bangladesh geo workflows stay inside the existing 20-module
-`farmers` boundary. Crop catalog, calendars, cultivations, activities, harvests, expenses, and
-reports stay inside the existing `agriculture` boundary; no 21st module or direct cross-module
+ownership and tenant scope without importing farmer source. The `catalog` module publishes a
+read-only `CatalogAccessPortToken`; marketplace consumes it through DI to validate product,
+category, unit, and quality-grade references and to build public listing DTOs. The port returns
+copies of available catalog records only, so marketplace cannot mutate catalog data through it.
+The `warehouse` module publishes a read-only `WarehouseAccessPortToken`; farmers consumes it only
+to validate cooperative stock references, and it exposes no reservation or mutation methods.
+The shared `ConfigToken` supplies `FARM_STORE`, `AGRICULTURE_STORE`, `CATALOG_STORE`,
+`MARKETPLACE_STORE`, and `WAREHOUSE_STORE`; each module registers its own store token and defaults
+to `memory` for development/tests while production requires `prisma`. All farm CRUD, parcel, soil, irrigation,
+map, spatial, and Bangladesh geo workflows stay inside the existing 20-module `farmers`
+boundary. Crop catalog, calendars, cultivations, activities, harvests, expenses, and reports stay
+inside the existing `agriculture` boundary. Product taxonomy, flexible attributes, varieties, and
+images stay inside `catalog`; listings, discovery, favorites, reports, and platform messages stay
+inside `marketplace`. Warehouse CRUD, stock, movements, reservations, alerts, and audit integration
+stay inside `warehouse`. Cooperative groups, memberships, campaigns, contributions, purchase
+requests, allocations, and earnings stay inside `farmers`; their methods are composed into
+`FarmersService` so the module keeps one service token. No 21st module or direct cross-module
 source import was added.
 
 ## HTTP surface
@@ -120,10 +133,16 @@ All routes are mounted under `API_PREFIX` (default `/api/v1`).
 | `GET /<module-path>/info/:moduleId` | Same DTO with validated module id matching |
 
 All non-public routes are default-deny. The `info` endpoints are the only module routes in the
-public allowlist; authenticated organization, user, farm, and agriculture routes are documented in
-[`../api/README.md`](../api/README.md). Farm coordinate reads enforce an additional private-data
-policy beyond the `farms.read` permission. Agriculture separates catalog/calendar, cultivation,
-harvest, and expense permissions, and keeps recorded costs distinct from AI estimates.
+public allowlist; authenticated organization, user, farm, cooperative, agriculture, catalog,
+marketplace, and warehouse routes are documented in [`../api/README.md`](../api/README.md). Farm
+coordinate reads enforce an additional private-data policy beyond the `farms.read` permission.
+Agriculture separates catalog/calendar, cultivation, harvest, and expense permissions, and keeps
+recorded costs distinct from AI estimates. Catalog management reuses `products.read`/
+`products.manage`; marketplace discovery and seller workflows reuse `listings.read`/
+`listings.manage`; warehouse operations reuse `warehouses.read`/`warehouses.manage`; and
+cooperative reads/mutations reuse `farms.read`/`farms.manage` plus `orders.read`/`orders.manage`
+for group purchase requests. No permissions were added. Marketplace and cooperative public DTOs
+redact exact coordinates, seller/user contact details, password hashes, and private addresses.
 
 Requests may send `x-request-id`; it is echoed on the response and included in structured logs.
 An `x-api-version` header is accepted only when it matches the active version.

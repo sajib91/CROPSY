@@ -1,5 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const { randomUUID } = require('node:crypto');
 const { PrismaClient } = require('@prisma/client');
 
 const hasDatabase = Boolean(process.env.DATABASE_URL);
@@ -21,6 +22,8 @@ const ID = {
   paymentA: '00000000-0000-0000-0000-000000000080',
   accountA: '00000000-0000-0000-0000-000000000090',
   audit: '00000000-0000-0000-0000-0000000000a0',
+  warehouse: '00000000-0000-0000-0000-0000000000b0',
+  warehouseInventory: '00000000-0000-0000-0000-0000000000b1',
 };
 
 function uuid(number) {
@@ -68,6 +71,42 @@ async function expectMessage(pattern, operation) {
   assert.fail(`Expected a rejection matching ${pattern}, but the operation succeeded`);
 }
 
+async function resetWarehouseInventory() {
+  await prisma.$executeRaw`
+    UPDATE warehouse_inventories
+    SET quantity_on_hand = 10,
+        quantity_reserved = 0,
+        available_quantity = 10,
+        low_stock_threshold = 0,
+        updated_at = NOW()
+    WHERE id = ${ID.warehouseInventory}::uuid
+  `;
+}
+
+async function warehouseInventoryRow() {
+  const rows = await prisma.$queryRaw`
+    SELECT "quantity_on_hand"::text AS "onHand",
+           "quantity_reserved"::text AS "reserved",
+           "available_quantity"::text AS "available"
+    FROM "warehouse_inventories"
+    WHERE "id" = ${ID.warehouseInventory}::uuid
+  `;
+  return {
+    onHand: Number(rows[0].onHand),
+    reserved: Number(rows[0].reserved),
+    available: Number(rows[0].available),
+  };
+}
+
+async function countWarehouseMovements() {
+  const rows = await prisma.$queryRaw`
+    SELECT COUNT(*)::int AS "count"
+    FROM "inventory_movements"
+    WHERE "warehouse_inventory_id" = ${ID.warehouseInventory}::uuid
+  `;
+  return Number(rows[0].count);
+}
+
 async function seedFixtures() {
   await prisma.$executeRaw`
     INSERT INTO roles (id, code, name, scope, created_at, updated_at)
@@ -104,6 +143,21 @@ async function seedFixtures() {
     )
     VALUES (${ID.inventory}::uuid, ${ID.orgA}::uuid, ${ID.productA}::uuid,
             'UNALLOCATED', 10, 0, 10, NOW(), NOW())
+    ON CONFLICT (id) DO NOTHING
+  `;
+  await prisma.$executeRaw`
+    INSERT INTO warehouses (id, organization_id, code, name, status, created_at, updated_at)
+    VALUES (${ID.warehouse}::uuid, ${ID.orgA}::uuid, 'DBTEST-WH-A',
+            'DB Test Warehouse A', 'ACTIVE', NOW(), NOW())
+    ON CONFLICT (id) DO NOTHING
+  `;
+  await prisma.$executeRaw`
+    INSERT INTO warehouse_inventories (
+      id, warehouse_id, product_id, batch_code, quantity_on_hand,
+      quantity_reserved, available_quantity, low_stock_threshold, unit_code, created_at, updated_at
+    )
+    VALUES (${ID.warehouseInventory}::uuid, ${ID.warehouse}::uuid, ${ID.productA}::uuid,
+            'DBTEST-BATCH-A', 10, 0, 10, 0, 'KG', NOW(), NOW())
     ON CONFLICT (id) DO NOTHING
   `;
   await prisma.$executeRaw`
@@ -343,7 +397,7 @@ describeDatabase('database integrity and concurrency', () => {
     assert.equal(Number(counts.districts), 64);
     assert.equal(Number(counts.upazilas), 64);
     assert.equal(Number(counts.unions), 64);
-    assert.equal(Number(counts.categories), 10);
+    assert.equal(Number(counts.categories), 13);
     assert.equal(Number(counts.accounts), 10);
     assert.equal(Number(counts.settings), 2);
 
@@ -378,6 +432,8 @@ describeDatabase('database integrity and concurrency', () => {
       '20261125140000_organization_profile_management',
       '20261125150000_farm_management',
       '20261125160000_crop_cultivation_expense_management',
+      '20261125170000_catalog_marketplace',
+      '20261125180000_inventory_cooperative',
     ]) {
       assert.ok(names.includes(name), `missing applied migration ${name}`);
     }
@@ -608,5 +664,264 @@ describeDatabase('database integrity and concurrency', () => {
     assert.equal(Number(rows[0].onHand), 10);
     assert.equal(Number(rows[0].reserved), 7);
     assert.equal(Number(rows[0].available), 3);
+  });
+
+  test('serializes concurrent warehouse reservations without overselling', async () => {
+    await resetWarehouseInventory();
+    const before = await countWarehouseMovements();
+    const firstReference = `DBTEST-WH-ORDER-${randomUUID()}`;
+    const secondReference = `DBTEST-WH-ORDER-${randomUUID()}`;
+
+    const attempts = await Promise.allSettled([
+      prisma.$transaction(
+        async (tx) => {
+          await tx.$queryRaw`
+            SELECT "movement_id"
+            FROM cropsy_apply_warehouse_stock_movement(
+              ${ID.warehouseInventory}::uuid,
+              'RESERVE'::text,
+              'RESERVE'::text,
+              7::numeric(14,3),
+              'KG'::varchar(32),
+              'Concurrent order A'::text,
+              ${firstReference}::varchar(128),
+              ${ID.userA}::uuid
+            ) AS movement
+          `;
+        },
+        { timeout: 15000 },
+      ),
+      prisma.$transaction(
+        async (tx) => {
+          await tx.$queryRaw`
+            SELECT "movement_id"
+            FROM cropsy_apply_warehouse_stock_movement(
+              ${ID.warehouseInventory}::uuid,
+              'RESERVE'::text,
+              'RESERVE'::text,
+              7::numeric(14,3),
+              'KG'::varchar(32),
+              'Concurrent order B'::text,
+              ${secondReference}::varchar(128),
+              ${ID.userA}::uuid
+            ) AS movement
+          `;
+        },
+        { timeout: 15000 },
+      ),
+    ]);
+
+    const rejected = attempts.filter((attempt) => attempt.status === 'rejected');
+    assert.equal(rejected.length, 1, 'exactly one concurrent warehouse reservation must fail');
+    assert.equal(sqlState(rejected[0].reason), '23514');
+
+    const quantities = await warehouseInventoryRow();
+    assert.deepEqual(quantities, { onHand: 10, reserved: 7, available: 3 });
+    assert.equal(await countWarehouseMovements(), before + 1);
+
+    const movements = await prisma.$queryRaw`
+      SELECT "id", "movement_type", "quantity"::text AS "quantity",
+             "quantity_before"::text AS "before", "quantity_after"::text AS "after"
+      FROM "inventory_movements"
+      WHERE "reference_key" IN (${firstReference}, ${secondReference})
+    `;
+    assert.equal(movements.length, 1);
+    assert.equal(movements[0].movement_type, 'RESERVE');
+    assert.equal(Number(movements[0].quantity), 7);
+    assert.equal(Number(movements[0].before), 10);
+    assert.equal(Number(movements[0].after), 3);
+
+    await expectSqlState('23514', async () => {
+      await prisma.$executeRaw`
+        UPDATE "inventory_movements" SET "reason" = 'tampered' WHERE "id" = ${movements[0].id}::uuid
+      `;
+    });
+    await expectSqlState('23514', async () => {
+      await prisma.$executeRaw`
+        DELETE FROM "inventory_movements" WHERE "id" = ${movements[0].id}::uuid
+      `;
+    });
+  });
+
+  test('serializes concurrent reservation deductions and keeps settled stock consistent', async () => {
+    await resetWarehouseInventory();
+    const reserveReference = `DBTEST-WH-RESERVE-${randomUUID()}`;
+    await prisma.$executeRaw`
+      SELECT "movement_id"
+      FROM cropsy_apply_warehouse_stock_movement(
+        ${ID.warehouseInventory}::uuid,
+        'RESERVE'::text,
+        'RESERVE'::text,
+        10::numeric(14,3),
+        'KG'::varchar(32),
+        'Reserve for concurrent settlement'::text,
+        ${reserveReference}::varchar(128),
+        ${ID.userA}::uuid
+      ) AS movement
+    `;
+
+    const reservationId = randomUUID();
+    const reservationReference = `DBTEST-WH-RESERVATION-${randomUUID()}`;
+    await prisma.$executeRaw`
+      INSERT INTO inventory_reservations (
+        id, organization_id, warehouse_id, warehouse_inventory_id, product_id,
+        quantity, settled_quantity, status, reference_key, actor_user_id, created_at, updated_at
+      )
+      VALUES (${reservationId}::uuid, ${ID.orgA}::uuid, ${ID.warehouse}::uuid,
+              ${ID.warehouseInventory}::uuid, ${ID.productA}::uuid,
+              10, 0, 'ACTIVE', ${reservationReference}::varchar(128),
+              ${ID.userA}::uuid, NOW(), NOW())
+    `;
+    const before = await countWarehouseMovements();
+    const firstReference = `DBTEST-WH-DEDUCT-${randomUUID()}`;
+    const secondReference = `DBTEST-WH-DEDUCT-${randomUUID()}`;
+
+    const attempts = await Promise.allSettled([
+      prisma.$transaction(
+        async (tx) => {
+          await tx.$queryRaw`
+            SELECT "movement_id"
+            FROM cropsy_settle_inventory_reservation(
+              ${reservationId}::uuid,
+              'DEDUCT'::text,
+              6::numeric(14,3),
+              'Concurrent dispatch A'::text,
+              ${firstReference}::varchar(128),
+              ${ID.userA}::uuid
+            ) AS settlement
+          `;
+        },
+        { timeout: 15000 },
+      ),
+      prisma.$transaction(
+        async (tx) => {
+          await tx.$queryRaw`
+            SELECT "movement_id"
+            FROM cropsy_settle_inventory_reservation(
+              ${reservationId}::uuid,
+              'DEDUCT'::text,
+              6::numeric(14,3),
+              'Concurrent dispatch B'::text,
+              ${secondReference}::varchar(128),
+              ${ID.userA}::uuid
+            ) AS settlement
+          `;
+        },
+        { timeout: 15000 },
+      ),
+    ]);
+
+    const rejected = attempts.filter((attempt) => attempt.status === 'rejected');
+    assert.equal(
+      rejected.length,
+      1,
+      `exactly one concurrent settlement must fail: ${rejected
+        .map((attempt) => `${sqlState(attempt.reason)} ${attempt.reason?.message}`)
+        .join(' | ')}`,
+    );
+    assert.equal(sqlState(rejected[0].reason), '23514');
+
+    const reservations = await prisma.$queryRaw`
+      SELECT "status", "quantity"::text AS "quantity",
+             "settled_quantity"::text AS "settled"
+      FROM "inventory_reservations"
+      WHERE "id" = ${reservationId}::uuid
+    `;
+    assert.equal(reservations[0].status, 'ACTIVE');
+    assert.equal(Number(reservations[0].quantity), 10);
+    assert.equal(Number(reservations[0].settled), 6);
+
+    const quantities = await warehouseInventoryRow();
+    assert.deepEqual(quantities, { onHand: 4, reserved: 4, available: 0 });
+    assert.equal(await countWarehouseMovements(), before + 1);
+
+    const deductMovements = await prisma.$queryRaw`
+      SELECT "movement_type", "quantity"::text AS "quantity"
+      FROM "inventory_movements"
+      WHERE "reference_key" IN (${firstReference}, ${secondReference})
+    `;
+    assert.equal(deductMovements.length, 1);
+    assert.equal(deductMovements[0].movement_type, 'DEDUCT');
+    assert.equal(Number(deductMovements[0].quantity), 6);
+  });
+
+  test('rejects duplicate reservation reference keys under concurrent orders', async () => {
+    await resetWarehouseInventory();
+    const before = await countWarehouseMovements();
+    const orderReference = `DBTEST-WH-IDEMPOTENT-${randomUUID()}`;
+    const movementReference = `DBTEST-WH-IDEMPOTENT-MOVE-${randomUUID()}`;
+
+    const attempts = await Promise.allSettled([
+      prisma.$transaction(
+        async (tx) => {
+          await tx.$queryRaw`
+            SELECT "movement_id"
+            FROM cropsy_apply_warehouse_stock_movement(
+              ${ID.warehouseInventory}::uuid,
+              'RESERVE'::text,
+              'RESERVE'::text,
+              4::numeric(14,3),
+              'KG'::varchar(32),
+              'Duplicate order A'::text,
+              ${movementReference}::varchar(128),
+              ${ID.userA}::uuid
+            ) AS movement
+          `;
+          await tx.$executeRaw`
+            INSERT INTO inventory_reservations (
+              id, organization_id, warehouse_id, warehouse_inventory_id, product_id,
+              quantity, settled_quantity, status, reference_key, actor_user_id, created_at, updated_at
+            )
+            VALUES (${randomUUID()}::uuid, ${ID.orgA}::uuid, ${ID.warehouse}::uuid,
+                    ${ID.warehouseInventory}::uuid, ${ID.productA}::uuid,
+                    4, 0, 'ACTIVE', ${orderReference}::varchar(128),
+                    ${ID.userA}::uuid, NOW(), NOW())
+          `;
+        },
+        { timeout: 15000 },
+      ),
+      prisma.$transaction(
+        async (tx) => {
+          await tx.$queryRaw`
+            SELECT "movement_id"
+            FROM cropsy_apply_warehouse_stock_movement(
+              ${ID.warehouseInventory}::uuid,
+              'RESERVE'::text,
+              'RESERVE'::text,
+              4::numeric(14,3),
+              'KG'::varchar(32),
+              'Duplicate order B'::text,
+              ${movementReference}::varchar(128),
+              ${ID.userA}::uuid
+            ) AS movement
+          `;
+          await tx.$executeRaw`
+            INSERT INTO inventory_reservations (
+              id, organization_id, warehouse_id, warehouse_inventory_id, product_id,
+              quantity, settled_quantity, status, reference_key, actor_user_id, created_at, updated_at
+            )
+            VALUES (${randomUUID()}::uuid, ${ID.orgA}::uuid, ${ID.warehouse}::uuid,
+                    ${ID.warehouseInventory}::uuid, ${ID.productA}::uuid,
+                    4, 0, 'ACTIVE', ${orderReference}::varchar(128),
+                    ${ID.userA}::uuid, NOW(), NOW())
+          `;
+        },
+        { timeout: 15000 },
+      ),
+    ]);
+
+    const rejected = attempts.filter((attempt) => attempt.status === 'rejected');
+    assert.equal(rejected.length, 1, 'duplicate reference keys must be rejected once');
+    assert.equal(sqlState(rejected[0].reason), '23505');
+
+    const reservations = await prisma.$queryRaw`
+      SELECT COUNT(*)::int AS "count"
+      FROM "inventory_reservations"
+      WHERE "reference_key" = ${orderReference}
+    `;
+    assert.equal(Number(reservations[0].count), 1);
+    const quantities = await warehouseInventoryRow();
+    assert.deepEqual(quantities, { onHand: 10, reserved: 4, available: 6 });
+    assert.equal(await countWarehouseMovements(), before + 1);
   });
 });

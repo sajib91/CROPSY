@@ -6,15 +6,22 @@ const { NotFoundError } = require('../../../shared/kernel/errors');
 const { validate } = require('../../../shared/validation/validate');
 const { FarmersServiceToken } = require('../application/farmers.service');
 const dto = require('../application/farm.dto');
+const cooperativeDto = require('../application/cooperative.dto');
 const { MODULE_ID } = require('../domain/farmers.entity');
 
 const paramsSchema = z.object({ moduleId: z.string().trim().min(1) });
 const authenticated = Object.freeze({ auth: {} });
 const readFarm = Object.freeze({ auth: { permissions: ['farms.read'] } });
 const manageFarm = Object.freeze({ auth: { permissions: ['farms.manage'] } });
+const readOrders = Object.freeze({ auth: { permissions: ['orders.read'] } });
+const manageOrders = Object.freeze({ auth: { permissions: ['orders.manage'] } });
 
 function meta(request) {
   return { requestId: request.requestId, apiVersion: request.apiVersion };
+}
+
+function context(request) {
+  return requireAuthenticated(request);
 }
 
 module.exports = async function farmersRoutes(fastify) {
@@ -225,5 +232,428 @@ module.exports = async function farmersRoutes(fastify) {
         meta(request),
       );
     },
+  );
+
+  // -------------------------------------------------------------------------
+  // Cooperative farmer groups and collective selling. Every non-info route
+  // declares an explicit permission; unconfigured routes are denied by the
+  // platform authorization hook.
+  // -------------------------------------------------------------------------
+
+  fastify.get('/groups', { config: readFarm }, async (request) =>
+    ok(
+      { groups: await service.listGroups({ context: context(request), query: request.query }) },
+      meta(request),
+    ),
+  );
+
+  fastify.post('/groups', { config: manageFarm }, async (request, reply) => {
+    const group = await service.createGroup({
+      context: context(request),
+      input: request.body,
+      request,
+    });
+    return reply.code(201).send(ok(group, meta(request)));
+  });
+
+  fastify.get('/groups/:groupId', { config: readFarm }, async (request) => {
+    const { groupId } = validate(cooperativeDto.groupParamsSchema, request.params, 'group id');
+    return ok(await service.getGroup({ context: context(request), groupId }), meta(request));
+  });
+
+  fastify.patch('/groups/:groupId', { config: manageFarm }, async (request) => {
+    const { groupId } = validate(cooperativeDto.groupParamsSchema, request.params, 'group id');
+    return ok(
+      await service.updateGroup({
+        context: context(request),
+        groupId,
+        input: request.body,
+        request,
+      }),
+      meta(request),
+    );
+  });
+
+  fastify.get('/groups/:groupId/members', { config: readFarm }, async (request) => {
+    const { groupId } = validate(cooperativeDto.groupParamsSchema, request.params, 'group id');
+    return ok(
+      {
+        members: await service.listGroupMembers({
+          context: context(request),
+          groupId,
+          query: request.query,
+        }),
+      },
+      meta(request),
+    );
+  });
+
+  fastify.post('/groups/:groupId/members', { config: manageFarm }, async (request, reply) => {
+    const { groupId } = validate(cooperativeDto.groupParamsSchema, request.params, 'group id');
+    const member = await service.joinGroup({
+      context: context(request),
+      groupId,
+      input: request.body,
+      request,
+    });
+    return reply.code(201).send(ok(member, meta(request)));
+  });
+
+  fastify.patch('/groups/:groupId/members/:userId', { config: manageFarm }, async (request) => {
+    const { groupId, userId } = validate(
+      cooperativeDto.memberParamsSchema,
+      request.params,
+      'membership identifiers',
+    );
+    return ok(
+      await service.decideMembership({
+        context: context(request),
+        groupId,
+        userId,
+        input: request.body,
+        request,
+      }),
+      meta(request),
+    );
+  });
+
+  fastify.delete('/groups/:groupId/members/:userId', { config: manageFarm }, async (request) => {
+    const { groupId, userId } = validate(
+      cooperativeDto.memberParamsSchema,
+      request.params,
+      'membership identifiers',
+    );
+    return ok(
+      await service.removeMember({ context: context(request), groupId, userId, request }),
+      meta(request),
+    );
+  });
+
+  fastify.get('/groups/:groupId/campaigns', { config: readFarm }, async (request) => {
+    const { groupId } = validate(cooperativeDto.groupParamsSchema, request.params, 'group id');
+    return ok(
+      {
+        campaigns: await service.listCampaigns({
+          context: context(request),
+          query: { ...request.query, groupId },
+        }),
+      },
+      meta(request),
+    );
+  });
+
+  fastify.post('/groups/:groupId/campaigns', { config: manageFarm }, async (request, reply) => {
+    const { groupId } = validate(cooperativeDto.groupParamsSchema, request.params, 'group id');
+    const campaign = await service.createCampaign({
+      context: context(request),
+      groupId,
+      input: request.body,
+      request,
+    });
+    return reply.code(201).send(ok(campaign, meta(request)));
+  });
+
+  fastify.get('/campaigns', { config: readFarm }, async (request) =>
+    ok(
+      {
+        campaigns: await service.listCampaigns({ context: context(request), query: request.query }),
+      },
+      meta(request),
+    ),
+  );
+
+  fastify.get('/campaigns/:campaignId', { config: readFarm }, async (request) => {
+    const { campaignId } = validate(
+      cooperativeDto.campaignParamsSchema,
+      request.params,
+      'campaign id',
+    );
+    return ok(await service.getCampaign({ context: context(request), campaignId }), meta(request));
+  });
+
+  fastify.patch('/campaigns/:campaignId', { config: manageFarm }, async (request) => {
+    const { campaignId } = validate(
+      cooperativeDto.campaignParamsSchema,
+      request.params,
+      'campaign id',
+    );
+    return ok(
+      await service.updateCampaign({
+        context: context(request),
+        campaignId,
+        input: request.body,
+        request,
+      }),
+      meta(request),
+    );
+  });
+
+  fastify.get('/campaigns/:campaignId/contributions', { config: readFarm }, async (request) => {
+    const { campaignId } = validate(
+      cooperativeDto.campaignParamsSchema,
+      request.params,
+      'campaign id',
+    );
+    return ok(
+      {
+        contributions: await service.listContributions({
+          context: context(request),
+          query: { ...request.query, campaignId },
+        }),
+      },
+      meta(request),
+    );
+  });
+
+  fastify.post(
+    '/campaigns/:campaignId/contributions',
+    { config: manageFarm },
+    async (request, reply) => {
+      const { campaignId } = validate(
+        cooperativeDto.campaignParamsSchema,
+        request.params,
+        'campaign id',
+      );
+      const contribution = await service.createContribution({
+        context: context(request),
+        campaignId,
+        input: request.body,
+        request,
+      });
+      return reply.code(201).send(ok(contribution, meta(request)));
+    },
+  );
+
+  fastify.get('/contributions', { config: readFarm }, async (request) =>
+    ok(
+      {
+        contributions: await service.listContributions({
+          context: context(request),
+          query: request.query,
+        }),
+      },
+      meta(request),
+    ),
+  );
+
+  fastify.get('/contributions/:contributionId', { config: readFarm }, async (request) => {
+    const { contributionId } = validate(
+      cooperativeDto.contributionParamsSchema,
+      request.params,
+      'contribution id',
+    );
+    return ok(
+      await service.getContribution({ context: context(request), contributionId }),
+      meta(request),
+    );
+  });
+
+  fastify.patch('/contributions/:contributionId', { config: manageFarm }, async (request) => {
+    const { contributionId } = validate(
+      cooperativeDto.contributionParamsSchema,
+      request.params,
+      'contribution id',
+    );
+    return ok(
+      await service.updateContribution({
+        context: context(request),
+        contributionId,
+        input: request.body,
+        request,
+      }),
+      meta(request),
+    );
+  });
+
+  fastify.post(
+    '/contributions/:contributionId/confirm',
+    { config: manageFarm },
+    async (request) => {
+      const { contributionId } = validate(
+        cooperativeDto.contributionParamsSchema,
+        request.params,
+        'contribution id',
+      );
+      return ok(
+        await service.decideContribution({
+          context: context(request),
+          contributionId,
+          input: { decision: 'CONFIRM' },
+          request,
+        }),
+        meta(request),
+      );
+    },
+  );
+
+  fastify.post('/contributions/:contributionId/reject', { config: manageFarm }, async (request) => {
+    const { contributionId } = validate(
+      cooperativeDto.contributionParamsSchema,
+      request.params,
+      'contribution id',
+    );
+    return ok(
+      await service.decideContribution({
+        context: context(request),
+        contributionId,
+        input: { decision: 'REJECT' },
+        request,
+      }),
+      meta(request),
+    );
+  });
+
+  fastify.get(
+    '/campaigns/:campaignId/purchase-requests',
+    { config: readOrders },
+    async (request) => {
+      const { campaignId } = validate(
+        cooperativeDto.campaignParamsSchema,
+        request.params,
+        'campaign id',
+      );
+      return ok(
+        {
+          purchaseRequests: await service.listPurchaseRequests({
+            context: context(request),
+            query: { ...request.query, campaignId },
+          }),
+        },
+        meta(request),
+      );
+    },
+  );
+
+  fastify.post(
+    '/campaigns/:campaignId/purchase-requests',
+    { config: manageOrders },
+    async (request, reply) => {
+      const { campaignId } = validate(
+        cooperativeDto.campaignParamsSchema,
+        request.params,
+        'campaign id',
+      );
+      const purchaseRequest = await service.createPurchaseRequest({
+        context: context(request),
+        campaignId,
+        input: request.body,
+        request,
+      });
+      return reply.code(201).send(ok(purchaseRequest, meta(request)));
+    },
+  );
+
+  fastify.get('/purchase-requests', { config: readOrders }, async (request) =>
+    ok(
+      {
+        purchaseRequests: await service.listPurchaseRequests({
+          context: context(request),
+          query: request.query,
+        }),
+      },
+      meta(request),
+    ),
+  );
+
+  fastify.get('/purchase-requests/:requestId', { config: readOrders }, async (request) => {
+    const { requestId } = validate(
+      cooperativeDto.purchaseRequestParamsSchema,
+      request.params,
+      'purchase request id',
+    );
+    return ok(
+      await service.getPurchaseRequest({ context: context(request), requestId }),
+      meta(request),
+    );
+  });
+
+  fastify.patch('/purchase-requests/:requestId', { config: manageFarm }, async (request) => {
+    const { requestId } = validate(
+      cooperativeDto.purchaseRequestParamsSchema,
+      request.params,
+      'purchase request id',
+    );
+    return ok(
+      await service.decidePurchaseRequest({
+        context: context(request),
+        requestId,
+        input: request.body,
+        request,
+      }),
+      meta(request),
+    );
+  });
+
+  fastify.post(
+    '/purchase-requests/:requestId/allocations',
+    { config: manageFarm },
+    async (request) => {
+      const { requestId } = validate(
+        cooperativeDto.purchaseRequestParamsSchema,
+        request.params,
+        'purchase request id',
+      );
+      return ok(
+        {
+          allocations: await service.proposeAllocations({
+            context: context(request),
+            requestId,
+            input: request.body,
+            request,
+          }),
+        },
+        meta(request),
+      );
+    },
+  );
+
+  fastify.get('/allocations', { config: readFarm }, async (request) =>
+    ok(
+      {
+        allocations: await service.listAllocations({
+          context: context(request),
+          query: request.query,
+        }),
+      },
+      meta(request),
+    ),
+  );
+
+  fastify.post(
+    '/purchase-requests/:requestId/finalize',
+    { config: manageFarm },
+    async (request) => {
+      const { requestId } = validate(
+        cooperativeDto.purchaseRequestParamsSchema,
+        request.params,
+        'purchase request id',
+      );
+      return ok(
+        {
+          earnings: await service.finalizePurchaseRequest({
+            context: context(request),
+            requestId,
+            request,
+          }),
+        },
+        meta(request),
+      );
+    },
+  );
+
+  fastify.get('/earnings/me', { config: readFarm }, async (request) =>
+    ok(
+      {
+        earnings: await service.listMyEarnings({ context: context(request), query: request.query }),
+      },
+      meta(request),
+    ),
+  );
+
+  fastify.get('/earnings', { config: readFarm }, async (request) =>
+    ok(
+      { earnings: await service.listEarnings({ context: context(request), query: request.query }) },
+      meta(request),
+    ),
   );
 };

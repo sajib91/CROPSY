@@ -1,9 +1,9 @@
-const { MarketplaceService, MarketplaceServiceToken } = require('./marketplace.service');
-const { moduleInfoSchema, toModuleInfoDto } = require('./marketplace.dto');
+const { MarketplaceService, MarketplaceServiceToken, EVENTS } = require('./marketplace.service');
+const dto = require('./marketplace.dto');
 
 module.exports = {
   MarketplaceService,
   MarketplaceServiceToken,
-  moduleInfoSchema,
-  toModuleInfoDto,
+  EVENTS,
+  ...dto,
 };

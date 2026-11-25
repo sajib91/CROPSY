@@ -1,9 +1,4 @@
-const { WarehouseService, WarehouseServiceToken } = require('./warehouse.service');
-const { moduleInfoSchema, toModuleInfoDto } = require('./warehouse.dto');
+const { WarehouseService, WarehouseServiceToken, EVENTS } = require('./warehouse.service');
+const warehouseDto = require('./warehouse.dto');
 
-module.exports = {
-  WarehouseService,
-  WarehouseServiceToken,
-  moduleInfoSchema,
-  toModuleInfoDto,
-};
+module.exports = { WarehouseService, WarehouseServiceToken, EVENTS, ...warehouseDto };

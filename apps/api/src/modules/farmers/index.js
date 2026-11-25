@@ -1,8 +1,10 @@
 const {
+  CatalogAccessPortToken,
   ConfigToken,
   FarmAccessPortToken,
   IdentityStoreToken,
   PlatformAuthorizationToken,
+  WarehouseAccessPortToken,
 } = require('../../shared/di/tokens');
 const { defineModule } = require('../../shared/module/define-module');
 const { MODULE_ID, MODULE_NAME } = require('./domain/farmers.entity');
@@ -43,8 +45,9 @@ const definition = defineModule({
   id: MODULE_ID,
   name: MODULE_NAME,
   path: 'farmers',
-  description: 'Farmer registration, profiles, farms, parcels, soil, irrigation, and spatial data.',
-  dependsOn: ['iam', 'users', 'organizations'],
+  description:
+    'Farmer profiles, farms, cooperative groups, campaigns, contributions, allocations, and earnings.',
+  dependsOn: ['iam', 'users', 'organizations', 'catalog', 'warehouse'],
   publishes: ['farmers.initialized', 'farmers.registered', ...new Set(Object.values(EVENTS))],
   subscribes: [],
   repositoryToken: FarmersRepositoryToken,
@@ -56,6 +59,8 @@ const definition = defineModule({
     identityStore: IdentityStoreToken,
     authorization: PlatformAuthorizationToken,
     config: ConfigToken,
+    catalog: CatalogAccessPortToken,
+    warehouseAccess: WarehouseAccessPortToken,
   },
   routes: farmersRoutes,
   subscriptions: registerFarmStore,

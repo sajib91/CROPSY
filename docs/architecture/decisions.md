@@ -72,3 +72,42 @@ providers, subscription prices, settlement rules, taxes, or refund policies.
 
 **Reason.** Those values remain application/platform configuration until product decisions are
 recorded. The database model already supports configurable settings and rule keys.
+
+## ADR-010: Read-only composition ports for same-process module reads
+
+**Decision.** A module may publish a narrow, read-only port from `shared/di/tokens.js` when another
+module needs validated reference data. `FarmAccessPortToken`, `CatalogAccessPortToken`, and
+`WarehouseAccessPortToken` are the current examples; the consumer resolves the port through DI and
+receives copies, never the publisher's service or store.
+
+**Reason.** This keeps the 20-module boundary and the no-direct-cross-module-import rule intact
+while avoiding duplicated persistence logic or event-carried entity snapshots. Ports expose only
+the fields a consumer needs; marketplace therefore cannot mutate catalog data or read private
+catalog state through `CatalogAccessPortToken`, and farmers cannot reserve or mutate warehouse
+stock through `WarehouseAccessPortToken`.
+
+## ADR-011: Expand warehouse for transactional inventory
+
+**Decision.** Warehouse CRUD, batches, units, stock movements, reservations, alerts, and audit
+events live in the existing `warehouse` module. The Prisma store applies every stock change inside
+a transaction through `cropsy_apply_warehouse_stock_movement`, which locks the inventory row with
+`SELECT ... FOR UPDATE`; reservation settlement locks the reservation row and writes its movement
+atomically. `referenceKey` provides an idempotency guard for concurrent order attempts.
+
+**Reason.** Inventory consistency requires one owner of on-hand/reserved/available quantities and
+append-only movement history. A new module or direct cross-module calls would duplicate the same
+invariants and weaken the 20-module boundary.
+
+## ADR-012: Cooperative selling stays inside farmers with configurable allocation
+
+**Decision.** Farmer groups, memberships, campaigns, contributions, purchase requests,
+allocations, and earnings are methods composed into `FarmersService`, not a 21st module. Group
+owner/leader, active-member, contribution-ownership, and tenant checks are enforced in the
+service. Allocation uses the campaign's caller-supplied policy: `PROPORTIONAL` or
+`QUALITY_WEIGHTED` with explicit caller-supplied weights. Earnings require caller-supplied
+`salesAmount` and `currency` and keep allocation/policy references.
+
+**Reason.** Collective selling is a farmer-domain workflow that needs the existing farm, catalog,
+warehouse, and authorization seams. Keeping one service token avoids a parallel service while
+configuration prevents inventing commission rates, payment providers, payout rules, taxes, fees,
+or settlement policies.
