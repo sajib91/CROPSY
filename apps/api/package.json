@@ -1,0 +1,34 @@
+{
+  "name": "@cropsy/api",
+  "version": "0.1.0",
+  "private": true,
+  "description": "CROPSY Fastify business API with 20 bounded Clean Architecture modules.",
+  "main": "src/server.js",
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "scripts": {
+    "dev": "node --watch src/server.js",
+    "start": "node src/server.js",
+    "build": "node ../../scripts/check-syntax.mjs src",
+    "test": "node --test test/*.test.js",
+    "prisma:generate": "prisma generate --schema prisma/schema.prisma",
+    "prisma:format": "prisma format --schema prisma/schema.prisma",
+    "prisma:validate": "prisma validate --schema prisma/schema.prisma"
+  },
+  "prisma": {
+    "seed": "node prisma/seed.js"
+  },
+  "dependencies": {
+    "@cropsy/api-contracts": "0.1.0",
+    "@cropsy/config": "0.1.0",
+    "@cropsy/shared": "0.1.0",
+    "@fastify/cors": "10.0.2",
+    "@fastify/helmet": "12.0.1",
+    "@prisma/client": "6.19.3",
+    "fastify": "5.12.8"
+  },
+  "devDependencies": {
+    "prisma": "6.19.3"
+  }
+}

@@ -1,0 +1,57 @@
+{
+  "name": "cropsy-monorepo",
+  "version": "0.1.0",
+  "private": true,
+  "description": "CROPSY monorepo foundation with health checks, database assets, and modular API architecture scaffolding.",
+  "engines": {
+    "node": ">=20.0.0",
+    "npm": ">=10.0.0"
+  },
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "setup": "bash scripts/setup.sh",
+    "dev": "concurrently -k -n api,web,ai -c cyan,magenta,green \"npm:dev:api\" \"npm:dev:web\" \"npm:dev:ai\"",
+    "dev:api": "npm run dev -w @cropsy/api",
+    "dev:web": "npm run dev -w @cropsy/web",
+    "dev:mobile": "npm run start -w @cropsy/mobile",
+    "dev:ai": "bash scripts/dev-ai.sh --reload",
+    "start:api": "npm run start -w @cropsy/api",
+    "start:web": "npm run start -w @cropsy/web",
+    "start:ai": "bash scripts/dev-ai.sh",
+    "build": "npm run build:contracts && npm run build:api && npm run build:web && npm run build:mobile && npm run build:ai",
+    "build:contracts": "node scripts/check-syntax.mjs packages",
+    "build:api": "npm run build -w @cropsy/api",
+    "build:web": "npm run build -w @cropsy/web",
+    "build:mobile": "node scripts/check-mobile-syntax.mjs apps/mobile",
+    "build:ai": "python3 -m compileall -q apps/ai/app",
+    "test": "npm run test -w @cropsy/api && npm run test:ai",
+    "test:ai": "bash scripts/test-ai.sh",
+    "lint": "eslint . --ext .js,.jsx,.mjs,.cjs",
+    "check:boundaries": "node scripts/check-module-boundaries.js",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "db:format": "prisma format --schema apps/api/prisma/schema.prisma",
+    "db:validate": "prisma validate --schema apps/api/prisma/schema.prisma",
+    "db:generate": "prisma generate --schema apps/api/prisma/schema.prisma",
+    "db:migrate": "prisma migrate dev --schema apps/api/prisma/schema.prisma",
+    "db:migrate:deploy": "prisma migrate deploy --schema apps/api/prisma/schema.prisma",
+    "db:seed": "node apps/api/prisma/seed.js",
+    "db:test": "bash scripts/test-database.sh",
+    "db:studio": "prisma studio --schema apps/api/prisma/schema.prisma",
+    "verify": "bash scripts/verify.sh"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2",
+    "eslint": "^8.57.1",
+    "eslint-config-prettier": "^9.1.0",
+    "eslint-plugin-react": "^7.37.5",
+    "prettier": "^3.3.3"
+  },
+  "overrides": {
+    "react-native": "0.74.5",
+    "react-native-reanimated": "3.15.5"
+  }
+}

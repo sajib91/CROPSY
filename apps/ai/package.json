@@ -1,0 +1,13 @@
+{
+  "name": "@cropsy/ai",
+  "version": "0.1.0",
+  "private": true,
+  "description": "CROPSY FastAPI AI service foundation.",
+  "python": ">=3.11",
+  "scripts": {
+    "dev": "bash ../../scripts/dev-ai.sh --reload",
+    "start": "bash ../../scripts/dev-ai.sh",
+    "build": "python3 -m compileall -q app",
+    "test": "bash ../../scripts/test-ai.sh"
+  }
+}

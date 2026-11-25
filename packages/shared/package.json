@@ -1,0 +1,7 @@
+{
+  "name": "@cropsy/shared",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Framework-neutral shared constants and response helpers for CROPSY.",
+  "main": "index.js"
+}

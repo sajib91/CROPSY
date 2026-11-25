@@ -1,0 +1,11 @@
+{
+  "name": "@cropsy/api-contracts",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Validated request and response contracts shared by CROPSY clients and services.",
+  "main": "index.js",
+  "dependencies": {
+    "@cropsy/validation": "0.1.0",
+    "zod": "^3.25.76"
+  }
+}

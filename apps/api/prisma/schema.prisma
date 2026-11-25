@@ -1,0 +1,2273 @@
+// CROPSY PostgreSQL schema.
+//
+// Conventions:
+// - UUID primary keys on every table.
+// - snake_case tables and columns.
+// - Monetary values use Decimal(14,2) with BDT as the default currency.
+// - organization_id identifies tenant-owned rows; NULL means platform scope.
+// - PostGIS geometry columns use Unsupported because Prisma cannot map them.
+// - CHECK constraints, partial/spatial indexes, and triggers are applied in
+//   migration SQL, not in this schema file.
+
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["postgresqlExtensions"]
+}
+
+datasource db {
+  provider   = "postgresql"
+  url        = env("DATABASE_URL")
+  extensions = [postgis]
+}
+
+// ---------------------------------------------------------------------------
+// Enums
+// ---------------------------------------------------------------------------
+
+enum AccountStatus {
+  ACTIVE
+  SUSPENDED
+  LOCKED
+  DEACTIVATED
+}
+
+enum Gender {
+  MALE
+  FEMALE
+  OTHER
+  UNDISCLOSED
+}
+
+enum PreferredLanguage {
+  EN
+  BN
+}
+
+enum RoleScope {
+  PLATFORM
+  ORGANIZATION
+}
+
+enum VerificationStatus {
+  UNVERIFIED
+  PENDING
+  VERIFIED
+  REJECTED
+}
+
+enum OtpPurpose {
+  EMAIL_VERIFICATION
+  PHONE_VERIFICATION
+  PASSWORD_RESET
+  LOGIN
+}
+
+enum OrganizationStatus {
+  ACTIVE
+  SUSPENDED
+  INACTIVE
+}
+
+enum OrganizationMemberStatus {
+  ACTIVE
+  INVITED
+  SUSPENDED
+  LEFT
+}
+
+enum InvitationStatus {
+  PENDING
+  ACCEPTED
+  REJECTED
+  EXPIRED
+  CANCELLED
+}
+
+enum FarmType {
+  OWNED
+  LEASED
+  SHARED
+  COMMUNITY
+  OTHER
+}
+
+enum FarmStatus {
+  ACTIVE
+  FALLBACK
+  INACTIVE
+  ARCHIVED
+}
+
+enum LandOwnership {
+  OWNED
+  LEASED
+  SHARE_CROPPING
+  CUSTOM_FARMING
+  OTHER
+}
+
+enum LandParcelStatus {
+  AVAILABLE
+  CULTIVATED
+  FALLOW
+  UNAVAILABLE
+}
+
+enum CropCategory {
+  CEREAL
+  PULSE
+  OILSEED
+  VEGETABLE
+  FRUIT
+  ROOT_CROP
+  SPICE
+  LIVESTOCK
+  FISHERY
+  OTHER
+}
+
+enum CultivationStatus {
+  PLANNED
+  ACTIVE
+  HARVESTED
+  FAILED
+  CANCELLED
+}
+
+enum FarmActivityType {
+  PLANTING
+  IRRIGATION
+  FERTILIZATION
+  PEST_CONTROL
+  WEEDING
+  PRUNING
+  MONITORING
+  HARVEST_PREP
+  OTHER
+}
+
+enum HarvestStatus {
+  DRAFT
+  CONFIRMED
+  RECONCILED
+}
+
+enum AgriculturalInputCategory {
+  SEED
+  FERTILIZER
+  PESTICIDE
+  FEED
+  TOOL
+  OTHER
+}
+
+enum ListingStatus {
+  DRAFT
+  ACTIVE
+  RESERVED
+  INACTIVE
+  EXPIRED
+  CANCELLED
+}
+
+enum PriceSource {
+  PLATFORM
+  FARMER
+  MARKET
+  EXTERNAL
+}
+
+enum CartStatus {
+  ACTIVE
+  CHECKED_OUT
+  ABANDONED
+}
+
+enum OrderStatus {
+  PENDING
+  PAYMENT_PENDING
+  PAYMENT_FAILED
+  CONFIRMED
+  PROCESSING
+  SHIPPED
+  DELIVERED
+  COMPLETED
+  CANCELLED
+  REFUNDED
+}
+
+enum PaymentMethod {
+  CARD
+  BANK_TRANSFER
+  MOBILE_BANKING
+  CASH
+  OTHER
+}
+
+enum PaymentStatus {
+  INITIATED
+  AUTHORIZED
+  CAPTURED
+  FAILED
+  CANCELLED
+  REFUNDED
+  PARTIALLY_REFUNDED
+}
+
+enum RefundStatus {
+  REQUESTED
+  APPROVED
+  REJECTED
+  PROCESSED
+  FAILED
+}
+
+enum RefundReason {
+  BUYER_CANCELLATION
+  SELLER_CANCELLATION
+  QUALITY_ISSUE
+  DELIVERY_FAILURE
+  DUPLICATE_PAYMENT
+  OTHER
+}
+
+enum TransactionType {
+  PAYMENT_AUTHORIZATION
+  PAYMENT_CAPTURE
+  REFUND
+  COMMISSION
+  SETTLEMENT
+  ADJUSTMENT
+}
+
+enum TransactionDirection {
+  DEBIT
+  CREDIT
+}
+
+enum TransactionStatus {
+  PENDING
+  POSTED
+  FAILED
+  REVERSED
+}
+
+enum LedgerAccountType {
+  ASSET
+  LIABILITY
+  EQUITY
+  REVENUE
+  EXPENSE
+}
+
+enum NormalBalance {
+  DEBIT
+  CREDIT
+}
+
+enum CommissionBasis {
+  PERCENTAGE
+  FIXED
+  TIERED
+  EXTERNAL_RULE
+}
+
+enum CommissionStatus {
+  CALCULATED
+  POSTED
+  REVERSED
+}
+
+enum SettlementStatus {
+  DRAFT
+  APPROVED
+  PAID
+  CANCELLED
+}
+
+enum ShipmentStatus {
+  PENDING
+  PICKED_UP
+  IN_TRANSIT
+  OUT_FOR_DELIVERY
+  DELIVERED
+  FAILED
+  RETURNED
+  CANCELLED
+}
+
+enum DeliveryStatus {
+  SCHEDULED
+  ATTEMPTED
+  DELIVERED
+  FAILED
+}
+
+enum WarehouseStatus {
+  ACTIVE
+  INACTIVE
+  MAINTENANCE
+}
+
+enum InspectionResult {
+  PENDING
+  PASSED
+  FAILED
+  CONDITIONAL
+}
+
+enum TraceabilityEventType {
+  PRODUCED
+  HARVESTED
+  INSPECTED
+  STORED
+  SHIPPED
+  DELIVERED
+  RECALLED
+}
+
+enum KnowledgeSourceType {
+  DOCUMENT
+  WEBSITE
+  DATABASE
+  MANUAL
+  EXTERNAL_API
+}
+
+enum DocumentStatus {
+  INGESTED
+  PROCESSING
+  READY
+  FAILED
+  ARCHIVED
+}
+
+enum LanguageCode {
+  EN
+  BN
+  BOTH
+}
+
+enum ChatRole {
+  USER
+  ASSISTANT
+  SYSTEM
+  TOOL
+}
+
+enum RecommendationType {
+  PRICE
+  CROP
+  BUYER
+  LOGISTICS
+  RISK
+}
+
+enum RecommendationStatus {
+  DRAFT
+  PUBLISHED
+  ACCEPTED
+  REJECTED
+  EXPIRED
+}
+
+enum AgentStatus {
+  QUEUED
+  RUNNING
+  SUCCEEDED
+  FAILED
+  CANCELLED
+}
+
+enum BillingInterval {
+  MONTHLY
+  QUARTERLY
+  ANNUAL
+  ONE_TIME
+}
+
+enum SubscriptionStatus {
+  TRIALING
+  ACTIVE
+  PAST_DUE
+  CANCELLED
+  EXPIRED
+}
+
+enum InvoiceStatus {
+  DRAFT
+  OPEN
+  PAID
+  VOID
+  UNCOLLECTIBLE
+}
+
+enum NotificationChannel {
+  IN_APP
+  EMAIL
+  SMS
+  PUSH
+}
+
+enum NotificationStatus {
+  PENDING
+  SENT
+  DELIVERED
+  FAILED
+  READ
+}
+
+enum AuditSeverity {
+  INFO
+  WARN
+  ERROR
+  CRITICAL
+}
+
+enum OutboxStatus {
+  PENDING
+  PUBLISHED
+  FAILED
+  DEAD
+}
+
+// ---------------------------------------------------------------------------
+// Bangladesh administrative geography
+// ---------------------------------------------------------------------------
+
+model Country {
+  id         String   @id @default(uuid()) @db.Uuid
+  code       String   @unique @db.VarChar(2)
+  name       String   @db.VarChar(120)
+  name_bn    String?  @db.VarChar(120)
+  is_active  Boolean  @default(true)
+  created_at DateTime @default(now()) @db.Timestamp(6)
+  updated_at DateTime @updatedAt @db.Timestamp(6)
+
+  divisions Division[]
+
+  @@map("countries")
+}
+
+model Division {
+  id         String   @id @default(uuid()) @db.Uuid
+  country_id String   @db.Uuid
+  code       String   @unique @db.VarChar(16)
+  name       String   @db.VarChar(120)
+  name_bn    String?  @db.VarChar(120)
+  created_at DateTime @default(now()) @db.Timestamp(6)
+  updated_at DateTime @updatedAt @db.Timestamp(6)
+
+  country                Country               @relation(fields: [country_id], references: [id], onDelete: Restrict)
+  districts              District[]
+  organization_addresses OrganizationAddress[]
+  user_addresses         UserAddress[]
+  farm_locations         FarmLocation[]
+  listing_locations      ListingLocation[]
+  warehouses             Warehouse[]
+
+  @@index([country_id])
+  @@map("divisions")
+}
+
+model District {
+  id          String   @id @default(uuid()) @db.Uuid
+  division_id String   @db.Uuid
+  code        String   @unique @db.VarChar(16)
+  name        String   @db.VarChar(120)
+  name_bn     String?  @db.VarChar(120)
+  created_at  DateTime @default(now()) @db.Timestamp(6)
+  updated_at  DateTime @updatedAt @db.Timestamp(6)
+
+  division               Division              @relation(fields: [division_id], references: [id], onDelete: Restrict)
+  upazilas               Upazila[]
+  organization_addresses OrganizationAddress[]
+  user_addresses         UserAddress[]
+  farm_locations         FarmLocation[]
+  listing_locations      ListingLocation[]
+  warehouses             Warehouse[]
+
+  @@index([division_id])
+  @@map("districts")
+}
+
+model Upazila {
+  id          String   @id @default(uuid()) @db.Uuid
+  district_id String   @db.Uuid
+  code        String   @unique @db.VarChar(16)
+  name        String   @db.VarChar(120)
+  name_bn     String?  @db.VarChar(120)
+  created_at  DateTime @default(now()) @db.Timestamp(6)
+  updated_at  DateTime @updatedAt @db.Timestamp(6)
+
+  district               District              @relation(fields: [district_id], references: [id], onDelete: Restrict)
+  unions                 Union[]
+  organization_addresses OrganizationAddress[]
+  user_addresses         UserAddress[]
+  farm_locations         FarmLocation[]
+  listing_locations      ListingLocation[]
+  warehouses             Warehouse[]
+
+  @@index([district_id])
+  @@map("upazilas")
+}
+
+model Union {
+  id         String   @id @default(uuid()) @db.Uuid
+  upazila_id String   @db.Uuid
+  code       String   @unique @db.VarChar(16)
+  name       String   @db.VarChar(120)
+  name_bn    String?  @db.VarChar(120)
+  created_at DateTime @default(now()) @db.Timestamp(6)
+  updated_at DateTime @updatedAt @db.Timestamp(6)
+
+  upazila                Upazila               @relation(fields: [upazila_id], references: [id], onDelete: Restrict)
+  organization_addresses OrganizationAddress[]
+  user_addresses         UserAddress[]
+  farm_locations         FarmLocation[]
+  listing_locations      ListingLocation[]
+  warehouses             Warehouse[]
+
+  @@index([upazila_id])
+  @@map("unions")
+}
+
+// ---------------------------------------------------------------------------
+// Identity and access
+// ---------------------------------------------------------------------------
+
+model User {
+  id                    String        @id @default(uuid()) @db.Uuid
+  email                 String        @unique @db.VarChar(255)
+  phone                 String?       @unique @db.VarChar(32)
+  password_hash         String        @db.Text
+  account_status        AccountStatus @default(ACTIVE)
+  is_email_verified     Boolean       @default(false)
+  is_phone_verified     Boolean       @default(false)
+  failed_login_attempts Int           @default(0)
+  locked_until          DateTime?     @db.Timestamp(6)
+  last_login_at         DateTime?     @db.Timestamp(6)
+  created_at            DateTime      @default(now()) @db.Timestamp(6)
+  updated_at            DateTime      @updatedAt @db.Timestamp(6)
+
+  profile              UserProfile?
+  roles                UserRole[]
+  sessions             Session[]
+  refresh_tokens       RefreshToken[]
+  otp_verifications    OTPVerification[]
+  owned_organizations  Organization[]           @relation("OrganizationOwner")
+  organization_members OrganizationMember[]
+  invitations_sent     OrganizationInvitation[] @relation("OrganizationInvitationInvitedBy")
+  granted_roles        UserRole[]               @relation("UserRoleGrantedBy")
+  addresses            UserAddress[]
+  farmer_profiles      FarmerProfile[]
+  farm_activities      FarmActivity[]           @relation("FarmActivityPerformer")
+  inspections          QualityInspection[]      @relation("QualityInspector")
+  managed_warehouses   Warehouse[]              @relation("WarehouseManager")
+  carts                Cart[]
+  orders_as_buyer      Order[]                  @relation("OrderBuyer")
+  orders_as_seller     Order[]                  @relation("OrderSeller")
+  payments             Payment[]
+  commissions          Commission[]             @relation("CommissionSeller")
+  settlements          Settlement[]             @relation("SettlementSeller")
+  conversations        Conversation[]
+  recommendations      AIRecommendation[]
+  agent_executions     AgentExecution[]         @relation("AgentInitiator")
+  ai_feedback          AIFeedback[]
+  notifications        Notification[]
+  audit_logs           AuditLog[]               @relation("AuditActor")
+  farms                Farm[]
+  productListings      ProductListing[]
+
+  @@index([account_status])
+  @@index([created_at])
+  @@map("users")
+}
+
+model UserProfile {
+  id                 String            @id @default(uuid()) @db.Uuid
+  user_id            String            @unique @db.Uuid
+  first_name         String            @db.VarChar(120)
+  last_name          String            @db.VarChar(120)
+  name_bn            String?           @db.VarChar(240)
+  avatar_url         String?           @db.Text
+  date_of_birth      DateTime?         @db.Date
+  gender             Gender?
+  national_id_hash   String?           @unique @db.VarChar(255)
+  preferred_language PreferredLanguage @default(EN)
+  default_currency   String            @default("BDT") @db.Char(3)
+  created_at         DateTime          @default(now()) @db.Timestamp(6)
+  updated_at         DateTime          @updatedAt @db.Timestamp(6)
+
+  user User @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@map("user_profiles")
+}
+
+model Role {
+  id          String    @id @default(uuid()) @db.Uuid
+  code        String    @unique @db.VarChar(80)
+  name        String    @db.VarChar(120)
+  name_bn     String?   @db.VarChar(120)
+  description String?   @db.Text
+  scope       RoleScope @default(PLATFORM)
+  is_system   Boolean   @default(false)
+  created_at  DateTime  @default(now()) @db.Timestamp(6)
+  updated_at  DateTime  @updatedAt @db.Timestamp(6)
+
+  user_roles  UserRole[]
+  permissions RolePermission[]
+  invitations OrganizationInvitation[]
+
+  @@index([scope])
+  @@map("roles")
+}
+
+model Permission {
+  id          String   @id @default(uuid()) @db.Uuid
+  code        String   @unique @db.VarChar(120)
+  resource    String   @db.VarChar(80)
+  action      String   @db.VarChar(80)
+  description String?  @db.Text
+  created_at  DateTime @default(now()) @db.Timestamp(6)
+  updated_at  DateTime @updatedAt @db.Timestamp(6)
+
+  roles RolePermission[]
+
+  @@index([resource, action])
+  @@map("permissions")
+}
+
+model UserRole {
+  id                 String   @id @default(uuid()) @db.Uuid
+  user_id            String   @db.Uuid
+  role_id            String   @db.Uuid
+  organization_id    String?  @db.Uuid
+  // Non-null surrogate used by the unique constraint because PostgreSQL
+  // treats NULLs as distinct in unique indexes.
+  scope_key          String   @default("PLATFORM") @db.VarChar(64)
+  granted_by_user_id String?  @db.Uuid
+  created_at         DateTime @default(now()) @db.Timestamp(6)
+  updated_at         DateTime @updatedAt @db.Timestamp(6)
+
+  user         User          @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  role         Role          @relation(fields: [role_id], references: [id], onDelete: Cascade)
+  organization Organization? @relation(fields: [organization_id], references: [id], onDelete: Cascade)
+  granted_by   User?         @relation("UserRoleGrantedBy", fields: [granted_by_user_id], references: [id], onDelete: SetNull)
+
+  @@unique([user_id, role_id, scope_key])
+  @@index([role_id])
+  @@index([organization_id])
+  @@index([granted_by_user_id])
+  @@map("user_roles")
+}
+
+model RolePermission {
+  id            String   @id @default(uuid()) @db.Uuid
+  role_id       String   @db.Uuid
+  permission_id String   @db.Uuid
+  created_at    DateTime @default(now()) @db.Timestamp(6)
+
+  role       Role       @relation(fields: [role_id], references: [id], onDelete: Cascade)
+  permission Permission @relation(fields: [permission_id], references: [id], onDelete: Cascade)
+
+  @@unique([role_id, permission_id])
+  @@index([permission_id])
+  @@map("role_permissions")
+}
+
+model Session {
+  id                 String    @id @default(uuid()) @db.Uuid
+  user_id            String    @db.Uuid
+  session_token_hash String    @unique @db.VarChar(255)
+  ip_address         String?   @db.VarChar(64)
+  user_agent         String?   @db.Text
+  expires_at         DateTime  @db.Timestamp(6)
+  last_seen_at       DateTime? @db.Timestamp(6)
+  revoked_at         DateTime? @db.Timestamp(6)
+  created_at         DateTime  @default(now()) @db.Timestamp(6)
+  updated_at         DateTime  @updatedAt @db.Timestamp(6)
+
+  user           User           @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  refresh_tokens RefreshToken[]
+
+  @@index([user_id, expires_at])
+  @@map("sessions")
+}
+
+model RefreshToken {
+  id            String    @id @default(uuid()) @db.Uuid
+  user_id       String    @db.Uuid
+  session_id    String?   @db.Uuid
+  token_hash    String    @unique @db.VarChar(255)
+  rotated_to_id String?   @db.Uuid
+  expires_at    DateTime  @db.Timestamp(6)
+  revoked_at    DateTime? @db.Timestamp(6)
+  created_at    DateTime  @default(now()) @db.Timestamp(6)
+  updated_at    DateTime  @updatedAt @db.Timestamp(6)
+
+  user         User           @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  session      Session?       @relation(fields: [session_id], references: [id], onDelete: SetNull)
+  rotated_to   RefreshToken?  @relation("RefreshTokenRotation", fields: [rotated_to_id], references: [id], onDelete: SetNull)
+  rotated_from RefreshToken[] @relation("RefreshTokenRotation")
+
+  @@index([user_id, expires_at])
+  @@index([session_id])
+  @@index([rotated_to_id])
+  @@map("refresh_tokens")
+}
+
+model OTPVerification {
+  id           String     @id @default(uuid()) @db.Uuid
+  user_id      String?    @db.Uuid
+  email        String?    @db.VarChar(255)
+  phone        String?    @db.VarChar(32)
+  purpose      OtpPurpose
+  code_hash    String     @db.VarChar(255)
+  attempts     Int        @default(0)
+  max_attempts Int        @default(5)
+  expires_at   DateTime   @db.Timestamp(6)
+  consumed_at  DateTime?  @db.Timestamp(6)
+  created_at   DateTime   @default(now()) @db.Timestamp(6)
+  updated_at   DateTime   @updatedAt @db.Timestamp(6)
+
+  user User? @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@index([email, purpose])
+  @@index([phone, purpose])
+  @@index([expires_at])
+  @@index([user_id])
+  @@map("otp_verifications")
+}
+
+// ---------------------------------------------------------------------------
+// Organizations and addresses
+// ---------------------------------------------------------------------------
+
+model Organization {
+  id               String             @id @default(uuid()) @db.Uuid
+  name             String             @db.VarChar(180)
+  slug             String             @unique @db.VarChar(180)
+  legal_name       String?            @db.VarChar(255)
+  tax_id           String?            @db.VarChar(64)
+  owner_user_id    String             @db.Uuid
+  default_currency String             @default("BDT") @db.Char(3)
+  status           OrganizationStatus @default(ACTIVE)
+  // Soft deletion is justified here because orders, payments, ledger entries,
+  // and audit history must survive organization closure.
+  deleted_at       DateTime?          @db.Timestamp(6)
+  created_at       DateTime           @default(now()) @db.Timestamp(6)
+  updated_at       DateTime           @updatedAt @db.Timestamp(6)
+
+  owner                 User                     @relation("OrganizationOwner", fields: [owner_user_id], references: [id], onDelete: Restrict)
+  members               OrganizationMember[]
+  invitations           OrganizationInvitation[]
+  addresses             OrganizationAddress[]
+  user_roles            UserRole[]
+  farmer_profiles       FarmerProfile[]
+  crop_seasons          CropSeason[]
+  farms                 Farm[]
+  land_parcels          LandParcel[]
+  cultivations          Cultivation[]
+  farm_activities       FarmActivity[]
+  harvests              Harvest[]
+  agricultural_inputs   AgriculturalInput[]
+  product_categories    ProductCategory[]
+  products              Product[]
+  product_inventories   ProductInventory[]
+  product_listings      ProductListing[]
+  price_history         PriceHistory[]
+  carts                 Cart[]
+  orders                Order[]
+  payments              Payment[]
+  refunds               Refund[]
+  transactions          Transaction[]
+  ledger_accounts       LedgerAccount[]
+  ledger_entries        LedgerEntry[]
+  commissions           Commission[]
+  settlements           Settlement[]
+  shipments             Shipment[]
+  warehouses            Warehouse[]
+  quality_inspections   QualityInspection[]
+  traceability_records  TraceabilityRecord[]
+  knowledge_sources     KnowledgeSource[]
+  knowledge_documents   KnowledgeDocument[]
+  embedding_references  EmbeddingReference[]
+  conversations         Conversation[]
+  recommendations       AIRecommendation[]
+  agent_executions      AgentExecution[]
+  subscriptions         Subscription[]
+  subscription_invoices SubscriptionInvoice[]
+  usage_records         UsageRecord[]
+  notifications         Notification[]
+  audit_logs            AuditLog[]
+  outbox_events         OutboxEvent[]
+  feature_flags         FeatureFlag[]
+  platform_settings     PlatformSetting[]
+  aifeedbacks           AIFeedback[]
+
+  @@index([owner_user_id])
+  @@index([status])
+  @@index([deleted_at])
+  @@map("organizations")
+}
+
+model OrganizationMember {
+  id              String                   @id @default(uuid()) @db.Uuid
+  organization_id String                   @db.Uuid
+  user_id         String                   @db.Uuid
+  status          OrganizationMemberStatus @default(INVITED)
+  joined_at       DateTime?                @db.Timestamp(6)
+  left_at         DateTime?                @db.Timestamp(6)
+  created_at      DateTime                 @default(now()) @db.Timestamp(6)
+  updated_at      DateTime                 @updatedAt @db.Timestamp(6)
+
+  organization Organization @relation(fields: [organization_id], references: [id], onDelete: Cascade)
+  user         User         @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@unique([organization_id, user_id])
+  @@index([user_id, status])
+  @@map("organization_members")
+}
+
+model OrganizationInvitation {
+  id                 String           @id @default(uuid()) @db.Uuid
+  organization_id    String           @db.Uuid
+  email              String           @db.VarChar(255)
+  role_id            String           @db.Uuid
+  invited_by_user_id String           @db.Uuid
+  token_hash         String           @unique @db.VarChar(255)
+  status             InvitationStatus @default(PENDING)
+  expires_at         DateTime         @db.Timestamp(6)
+  accepted_at        DateTime?        @db.Timestamp(6)
+  created_at         DateTime         @default(now()) @db.Timestamp(6)
+  updated_at         DateTime         @updatedAt @db.Timestamp(6)
+
+  organization Organization @relation(fields: [organization_id], references: [id], onDelete: Cascade)
+  role         Role         @relation(fields: [role_id], references: [id], onDelete: Restrict)
+  invited_by   User         @relation("OrganizationInvitationInvitedBy", fields: [invited_by_user_id], references: [id], onDelete: Restrict)
+
+  @@index([organization_id, email, status])
+  @@index([expires_at])
+  @@index([role_id])
+  @@index([invited_by_user_id])
+  @@map("organization_invitations")
+}
+
+model OrganizationAddress {
+  id              String                                @id @default(uuid()) @db.Uuid
+  organization_id String                                @db.Uuid
+  label           String                                @db.VarChar(80)
+  address_line_1  String                                @db.VarChar(255)
+  address_line_2  String?                               @db.VarChar(255)
+  city            String?                               @db.VarChar(120)
+  division_id     String?                               @db.Uuid
+  district_id     String?                               @db.Uuid
+  upazila_id      String?                               @db.Uuid
+  union_id        String?                               @db.Uuid
+  postal_code     String?                               @db.VarChar(16)
+  // PostGIS Point in SRID 4326 (longitude, latitude). Access with raw SQL.
+  location        Unsupported("geometry(Point, 4326)")?
+  is_primary      Boolean                               @default(false)
+  created_at      DateTime                              @default(now()) @db.Timestamp(6)
+  updated_at      DateTime                              @updatedAt @db.Timestamp(6)
+
+  organization Organization @relation(fields: [organization_id], references: [id], onDelete: Cascade)
+  division     Division?    @relation(fields: [division_id], references: [id], onDelete: SetNull)
+  district     District?    @relation(fields: [district_id], references: [id], onDelete: SetNull)
+  upazila      Upazila?     @relation(fields: [upazila_id], references: [id], onDelete: SetNull)
+  union        Union?       @relation(fields: [union_id], references: [id], onDelete: SetNull)
+
+  pickup_shipments      Shipment[]  @relation("ShipmentPickupAddress")
+  destination_shipments Shipment[]  @relation("ShipmentDestinationAddress")
+  warehouses            Warehouse[] @relation("WarehouseAddress")
+
+  @@unique([organization_id, label])
+  @@index([division_id, district_id, upazila_id])
+  @@index([district_id])
+  @@index([upazila_id])
+  @@index([union_id])
+  @@map("organization_addresses")
+}
+
+model UserAddress {
+  id             String                                @id @default(uuid()) @db.Uuid
+  user_id        String                                @db.Uuid
+  label          String                                @db.VarChar(80)
+  address_line_1 String                                @db.VarChar(255)
+  address_line_2 String?                               @db.VarChar(255)
+  city           String?                               @db.VarChar(120)
+  division_id    String?                               @db.Uuid
+  district_id    String?                               @db.Uuid
+  upazila_id     String?                               @db.Uuid
+  union_id       String?                               @db.Uuid
+  postal_code    String?                               @db.VarChar(16)
+  location       Unsupported("geometry(Point, 4326)")?
+  is_primary     Boolean                               @default(false)
+  created_at     DateTime                              @default(now()) @db.Timestamp(6)
+  updated_at     DateTime                              @updatedAt @db.Timestamp(6)
+
+  user     User      @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  division Division? @relation(fields: [division_id], references: [id], onDelete: SetNull)
+  district District? @relation(fields: [district_id], references: [id], onDelete: SetNull)
+  upazila  Upazila?  @relation(fields: [upazila_id], references: [id], onDelete: SetNull)
+  union    Union?    @relation(fields: [union_id], references: [id], onDelete: SetNull)
+
+  @@unique([user_id, label])
+  @@index([division_id, district_id])
+  @@index([district_id])
+  @@index([upazila_id])
+  @@index([union_id])
+  @@map("user_addresses")
+}
+
+// ---------------------------------------------------------------------------
+// Agriculture
+// ---------------------------------------------------------------------------
+
+model FarmerProfile {
+  id                  String             @id @default(uuid()) @db.Uuid
+  user_id             String             @unique @db.Uuid
+  organization_id     String?            @db.Uuid
+  farmer_code         String             @unique @db.VarChar(64)
+  verification_status VerificationStatus @default(UNVERIFIED)
+  farm_size_hectares  Decimal            @default(0) @db.Decimal(12, 3)
+  experience_years    Int?
+  primary_crop_id     String?            @db.Uuid
+  created_at          DateTime           @default(now()) @db.Timestamp(6)
+  updated_at          DateTime           @updatedAt @db.Timestamp(6)
+
+  user         User          @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  organization Organization? @relation(fields: [organization_id], references: [id], onDelete: SetNull)
+  primary_crop Crop?         @relation("FarmerPrimaryCrop", fields: [primary_crop_id], references: [id], onDelete: SetNull)
+
+  farms    Farm[]
+  products Product[]
+
+  @@index([organization_id, verification_status])
+  @@index([primary_crop_id])
+  @@map("farmer_profiles")
+}
+
+model Farm {
+  id                  String     @id @default(uuid()) @db.Uuid
+  organization_id     String?    @db.Uuid
+  owner_user_id       String     @db.Uuid
+  name                String     @db.VarChar(180)
+  code                String     @unique @db.VarChar(64)
+  farm_type           FarmType   @default(OTHER)
+  status              FarmStatus @default(ACTIVE)
+  total_area_hectares Decimal    @default(0) @db.Decimal(12, 3)
+  created_at          DateTime   @default(now()) @db.Timestamp(6)
+  updated_at          DateTime   @updatedAt @db.Timestamp(6)
+
+  organization Organization? @relation(fields: [organization_id], references: [id], onDelete: SetNull)
+  owner        User          @relation(fields: [owner_user_id], references: [id], onDelete: Restrict)
+
+  location          FarmLocation?
+  parcels           LandParcel[]
+  cultivations      Cultivation[]
+  activities        FarmActivity[]
+  harvests          Harvest[]
+  farmer_profile    FarmerProfile? @relation(fields: [farmer_profile_id], references: [id])
+  farmer_profile_id String?        @db.Uuid
+
+  @@index([organization_id, status])
+  @@index([owner_user_id])
+  @@index([farmer_profile_id])
+  @@map("farms")
+}
+
+model FarmLocation {
+  id           String                                  @id @default(uuid()) @db.Uuid
+  farm_id      String                                  @unique @db.Uuid
+  address_line String                                  @db.VarChar(255)
+  division_id  String?                                 @db.Uuid
+  district_id  String?                                 @db.Uuid
+  upazila_id   String?                                 @db.Uuid
+  union_id     String?                                 @db.Uuid
+  location     Unsupported("geometry(Point, 4326)")?
+  boundary     Unsupported("geometry(Polygon, 4326)")?
+  created_at   DateTime                                @default(now()) @db.Timestamp(6)
+  updated_at   DateTime                                @updatedAt @db.Timestamp(6)
+
+  farm     Farm      @relation(fields: [farm_id], references: [id], onDelete: Cascade)
+  division Division? @relation(fields: [division_id], references: [id], onDelete: SetNull)
+  district District? @relation(fields: [district_id], references: [id], onDelete: SetNull)
+  upazila  Upazila?  @relation(fields: [upazila_id], references: [id], onDelete: SetNull)
+  union    Union?    @relation(fields: [union_id], references: [id], onDelete: SetNull)
+
+  @@index([division_id, district_id, upazila_id])
+  @@index([district_id])
+  @@index([upazila_id])
+  @@index([union_id])
+  @@map("farm_locations")
+}
+
+model LandParcel {
+  id              String                                  @id @default(uuid()) @db.Uuid
+  organization_id String?                                 @db.Uuid
+  farm_id         String                                  @db.Uuid
+  code            String                                  @db.VarChar(64)
+  name            String?                                 @db.VarChar(180)
+  area_hectares   Decimal                                 @db.Decimal(12, 3)
+  ownership_type  LandOwnership                           @default(OWNED)
+  status          LandParcelStatus                        @default(AVAILABLE)
+  boundary        Unsupported("geometry(Polygon, 4326)")?
+  created_at      DateTime                                @default(now()) @db.Timestamp(6)
+  updated_at      DateTime                                @updatedAt @db.Timestamp(6)
+
+  organization Organization? @relation(fields: [organization_id], references: [id], onDelete: SetNull)
+  farm         Farm          @relation(fields: [farm_id], references: [id], onDelete: Cascade)
+
+  cultivations Cultivation[]
+  activities   FarmActivity[]
+
+  @@unique([farm_id, code])
+  @@index([organization_id, status])
+  @@map("land_parcels")
+}
+
+model Crop {
+  id         String       @id @default(uuid()) @db.Uuid
+  code       String       @unique @db.VarChar(64)
+  name       String       @db.VarChar(180)
+  name_bn    String?      @db.VarChar(180)
+  category   CropCategory @default(OTHER)
+  is_active  Boolean      @default(true)
+  created_at DateTime     @default(now()) @db.Timestamp(6)
+  updated_at DateTime     @updatedAt @db.Timestamp(6)
+
+  varieties           CropVariety[]
+  cultivations        Cultivation[]
+  primary_for_farmers FarmerProfile[] @relation("FarmerPrimaryCrop")
+
+  @@index([category, is_active])
+  @@map("crops")
+}
+
+model CropVariety {
+  id            String   @id @default(uuid()) @db.Uuid
+  crop_id       String   @db.Uuid
+  code          String   @db.VarChar(64)
+  name          String   @db.VarChar(180)
+  name_bn       String?  @db.VarChar(180)
+  maturity_days Int?
+  created_at    DateTime @default(now()) @db.Timestamp(6)
+  updated_at    DateTime @updatedAt @db.Timestamp(6)
+
+  crop         Crop          @relation(fields: [crop_id], references: [id], onDelete: Cascade)
+  cultivations Cultivation[]
+
+  @@unique([crop_id, code])
+  @@map("crop_varieties")
+}
+
+model CropSeason {
+  id              String   @id @default(uuid()) @db.Uuid
+  organization_id String?  @db.Uuid
+  code            String   @unique @db.VarChar(64)
+  name            String   @db.VarChar(180)
+  name_bn         String?  @db.VarChar(180)
+  start_month     Int
+  end_month       Int
+  year            Int?
+  is_active       Boolean  @default(true)
+  created_at      DateTime @default(now()) @db.Timestamp(6)
+  updated_at      DateTime @updatedAt @db.Timestamp(6)
+
+  organization Organization? @relation(fields: [organization_id], references: [id], onDelete: SetNull)
+  cultivations Cultivation[]
+
+  @@index([organization_id, is_active])
+  @@map("crop_seasons")
+}
+
+model Cultivation {
+  id                  String            @id @default(uuid()) @db.Uuid
+  organization_id     String?           @db.Uuid
+  farm_id             String            @db.Uuid
+  land_parcel_id      String?           @db.Uuid
+  crop_variety_id     String            @db.Uuid
+  crop_season_id      String?           @db.Uuid
+  status              CultivationStatus @default(PLANNED)
+  planted_at          DateTime?         @db.Timestamp(6)
+  expected_harvest_at DateTime?         @db.Timestamp(6)
+  harvested_at        DateTime?         @db.Timestamp(6)
+  area_hectares       Decimal           @db.Decimal(12, 3)
+  created_at          DateTime          @default(now()) @db.Timestamp(6)
+  updated_at          DateTime          @updatedAt @db.Timestamp(6)
+
+  organization Organization? @relation(fields: [organization_id], references: [id], onDelete: SetNull)
+  farm         Farm          @relation(fields: [farm_id], references: [id], onDelete: Cascade)
+  land_parcel  LandParcel?   @relation(fields: [land_parcel_id], references: [id], onDelete: SetNull)
+  crop_variety CropVariety   @relation(fields: [crop_variety_id], references: [id], onDelete: Restrict)
+  crop_season  CropSeason?   @relation(fields: [crop_season_id], references: [id], onDelete: SetNull)
+
+  activities           FarmActivity[]
+  harvests             Harvest[]
+  traceability_records TraceabilityRecord[]
+  crop                 Crop?                @relation(fields: [crop_id], references: [id])
+  crop_id              String?              @db.Uuid
+
+  @@index([organization_id, status])
+  @@index([farm_id, crop_variety_id])
+  @@index([land_parcel_id])
+  @@index([crop_variety_id])
+  @@index([crop_season_id])
+  @@index([crop_id])
+  @@map("cultivations")
+}
+
+model FarmActivity {
+  id                   String           @id @default(uuid()) @db.Uuid
+  organization_id      String?          @db.Uuid
+  farm_id              String           @db.Uuid
+  cultivation_id       String?          @db.Uuid
+  land_parcel_id       String?          @db.Uuid
+  input_id             String?          @db.Uuid
+  performed_by_user_id String?          @db.Uuid
+  activity_type        FarmActivityType
+  activity_date        DateTime         @db.Timestamp(6)
+  quantity             Decimal?         @db.Decimal(14, 3)
+  unit_code            String?          @db.VarChar(16)
+  cost_amount          Decimal?         @db.Decimal(14, 2)
+  currency             String           @default("BDT") @db.Char(3)
+  notes                String?          @db.Text
+  created_at           DateTime         @default(now()) @db.Timestamp(6)
+  updated_at           DateTime         @updatedAt @db.Timestamp(6)
+
+  organization Organization?      @relation(fields: [organization_id], references: [id], onDelete: SetNull)
+  farm         Farm               @relation(fields: [farm_id], references: [id], onDelete: Cascade)
+  cultivation  Cultivation?       @relation(fields: [cultivation_id], references: [id], onDelete: SetNull)
+  land_parcel  LandParcel?        @relation(fields: [land_parcel_id], references: [id], onDelete: SetNull)
+  input        AgriculturalInput? @relation(fields: [input_id], references: [id], onDelete: SetNull)
+  performed_by User?              @relation("FarmActivityPerformer", fields: [performed_by_user_id], references: [id], onDelete: SetNull)
+
+  @@index([organization_id, activity_date])
+  @@index([farm_id, activity_type])
+  @@index([cultivation_id])
+  @@index([land_parcel_id])
+  @@index([input_id])
+  @@index([performed_by_user_id])
+  @@map("farm_activities")
+}
+
+model Harvest {
+  id              String        @id @default(uuid()) @db.Uuid
+  organization_id String?       @db.Uuid
+  cultivation_id  String        @db.Uuid
+  farm_id         String        @db.Uuid
+  harvested_at    DateTime      @db.Timestamp(6)
+  quantity_kg     Decimal       @db.Decimal(14, 3)
+  quality_grade   String?       @db.VarChar(32)
+  status          HarvestStatus @default(DRAFT)
+  created_at      DateTime      @default(now()) @db.Timestamp(6)
+  updated_at      DateTime      @updatedAt @db.Timestamp(6)
+
+  organization Organization? @relation(fields: [organization_id], references: [id], onDelete: SetNull)
+  cultivation  Cultivation   @relation(fields: [cultivation_id], references: [id], onDelete: Cascade)
+  farm         Farm          @relation(fields: [farm_id], references: [id], onDelete: Cascade)
+
+  traceability_records TraceabilityRecord[]
+
+  @@index([organization_id, status])
+  @@index([cultivation_id, harvested_at])
+  @@index([farm_id])
+  @@map("harvests")
+}
+
+model AgriculturalInput {
+  id              String                    @id @default(uuid()) @db.Uuid
+  organization_id String?                   @db.Uuid
+  code            String                    @unique @db.VarChar(64)
+  name            String                    @db.VarChar(180)
+  name_bn         String?                   @db.VarChar(180)
+  category        AgriculturalInputCategory @default(OTHER)
+  unit_code       String                    @db.VarChar(16)
+  manufacturer    String?                   @db.VarChar(180)
+  is_active       Boolean                   @default(true)
+  created_at      DateTime                  @default(now()) @db.Timestamp(6)
+  updated_at      DateTime                  @updatedAt @db.Timestamp(6)
+
+  organization Organization?  @relation(fields: [organization_id], references: [id], onDelete: SetNull)
+  activities   FarmActivity[]
+
+  @@index([organization_id, category, is_active])
+  @@map("agricultural_inputs")
+}
+
+// ---------------------------------------------------------------------------
+// Marketplace
+// ---------------------------------------------------------------------------
+
+model ProductCategory {
+  id              String   @id @default(uuid()) @db.Uuid
+  organization_id String?  @db.Uuid
+  parent_id       String?  @db.Uuid
+  code            String   @unique @db.VarChar(64)
+  name            String   @db.VarChar(180)
+  name_bn         String?  @db.VarChar(180)
+  is_active       Boolean  @default(true)
+  created_at      DateTime @default(now()) @db.Timestamp(6)
+  updated_at      DateTime @updatedAt @db.Timestamp(6)
+
+  organization Organization?     @relation(fields: [organization_id], references: [id], onDelete: SetNull)
+  parent       ProductCategory?  @relation("ProductCategoryTree", fields: [parent_id], references: [id], onDelete: SetNull)
+  children     ProductCategory[] @relation("ProductCategoryTree")
+  products     Product[]
+
+  @@index([organization_id, is_active])
+  @@index([parent_id])
+  @@map("product_categories")
+}
+
+model Product {
+  id                String    @id @default(uuid()) @db.Uuid
+  organization_id   String?   @db.Uuid
+  category_id       String    @db.Uuid
+  farmer_profile_id String?   @db.Uuid
+  sku               String    @unique @db.VarChar(80)
+  name              String    @db.VarChar(180)
+  name_bn           String?   @db.VarChar(180)
+  unit_code         String    @db.VarChar(16)
+  description       String?   @db.Text
+  // Soft deletion is justified because order/payment history must keep the
+  // product reference after a catalog item is retired.
+  deleted_at        DateTime? @db.Timestamp(6)
+  created_at        DateTime  @default(now()) @db.Timestamp(6)
+  updated_at        DateTime  @updatedAt @db.Timestamp(6)
+
+  organization   Organization?   @relation(fields: [organization_id], references: [id], onDelete: SetNull)
+  category       ProductCategory @relation(fields: [category_id], references: [id], onDelete: Restrict)
+  farmer_profile FarmerProfile?  @relation(fields: [farmer_profile_id], references: [id], onDelete: SetNull)
+
+  images                ProductImage[]
+  inventories           ProductInventory[]
+  listings              ProductListing[]
+  price_history         PriceHistory[]
+  order_items           OrderItem[]
+  warehouse_inventories WarehouseInventory[]
+  quality_inspections   QualityInspection[]
+  traceability_records  TraceabilityRecord[]
+
+  @@index([organization_id, category_id])
+  @@index([deleted_at])
+  @@index([category_id])
+  @@index([farmer_profile_id])
+  @@map("products")
+}
+
+model ProductImage {
+  id         String   @id @default(uuid()) @db.Uuid
+  product_id String   @db.Uuid
+  url        String   @db.Text
+  alt_text   String?  @db.VarChar(255)
+  sort_order Int      @default(0)
+  created_at DateTime @default(now()) @db.Timestamp(6)
+  updated_at DateTime @updatedAt @db.Timestamp(6)
+
+  product Product @relation(fields: [product_id], references: [id], onDelete: Cascade)
+
+  @@unique([product_id, sort_order])
+  @@map("product_images")
+}
+
+model ProductInventory {
+  id                 String   @id @default(uuid()) @db.Uuid
+  organization_id    String?  @db.Uuid
+  product_id         String   @db.Uuid
+  warehouse_id       String?  @db.Uuid
+  // "UNALLOCATED" or the warehouse UUID; avoids nullable UNIQUE semantics.
+  scope_key          String   @default("UNALLOCATED") @db.VarChar(64)
+  quantity_on_hand   Decimal  @default(0) @db.Decimal(14, 3)
+  quantity_reserved  Decimal  @default(0) @db.Decimal(14, 3)
+  available_quantity Decimal  @default(0) @db.Decimal(14, 3)
+  created_at         DateTime @default(now()) @db.Timestamp(6)
+  updated_at         DateTime @updatedAt @db.Timestamp(6)
+
+  organization Organization? @relation(fields: [organization_id], references: [id], onDelete: SetNull)
+  product      Product       @relation(fields: [product_id], references: [id], onDelete: Restrict)
+  warehouse    Warehouse?    @relation(fields: [warehouse_id], references: [id], onDelete: SetNull)
+
+  listings ProductListing[]
+
+  @@unique([product_id, scope_key])
+  @@index([organization_id])
+  @@index([warehouse_id])
+  @@map("product_inventories")
+}
+
+model ProductListing {
+  id                 String        @id @default(uuid()) @db.Uuid
+  organization_id    String?       @db.Uuid
+  product_id         String        @db.Uuid
+  seller_user_id     String        @db.Uuid
+  inventory_id       String?       @db.Uuid
+  status             ListingStatus @default(DRAFT)
+  title              String        @db.VarChar(180)
+  description        String?       @db.Text
+  unit_price         Decimal       @db.Decimal(14, 2)
+  currency           String        @default("BDT") @db.Char(3)
+  quantity_available Decimal       @default(0) @db.Decimal(14, 3)
+  min_order_quantity Decimal       @default(1) @db.Decimal(14, 3)
+  starts_at          DateTime?     @db.Timestamp(6)
+  ends_at            DateTime?     @db.Timestamp(6)
+  created_at         DateTime      @default(now()) @db.Timestamp(6)
+  updated_at         DateTime      @updatedAt @db.Timestamp(6)
+
+  organization Organization?     @relation(fields: [organization_id], references: [id], onDelete: SetNull)
+  product      Product           @relation(fields: [product_id], references: [id], onDelete: Restrict)
+  seller       User              @relation(fields: [seller_user_id], references: [id], onDelete: Restrict)
+  inventory    ProductInventory? @relation(fields: [inventory_id], references: [id], onDelete: SetNull)
+
+  locations     ListingLocation[]
+  price_history PriceHistory[]
+  cart_items    CartItem[]
+  order_items   OrderItem[]
+
+  @@index([organization_id, status])
+  @@index([product_id, status])
+  @@index([seller_user_id])
+  @@index([ends_at])
+  @@index([inventory_id])
+  @@map("product_listings")
+}
+
+model ListingLocation {
+  id            String                                @id @default(uuid()) @db.Uuid
+  listing_id    String                                @db.Uuid
+  division_id   String?                               @db.Uuid
+  district_id   String?                               @db.Uuid
+  upazila_id    String?                               @db.Uuid
+  union_id      String?                               @db.Uuid
+  location      Unsupported("geometry(Point, 4326)")?
+  radius_meters Int?
+  created_at    DateTime                              @default(now()) @db.Timestamp(6)
+  updated_at    DateTime                              @updatedAt @db.Timestamp(6)
+
+  listing  ProductListing @relation(fields: [listing_id], references: [id], onDelete: Cascade)
+  division Division?      @relation(fields: [division_id], references: [id], onDelete: SetNull)
+  district District?      @relation(fields: [district_id], references: [id], onDelete: SetNull)
+  upazila  Upazila?       @relation(fields: [upazila_id], references: [id], onDelete: SetNull)
+  union    Union?         @relation(fields: [union_id], references: [id], onDelete: SetNull)
+
+  @@index([division_id, district_id, upazila_id])
+  @@index([listing_id])
+  @@index([district_id])
+  @@index([upazila_id])
+  @@index([union_id])
+  @@map("listing_locations")
+}
+
+model PriceHistory {
+  id              String      @id @default(uuid()) @db.Uuid
+  organization_id String?     @db.Uuid
+  product_id      String      @db.Uuid
+  listing_id      String?     @db.Uuid
+  price           Decimal     @db.Decimal(14, 2)
+  currency        String      @default("BDT") @db.Char(3)
+  source          PriceSource @default(PLATFORM)
+  observed_at     DateTime    @db.Timestamp(6)
+  created_at      DateTime    @default(now()) @db.Timestamp(6)
+
+  organization Organization?   @relation(fields: [organization_id], references: [id], onDelete: SetNull)
+  product      Product         @relation(fields: [product_id], references: [id], onDelete: Cascade)
+  listing      ProductListing? @relation(fields: [listing_id], references: [id], onDelete: SetNull)
+
+  @@index([organization_id, observed_at])
+  @@index([product_id, observed_at])
+  @@index([listing_id, observed_at])
+  @@map("price_history")
+}
+
+// ---------------------------------------------------------------------------
+// Commerce
+// ---------------------------------------------------------------------------
+
+model Cart {
+  id              String     @id @default(uuid()) @db.Uuid
+  organization_id String?    @db.Uuid
+  user_id         String     @db.Uuid
+  status          CartStatus @default(ACTIVE)
+  currency        String     @default("BDT") @db.Char(3)
+  created_at      DateTime   @default(now()) @db.Timestamp(6)
+  updated_at      DateTime   @updatedAt @db.Timestamp(6)
+
+  organization Organization? @relation(fields: [organization_id], references: [id], onDelete: SetNull)
+  user         User          @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  items  CartItem[]
+  orders Order[]
+
+  @@index([organization_id, status])
+  @@index([user_id, status])
+  @@map("carts")
+}
+
+model CartItem {
+  id                  String   @id @default(uuid()) @db.Uuid
+  cart_id             String   @db.Uuid
+  listing_id          String   @db.Uuid
+  quantity            Decimal  @db.Decimal(14, 3)
+  unit_price_snapshot Decimal  @db.Decimal(14, 2)
+  currency            String   @default("BDT") @db.Char(3)
+  created_at          DateTime @default(now()) @db.Timestamp(6)
+  updated_at          DateTime @updatedAt @db.Timestamp(6)
+
+  cart    Cart           @relation(fields: [cart_id], references: [id], onDelete: Cascade)
+  listing ProductListing @relation(fields: [listing_id], references: [id], onDelete: Restrict)
+
+  @@unique([cart_id, listing_id])
+  @@index([listing_id])
+  @@map("cart_items")
+}
+
+model Order {
+  id                  String      @id @default(uuid()) @db.Uuid
+  organization_id     String?     @db.Uuid
+  cart_id             String?     @db.Uuid
+  buyer_user_id       String      @db.Uuid
+  seller_user_id      String      @db.Uuid
+  status              OrderStatus @default(PENDING)
+  currency            String      @default("BDT") @db.Char(3)
+  subtotal_amount     Decimal     @db.Decimal(14, 2)
+  discount_amount     Decimal     @default(0) @db.Decimal(14, 2)
+  delivery_fee_amount Decimal     @default(0) @db.Decimal(14, 2)
+  tax_amount          Decimal     @default(0) @db.Decimal(14, 2)
+  total_amount        Decimal     @db.Decimal(14, 2)
+  placed_at           DateTime    @default(now()) @db.Timestamp(6)
+  confirmed_at        DateTime?   @db.Timestamp(6)
+  completed_at        DateTime?   @db.Timestamp(6)
+  cancelled_at        DateTime?   @db.Timestamp(6)
+  created_at          DateTime    @default(now()) @db.Timestamp(6)
+  updated_at          DateTime    @updatedAt @db.Timestamp(6)
+
+  organization Organization? @relation(fields: [organization_id], references: [id], onDelete: SetNull)
+  cart         Cart?         @relation(fields: [cart_id], references: [id], onDelete: SetNull)
+  buyer        User          @relation("OrderBuyer", fields: [buyer_user_id], references: [id], onDelete: Restrict)
+  seller       User          @relation("OrderSeller", fields: [seller_user_id], references: [id], onDelete: Restrict)
+
+  items          OrderItem[]
+  payments       Payment[]
+  refunds        Refund[]
+  transactions   Transaction[]
+  ledger_entries LedgerEntry[]
+  commissions    Commission[]
+  shipments      Shipment[]
+
+  @@index([organization_id, status])
+  @@index([buyer_user_id, placed_at])
+  @@index([seller_user_id, placed_at])
+  @@index([cart_id])
+  @@map("orders")
+}
+
+model OrderItem {
+  id         String   @id @default(uuid()) @db.Uuid
+  order_id   String   @db.Uuid
+  product_id String   @db.Uuid
+  listing_id String?  @db.Uuid
+  quantity   Decimal  @db.Decimal(14, 3)
+  unit_price Decimal  @db.Decimal(14, 2)
+  line_total Decimal  @db.Decimal(14, 2)
+  currency   String   @default("BDT") @db.Char(3)
+  created_at DateTime @default(now()) @db.Timestamp(6)
+  updated_at DateTime @updatedAt @db.Timestamp(6)
+
+  order   Order           @relation(fields: [order_id], references: [id], onDelete: Cascade)
+  product Product         @relation(fields: [product_id], references: [id], onDelete: Restrict)
+  listing ProductListing? @relation(fields: [listing_id], references: [id], onDelete: SetNull)
+
+  @@index([order_id])
+  @@index([product_id])
+  @@index([listing_id])
+  @@map("order_items")
+}
+
+model Payment {
+  id                 String        @id @default(uuid()) @db.Uuid
+  organization_id    String?       @db.Uuid
+  order_id           String        @db.Uuid
+  user_id            String        @db.Uuid
+  // Provider is supplied by configuration; no providers are seeded.
+  provider_code      String?       @db.VarChar(80)
+  provider_reference String?       @db.VarChar(255)
+  idempotency_key    String        @unique @db.VarChar(255)
+  method             PaymentMethod @default(OTHER)
+  status             PaymentStatus @default(INITIATED)
+  amount             Decimal       @db.Decimal(14, 2)
+  captured_amount    Decimal       @default(0) @db.Decimal(14, 2)
+  refunded_amount    Decimal       @default(0) @db.Decimal(14, 2)
+  currency           String        @default("BDT") @db.Char(3)
+  initiated_at       DateTime      @default(now()) @db.Timestamp(6)
+  captured_at        DateTime?     @db.Timestamp(6)
+  failed_at          DateTime?     @db.Timestamp(6)
+  created_at         DateTime      @default(now()) @db.Timestamp(6)
+  updated_at         DateTime      @updatedAt @db.Timestamp(6)
+
+  organization Organization? @relation(fields: [organization_id], references: [id], onDelete: SetNull)
+  order        Order         @relation(fields: [order_id], references: [id], onDelete: Restrict)
+  user         User          @relation(fields: [user_id], references: [id], onDelete: Restrict)
+
+  transactions Transaction[]
+  refunds      Refund[]
+
+  @@unique([provider_code, provider_reference])
+  @@index([organization_id, status])
+  @@index([order_id])
+  @@index([user_id, status])
+  @@map("payments")
+}
+
+model Refund {
+  id                 String       @id @default(uuid()) @db.Uuid
+  organization_id    String?      @db.Uuid
+  payment_id         String       @db.Uuid
+  order_id           String       @db.Uuid
+  amount             Decimal      @db.Decimal(14, 2)
+  currency           String       @default("BDT") @db.Char(3)
+  reason             RefundReason @default(OTHER)
+  status             RefundStatus @default(REQUESTED)
+  provider_reference String?      @db.VarChar(255)
+  processed_at       DateTime?    @db.Timestamp(6)
+  created_at         DateTime     @default(now()) @db.Timestamp(6)
+  updated_at         DateTime     @updatedAt @db.Timestamp(6)
+
+  organization Organization? @relation(fields: [organization_id], references: [id], onDelete: SetNull)
+  payment      Payment       @relation(fields: [payment_id], references: [id], onDelete: Restrict)
+  order        Order         @relation(fields: [order_id], references: [id], onDelete: Restrict)
+
+  transactions Transaction[]
+
+  @@index([organization_id, status])
+  @@index([payment_id, status])
+  @@index([order_id])
+  @@map("refunds")
+}
+
+model Transaction {
+  id                 String               @id @default(uuid()) @db.Uuid
+  organization_id    String?              @db.Uuid
+  payment_id         String?              @db.Uuid
+  refund_id          String?              @db.Uuid
+  order_id           String?              @db.Uuid
+  transaction_type   TransactionType
+  direction          TransactionDirection
+  amount             Decimal              @db.Decimal(14, 2)
+  currency           String               @default("BDT") @db.Char(3)
+  status             TransactionStatus    @default(PENDING)
+  provider_reference String?              @db.VarChar(255)
+  posted_at          DateTime?            @db.Timestamp(6)
+  created_at         DateTime             @default(now()) @db.Timestamp(6)
+  updated_at         DateTime             @updatedAt @db.Timestamp(6)
+
+  organization Organization? @relation(fields: [organization_id], references: [id], onDelete: SetNull)
+  payment      Payment?      @relation(fields: [payment_id], references: [id], onDelete: SetNull)
+  refund       Refund?       @relation(fields: [refund_id], references: [id], onDelete: SetNull)
+  order        Order?        @relation(fields: [order_id], references: [id], onDelete: SetNull)
+
+  ledger_entries LedgerEntry[]
+
+  @@index([organization_id, status])
+  @@index([payment_id])
+  @@index([refund_id])
+  @@index([order_id])
+  @@map("transactions")
+}
+
+model LedgerAccount {
+  id              String            @id @default(uuid()) @db.Uuid
+  organization_id String?           @db.Uuid
+  code            String            @unique @db.VarChar(64)
+  name            String            @db.VarChar(180)
+  account_type    LedgerAccountType
+  normal_balance  NormalBalance
+  currency        String            @default("BDT") @db.Char(3)
+  is_active       Boolean           @default(true)
+  created_at      DateTime          @default(now()) @db.Timestamp(6)
+  updated_at      DateTime          @updatedAt @db.Timestamp(6)
+
+  organization Organization? @relation(fields: [organization_id], references: [id], onDelete: SetNull)
+  entries      LedgerEntry[]
+
+  @@index([organization_id, account_type])
+  @@map("ledger_accounts")
+}
+
+model LedgerEntry {
+  id              String               @id @default(uuid()) @db.Uuid
+  organization_id String?              @db.Uuid
+  transaction_id  String?              @db.Uuid
+  account_id      String               @db.Uuid
+  order_id        String?              @db.Uuid
+  settlement_id   String?              @db.Uuid
+  reversal_of_id  String?              @db.Uuid
+  direction       TransactionDirection
+  amount          Decimal              @db.Decimal(14, 2)
+  currency        String               @default("BDT") @db.Char(3)
+  entry_date      DateTime             @db.Date
+  description     String?              @db.Text
+  posted_at       DateTime?            @db.Timestamp(6)
+  created_at      DateTime             @default(now()) @db.Timestamp(6)
+  updated_at      DateTime             @updatedAt @db.Timestamp(6)
+
+  organization Organization? @relation(fields: [organization_id], references: [id], onDelete: SetNull)
+  transaction  Transaction?  @relation(fields: [transaction_id], references: [id], onDelete: SetNull)
+  account      LedgerAccount @relation(fields: [account_id], references: [id], onDelete: Restrict)
+  order        Order?        @relation(fields: [order_id], references: [id], onDelete: SetNull)
+  settlement   Settlement?   @relation(fields: [settlement_id], references: [id], onDelete: SetNull)
+  reversal_of  LedgerEntry?  @relation("LedgerReversal", fields: [reversal_of_id], references: [id], onDelete: Restrict)
+  reversals    LedgerEntry[] @relation("LedgerReversal")
+
+  @@index([organization_id, entry_date])
+  @@index([transaction_id])
+  @@index([account_id, entry_date])
+  @@index([order_id])
+  @@index([settlement_id])
+  @@index([reversal_of_id])
+  @@map("ledger_entries")
+}
+
+model Commission {
+  id              String           @id @default(uuid()) @db.Uuid
+  organization_id String?          @db.Uuid
+  order_id        String?          @db.Uuid
+  seller_user_id  String           @db.Uuid
+  settlement_id   String?          @db.Uuid
+  // References a configurable policy key; no rate is hardcoded or seeded.
+  rule_key        String?          @db.VarChar(120)
+  basis           CommissionBasis  @default(EXTERNAL_RULE)
+  rate            Decimal?         @db.Decimal(12, 4)
+  amount          Decimal          @default(0) @db.Decimal(14, 2)
+  currency        String           @default("BDT") @db.Char(3)
+  status          CommissionStatus @default(CALCULATED)
+  created_at      DateTime         @default(now()) @db.Timestamp(6)
+  updated_at      DateTime         @updatedAt @db.Timestamp(6)
+
+  organization Organization? @relation(fields: [organization_id], references: [id], onDelete: SetNull)
+  order        Order?        @relation(fields: [order_id], references: [id], onDelete: SetNull)
+  seller       User          @relation("CommissionSeller", fields: [seller_user_id], references: [id], onDelete: Restrict)
+  settlement   Settlement?   @relation(fields: [settlement_id], references: [id], onDelete: SetNull)
+
+  @@index([organization_id, status])
+  @@index([order_id])
+  @@index([seller_user_id, status])
+  @@index([settlement_id])
+  @@map("commissions")
+}
+
+model Settlement {
+  id                String           @id @default(uuid()) @db.Uuid
+  organization_id   String?          @db.Uuid
+  seller_user_id    String           @db.Uuid
+  // Pay timing and calculation rules are external policy references only.
+  rule_key          String?          @db.VarChar(120)
+  period_start      DateTime         @db.Timestamp(6)
+  period_end        DateTime         @db.Timestamp(6)
+  gross_amount      Decimal          @db.Decimal(14, 2)
+  deductions_amount Decimal          @default(0) @db.Decimal(14, 2)
+  net_amount        Decimal          @db.Decimal(14, 2)
+  currency          String           @default("BDT") @db.Char(3)
+  status            SettlementStatus @default(DRAFT)
+  paid_at           DateTime?        @db.Timestamp(6)
+  created_at        DateTime         @default(now()) @db.Timestamp(6)
+  updated_at        DateTime         @updatedAt @db.Timestamp(6)
+
+  organization   Organization? @relation(fields: [organization_id], references: [id], onDelete: SetNull)
+  seller         User          @relation("SettlementSeller", fields: [seller_user_id], references: [id], onDelete: Restrict)
+  commissions    Commission[]
+  ledger_entries LedgerEntry[]
+
+  @@index([organization_id, status])
+  @@index([seller_user_id, period_start])
+  @@map("settlements")
+}
+
+// ---------------------------------------------------------------------------
+// Logistics
+// ---------------------------------------------------------------------------
+
+model Shipment {
+  id                     String         @id @default(uuid()) @db.Uuid
+  organization_id        String?        @db.Uuid
+  order_id               String         @db.Uuid
+  provider_id            String?        @db.Uuid
+  pickup_address_id      String?        @db.Uuid
+  destination_address_id String?        @db.Uuid
+  tracking_number        String?        @db.VarChar(120)
+  status                 ShipmentStatus @default(PENDING)
+  shipped_at             DateTime?      @db.Timestamp(6)
+  delivered_at           DateTime?      @db.Timestamp(6)
+  created_at             DateTime       @default(now()) @db.Timestamp(6)
+  updated_at             DateTime       @updatedAt @db.Timestamp(6)
+
+  organization        Organization?        @relation(fields: [organization_id], references: [id], onDelete: SetNull)
+  order               Order                @relation(fields: [order_id], references: [id], onDelete: Restrict)
+  provider            LogisticsProvider?   @relation(fields: [provider_id], references: [id], onDelete: SetNull)
+  pickup_address      OrganizationAddress? @relation("ShipmentPickupAddress", fields: [pickup_address_id], references: [id], onDelete: SetNull)
+  destination_address OrganizationAddress? @relation("ShipmentDestinationAddress", fields: [destination_address_id], references: [id], onDelete: SetNull)
+
+  deliveries           Delivery[]
+  quality_inspections  QualityInspection[]
+  traceability_records TraceabilityRecord[]
+
+  @@unique([provider_id, tracking_number])
+  @@index([organization_id, status])
+  @@index([order_id])
+  @@index([pickup_address_id])
+  @@index([destination_address_id])
+  @@map("shipments")
+}
+
+model Delivery {
+  id              String         @id @default(uuid()) @db.Uuid
+  shipment_id     String         @db.Uuid
+  attempt_number  Int
+  status          DeliveryStatus @default(SCHEDULED)
+  scheduled_at    DateTime?      @db.Timestamp(6)
+  attempted_at    DateTime?      @db.Timestamp(6)
+  delivered_at    DateTime?      @db.Timestamp(6)
+  recipient_name  String?        @db.VarChar(180)
+  recipient_phone String?        @db.VarChar(32)
+  proof_url       String?        @db.Text
+  created_at      DateTime       @default(now()) @db.Timestamp(6)
+  updated_at      DateTime       @updatedAt @db.Timestamp(6)
+
+  shipment Shipment @relation(fields: [shipment_id], references: [id], onDelete: Cascade)
+
+  @@unique([shipment_id, attempt_number])
+  @@index([status])
+  @@map("deliveries")
+}
+
+model LogisticsProvider {
+  id            String   @id @default(uuid()) @db.Uuid
+  code          String   @unique @db.VarChar(80)
+  name          String   @db.VarChar(180)
+  contact_email String?  @db.VarChar(255)
+  phone         String?  @db.VarChar(32)
+  is_active     Boolean  @default(true)
+  created_at    DateTime @default(now()) @db.Timestamp(6)
+  updated_at    DateTime @updatedAt @db.Timestamp(6)
+
+  shipments Shipment[]
+
+  @@map("logistics_providers")
+}
+
+model Warehouse {
+  id                    String                                @id @default(uuid()) @db.Uuid
+  organization_id       String                                @db.Uuid
+  code                  String                                @unique @db.VarChar(64)
+  name                  String                                @db.VarChar(180)
+  manager_user_id       String?                               @db.Uuid
+  address_id            String?                               @db.Uuid
+  division_id           String?                               @db.Uuid
+  district_id           String?                               @db.Uuid
+  upazila_id            String?                               @db.Uuid
+  union_id              String?                               @db.Uuid
+  location              Unsupported("geometry(Point, 4326)")?
+  capacity_cubic_meters Decimal?                              @db.Decimal(14, 3)
+  status                WarehouseStatus                       @default(ACTIVE)
+  created_at            DateTime                              @default(now()) @db.Timestamp(6)
+  updated_at            DateTime                              @updatedAt @db.Timestamp(6)
+
+  organization Organization         @relation(fields: [organization_id], references: [id], onDelete: Restrict)
+  manager      User?                @relation("WarehouseManager", fields: [manager_user_id], references: [id], onDelete: SetNull)
+  address      OrganizationAddress? @relation("WarehouseAddress", fields: [address_id], references: [id], onDelete: SetNull)
+  division     Division?            @relation(fields: [division_id], references: [id], onDelete: SetNull)
+  district     District?            @relation(fields: [district_id], references: [id], onDelete: SetNull)
+  upazila      Upazila?             @relation(fields: [upazila_id], references: [id], onDelete: SetNull)
+  union        Union?               @relation(fields: [union_id], references: [id], onDelete: SetNull)
+
+  inventories           ProductInventory[]
+  warehouse_inventories WarehouseInventory[]
+
+  @@index([organization_id, status])
+  @@index([division_id, district_id, upazila_id])
+  @@index([manager_user_id])
+  @@index([address_id])
+  @@index([district_id])
+  @@index([upazila_id])
+  @@index([union_id])
+  @@map("warehouses")
+}
+
+model WarehouseInventory {
+  id                 String   @id @default(uuid()) @db.Uuid
+  warehouse_id       String   @db.Uuid
+  product_id         String   @db.Uuid
+  batch_code         String   @default("NO_BATCH") @db.VarChar(80)
+  quantity_on_hand   Decimal  @default(0) @db.Decimal(14, 3)
+  quantity_reserved  Decimal  @default(0) @db.Decimal(14, 3)
+  available_quantity Decimal  @default(0) @db.Decimal(14, 3)
+  unit_code          String   @db.VarChar(16)
+  created_at         DateTime @default(now()) @db.Timestamp(6)
+  updated_at         DateTime @updatedAt @db.Timestamp(6)
+
+  warehouse Warehouse @relation(fields: [warehouse_id], references: [id], onDelete: Cascade)
+  product   Product   @relation(fields: [product_id], references: [id], onDelete: Restrict)
+
+  inspections QualityInspection[]
+
+  @@unique([warehouse_id, product_id, batch_code])
+  @@index([product_id])
+  @@map("warehouse_inventories")
+}
+
+model QualityInspection {
+  id                     String           @id @default(uuid()) @db.Uuid
+  organization_id        String?          @db.Uuid
+  shipment_id            String?          @db.Uuid
+  warehouse_inventory_id String?          @db.Uuid
+  product_id             String?          @db.Uuid
+  inspector_user_id      String           @db.Uuid
+  inspected_at           DateTime         @db.Timestamp(6)
+  result                 InspectionResult @default(PENDING)
+  grade                  String?          @db.VarChar(32)
+  notes                  String?          @db.Text
+  created_at             DateTime         @default(now()) @db.Timestamp(6)
+  updated_at             DateTime         @updatedAt @db.Timestamp(6)
+
+  organization        Organization?       @relation(fields: [organization_id], references: [id], onDelete: SetNull)
+  shipment            Shipment?           @relation(fields: [shipment_id], references: [id], onDelete: SetNull)
+  warehouse_inventory WarehouseInventory? @relation(fields: [warehouse_inventory_id], references: [id], onDelete: SetNull)
+  product             Product?            @relation(fields: [product_id], references: [id], onDelete: SetNull)
+  inspector           User                @relation("QualityInspector", fields: [inspector_user_id], references: [id], onDelete: Restrict)
+
+  @@index([organization_id, result])
+  @@index([shipment_id])
+  @@index([product_id])
+  @@index([warehouse_inventory_id])
+  @@index([inspector_user_id])
+  @@map("quality_inspections")
+}
+
+model TraceabilityRecord {
+  id              String                                @id @default(uuid()) @db.Uuid
+  organization_id String?                               @db.Uuid
+  product_id      String?                               @db.Uuid
+  harvest_id      String?                               @db.Uuid
+  cultivation_id  String?                               @db.Uuid
+  shipment_id     String?                               @db.Uuid
+  batch_code      String                                @db.VarChar(120)
+  event_type      TraceabilityEventType
+  occurred_at     DateTime                              @db.Timestamp(6)
+  location        Unsupported("geometry(Point, 4326)")?
+  metadata        Json?
+  created_at      DateTime                              @default(now()) @db.Timestamp(6)
+  updated_at      DateTime                              @updatedAt @db.Timestamp(6)
+
+  organization Organization? @relation(fields: [organization_id], references: [id], onDelete: SetNull)
+  product      Product?      @relation(fields: [product_id], references: [id], onDelete: SetNull)
+  harvest      Harvest?      @relation(fields: [harvest_id], references: [id], onDelete: SetNull)
+  cultivation  Cultivation?  @relation(fields: [cultivation_id], references: [id], onDelete: SetNull)
+  shipment     Shipment?     @relation(fields: [shipment_id], references: [id], onDelete: SetNull)
+
+  @@index([organization_id, batch_code, occurred_at])
+  @@index([product_id, event_type])
+  @@index([harvest_id])
+  @@index([shipment_id])
+  @@index([cultivation_id])
+  @@map("traceability_records")
+}
+
+// ---------------------------------------------------------------------------
+// AI
+// ---------------------------------------------------------------------------
+
+model KnowledgeSource {
+  id              String              @id @default(uuid()) @db.Uuid
+  organization_id String?             @db.Uuid
+  code            String              @unique @db.VarChar(80)
+  name            String              @db.VarChar(180)
+  source_type     KnowledgeSourceType @default(DOCUMENT)
+  uri             String?             @db.Text
+  is_active       Boolean             @default(true)
+  created_at      DateTime            @default(now()) @db.Timestamp(6)
+  updated_at      DateTime            @updatedAt @db.Timestamp(6)
+
+  organization Organization?       @relation(fields: [organization_id], references: [id], onDelete: SetNull)
+  documents    KnowledgeDocument[]
+
+  @@index([organization_id, is_active])
+  @@map("knowledge_sources")
+}
+
+model KnowledgeDocument {
+  id              String         @id @default(uuid()) @db.Uuid
+  organization_id String?        @db.Uuid
+  source_id       String?        @db.Uuid
+  title           String         @db.VarChar(255)
+  language        LanguageCode   @default(EN)
+  content_hash    String?        @db.VarChar(255)
+  status          DocumentStatus @default(INGESTED)
+  metadata        Json?
+  created_at      DateTime       @default(now()) @db.Timestamp(6)
+  updated_at      DateTime       @updatedAt @db.Timestamp(6)
+
+  organization Organization?    @relation(fields: [organization_id], references: [id], onDelete: SetNull)
+  source       KnowledgeSource? @relation(fields: [source_id], references: [id], onDelete: SetNull)
+
+  chunks KnowledgeChunk[]
+
+  @@index([organization_id, status])
+  @@index([source_id])
+  @@map("knowledge_documents")
+}
+
+model KnowledgeChunk {
+  id              String   @id @default(uuid()) @db.Uuid
+  document_id     String   @db.Uuid
+  chunk_index     Int
+  content         String   @db.Text
+  token_count     Int?
+  embedding_model String?  @db.VarChar(120)
+  created_at      DateTime @default(now()) @db.Timestamp(6)
+  updated_at      DateTime @updatedAt @db.Timestamp(6)
+
+  document             KnowledgeDocument    @relation(fields: [document_id], references: [id], onDelete: Cascade)
+  embedding_references EmbeddingReference[]
+
+  @@unique([document_id, chunk_index])
+  @@map("knowledge_chunks")
+}
+
+model EmbeddingReference {
+  id                String   @id @default(uuid()) @db.Uuid
+  organization_id   String?  @db.Uuid
+  chunk_id          String?  @db.Uuid
+  vector_collection String   @db.VarChar(120)
+  vector_id         String   @db.VarChar(255)
+  embedding_model   String   @db.VarChar(120)
+  dimensions        Int
+  created_at        DateTime @default(now()) @db.Timestamp(6)
+  updated_at        DateTime @updatedAt @db.Timestamp(6)
+
+  organization Organization?   @relation(fields: [organization_id], references: [id], onDelete: SetNull)
+  chunk        KnowledgeChunk? @relation(fields: [chunk_id], references: [id], onDelete: SetNull)
+
+  @@unique([vector_collection, vector_id])
+  @@index([organization_id])
+  @@index([chunk_id])
+  @@map("embedding_references")
+}
+
+model Conversation {
+  id              String   @id @default(uuid()) @db.Uuid
+  organization_id String?  @db.Uuid
+  user_id         String   @db.Uuid
+  title           String?  @db.VarChar(255)
+  status          String   @default("ACTIVE") @db.VarChar(32)
+  created_at      DateTime @default(now()) @db.Timestamp(6)
+  updated_at      DateTime @updatedAt @db.Timestamp(6)
+
+  organization     Organization?      @relation(fields: [organization_id], references: [id], onDelete: SetNull)
+  user             User               @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  messages         ChatMessage[]
+  recommendations  AIRecommendation[]
+  agent_executions AgentExecution[]
+
+  @@index([organization_id, user_id])
+  @@index([status])
+  @@index([user_id])
+  @@map("conversations")
+}
+
+model ChatMessage {
+  id              String   @id @default(uuid()) @db.Uuid
+  conversation_id String   @db.Uuid
+  role            ChatRole
+  content         String   @db.Text
+  token_count     Int?
+  created_at      DateTime @default(now()) @db.Timestamp(6)
+  updated_at      DateTime @updatedAt @db.Timestamp(6)
+
+  conversation Conversation @relation(fields: [conversation_id], references: [id], onDelete: Cascade)
+
+  @@index([conversation_id, created_at])
+  @@map("chat_messages")
+}
+
+model AIRecommendation {
+  id                  String               @id @default(uuid()) @db.Uuid
+  organization_id     String?              @db.Uuid
+  user_id             String?              @db.Uuid
+  conversation_id     String?              @db.Uuid
+  entity_type         String               @db.VarChar(80)
+  entity_id           String?              @db.VarChar(255)
+  recommendation_type RecommendationType
+  summary             String?              @db.Text
+  payload             Json
+  // Confidence is decision-support metadata, not a guarantee.
+  confidence_score    Decimal?             @db.Decimal(5, 4)
+  model_version       String?              @db.VarChar(120)
+  status              RecommendationStatus @default(DRAFT)
+  created_at          DateTime             @default(now()) @db.Timestamp(6)
+  updated_at          DateTime             @updatedAt @db.Timestamp(6)
+
+  organization Organization? @relation(fields: [organization_id], references: [id], onDelete: SetNull)
+  user         User?         @relation(fields: [user_id], references: [id], onDelete: SetNull)
+  conversation Conversation? @relation(fields: [conversation_id], references: [id], onDelete: SetNull)
+
+  feedback AIFeedback[]
+
+  @@index([organization_id, status])
+  @@index([entity_type, entity_id])
+  @@index([conversation_id])
+  @@index([user_id])
+  @@map("ai_recommendations")
+}
+
+model AgentExecution {
+  id                   String      @id @default(uuid()) @db.Uuid
+  organization_id      String?     @db.Uuid
+  initiated_by_user_id String?     @db.Uuid
+  conversation_id      String?     @db.Uuid
+  agent_name           String      @db.VarChar(120)
+  status               AgentStatus @default(QUEUED)
+  input                Json
+  output               Json?
+  error_message        String?     @db.Text
+  started_at           DateTime?   @db.Timestamp(6)
+  finished_at          DateTime?   @db.Timestamp(6)
+  created_at           DateTime    @default(now()) @db.Timestamp(6)
+  updated_at           DateTime    @updatedAt @db.Timestamp(6)
+
+  organization Organization? @relation(fields: [organization_id], references: [id], onDelete: SetNull)
+  initiated_by User?         @relation("AgentInitiator", fields: [initiated_by_user_id], references: [id], onDelete: SetNull)
+  conversation Conversation? @relation(fields: [conversation_id], references: [id], onDelete: SetNull)
+
+  feedback AIFeedback[]
+
+  @@index([organization_id, status])
+  @@index([conversation_id])
+  @@index([initiated_by_user_id])
+  @@map("agent_executions")
+}
+
+model AIFeedback {
+  id                 String   @id @default(uuid()) @db.Uuid
+  organization_id    String?  @db.Uuid
+  user_id            String   @db.Uuid
+  recommendation_id  String?  @db.Uuid
+  agent_execution_id String?  @db.Uuid
+  rating             Int?
+  comment            String?  @db.Text
+  created_at         DateTime @default(now()) @db.Timestamp(6)
+  updated_at         DateTime @updatedAt @db.Timestamp(6)
+
+  organization    Organization?     @relation(fields: [organization_id], references: [id], onDelete: SetNull)
+  user            User              @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  recommendation  AIRecommendation? @relation(fields: [recommendation_id], references: [id], onDelete: SetNull)
+  agent_execution AgentExecution?   @relation(fields: [agent_execution_id], references: [id], onDelete: SetNull)
+
+  @@index([organization_id, user_id])
+  @@index([recommendation_id])
+  @@index([agent_execution_id])
+  @@index([user_id])
+  @@map("ai_feedback")
+}
+
+// ---------------------------------------------------------------------------
+// SaaS
+// ---------------------------------------------------------------------------
+
+model SubscriptionPlan {
+  id               String          @id @default(uuid()) @db.Uuid
+  code             String          @unique @db.VarChar(80)
+  name             String          @db.VarChar(180)
+  description      String?         @db.Text
+  billing_interval BillingInterval @default(MONTHLY)
+  currency         String          @default("BDT") @db.Char(3)
+  // No plan prices are seeded; pricing is a business decision.
+  price_amount     Decimal         @db.Decimal(14, 2)
+  trial_days       Int             @default(0)
+  is_active        Boolean         @default(true)
+  created_at       DateTime        @default(now()) @db.Timestamp(6)
+  updated_at       DateTime        @updatedAt @db.Timestamp(6)
+
+  subscriptions Subscription[]
+
+  @@index([is_active])
+  @@map("subscription_plans")
+}
+
+model Subscription {
+  id              String             @id @default(uuid()) @db.Uuid
+  organization_id String             @db.Uuid
+  plan_id         String             @db.Uuid
+  status          SubscriptionStatus @default(TRIALING)
+  starts_at       DateTime           @db.Timestamp(6)
+  ends_at         DateTime?          @db.Timestamp(6)
+  cancelled_at    DateTime?          @db.Timestamp(6)
+  created_at      DateTime           @default(now()) @db.Timestamp(6)
+  updated_at      DateTime           @updatedAt @db.Timestamp(6)
+
+  organization Organization     @relation(fields: [organization_id], references: [id], onDelete: Restrict)
+  plan         SubscriptionPlan @relation(fields: [plan_id], references: [id], onDelete: Restrict)
+
+  invoices      SubscriptionInvoice[]
+  usage_records UsageRecord[]
+
+  @@index([organization_id, status])
+  @@index([plan_id])
+  @@map("subscriptions")
+}
+
+model SubscriptionInvoice {
+  id              String        @id @default(uuid()) @db.Uuid
+  organization_id String?       @db.Uuid
+  subscription_id String        @db.Uuid
+  invoice_number  String        @unique @db.VarChar(80)
+  amount          Decimal       @db.Decimal(14, 2)
+  currency        String        @default("BDT") @db.Char(3)
+  status          InvoiceStatus @default(DRAFT)
+  issued_at       DateTime      @default(now()) @db.Timestamp(6)
+  due_at          DateTime?     @db.Timestamp(6)
+  paid_at         DateTime?     @db.Timestamp(6)
+  created_at      DateTime      @default(now()) @db.Timestamp(6)
+  updated_at      DateTime      @updatedAt @db.Timestamp(6)
+
+  organization Organization? @relation(fields: [organization_id], references: [id], onDelete: SetNull)
+  subscription Subscription  @relation(fields: [subscription_id], references: [id], onDelete: Restrict)
+
+  @@index([organization_id, status])
+  @@index([subscription_id])
+  @@map("subscription_invoices")
+}
+
+model UsageRecord {
+  id              String   @id @default(uuid()) @db.Uuid
+  organization_id String?  @db.Uuid
+  subscription_id String?  @db.Uuid
+  metric_code     String   @db.VarChar(80)
+  quantity        Decimal  @default(0) @db.Decimal(14, 3)
+  period_start    DateTime @db.Timestamp(6)
+  period_end      DateTime @db.Timestamp(6)
+  recorded_at     DateTime @default(now()) @db.Timestamp(6)
+  created_at      DateTime @default(now()) @db.Timestamp(6)
+  updated_at      DateTime @updatedAt @db.Timestamp(6)
+
+  organization Organization? @relation(fields: [organization_id], references: [id], onDelete: SetNull)
+  subscription Subscription? @relation(fields: [subscription_id], references: [id], onDelete: SetNull)
+
+  @@unique([subscription_id, metric_code, recorded_at])
+  @@index([organization_id, metric_code])
+  @@index([period_start, period_end])
+  @@map("usage_records")
+}
+
+// ---------------------------------------------------------------------------
+// System and reliability
+// ---------------------------------------------------------------------------
+
+model Notification {
+  id              String              @id @default(uuid()) @db.Uuid
+  organization_id String?             @db.Uuid
+  user_id         String              @db.Uuid
+  channel         NotificationChannel @default(IN_APP)
+  type            String              @db.VarChar(80)
+  title           String              @db.VarChar(255)
+  body            String              @db.Text
+  data            Json?
+  status          NotificationStatus  @default(PENDING)
+  read_at         DateTime?           @db.Timestamp(6)
+  sent_at         DateTime?           @db.Timestamp(6)
+  created_at      DateTime            @default(now()) @db.Timestamp(6)
+  updated_at      DateTime            @updatedAt @db.Timestamp(6)
+
+  organization Organization? @relation(fields: [organization_id], references: [id], onDelete: SetNull)
+  user         User          @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@index([organization_id, user_id, status])
+  @@index([created_at])
+  @@index([user_id])
+  @@map("notifications")
+}
+
+model AuditLog {
+  id              String        @id @default(uuid()) @db.Uuid
+  organization_id String?       @db.Uuid
+  actor_user_id   String?       @db.Uuid
+  action          String        @db.VarChar(120)
+  entity_type     String        @db.VarChar(120)
+  entity_id       String?       @db.VarChar(255)
+  before          Json?
+  after           Json?
+  ip_address      String?       @db.VarChar(64)
+  user_agent      String?       @db.Text
+  severity        AuditSeverity @default(INFO)
+  // Audit rows are append-only; no updated_at by design.
+  created_at      DateTime      @default(now()) @db.Timestamp(6)
+
+  organization Organization? @relation(fields: [organization_id], references: [id], onDelete: SetNull)
+  actor        User?         @relation("AuditActor", fields: [actor_user_id], references: [id], onDelete: SetNull)
+
+  @@index([organization_id, created_at])
+  @@index([actor_user_id, created_at])
+  @@index([entity_type, entity_id])
+  @@index([severity])
+  @@map("audit_logs")
+}
+
+model OutboxEvent {
+  id              String       @id @default(uuid()) @db.Uuid
+  organization_id String?      @db.Uuid
+  aggregate_type  String       @db.VarChar(120)
+  aggregate_id    String       @db.VarChar(255)
+  event_type      String       @db.VarChar(120)
+  payload         Json
+  status          OutboxStatus @default(PENDING)
+  attempts        Int          @default(0)
+  available_at    DateTime     @default(now()) @db.Timestamp(6)
+  published_at    DateTime?    @db.Timestamp(6)
+  created_at      DateTime     @default(now()) @db.Timestamp(6)
+  updated_at      DateTime     @updatedAt @db.Timestamp(6)
+
+  organization Organization? @relation(fields: [organization_id], references: [id], onDelete: SetNull)
+
+  @@index([organization_id, status, available_at])
+  @@index([aggregate_type, aggregate_id])
+  @@index([status, available_at])
+  @@map("outbox_events")
+}
+
+model FeatureFlag {
+  id              String   @id @default(uuid()) @db.Uuid
+  organization_id String?  @db.Uuid
+  key             String   @db.VarChar(120)
+  // "GLOBAL" or the organization UUID; permits org-level overrides.
+  scope_key       String   @default("GLOBAL") @db.VarChar(64)
+  description     String?  @db.Text
+  is_enabled      Boolean  @default(false)
+  conditions      Json?
+  created_at      DateTime @default(now()) @db.Timestamp(6)
+  updated_at      DateTime @updatedAt @db.Timestamp(6)
+
+  organization Organization? @relation(fields: [organization_id], references: [id], onDelete: Cascade)
+
+  @@unique([key, scope_key])
+  @@index([organization_id])
+  @@map("feature_flags")
+}
+
+model PlatformSetting {
+  id              String   @id @default(uuid()) @db.Uuid
+  organization_id String?  @db.Uuid
+  key             String   @db.VarChar(120)
+  // "GLOBAL" or the organization UUID; unresolved policies live here.
+  scope_key       String   @default("GLOBAL") @db.VarChar(64)
+  value           Json
+  description     String?  @db.Text
+  is_active       Boolean  @default(true)
+  created_at      DateTime @default(now()) @db.Timestamp(6)
+  updated_at      DateTime @updatedAt @db.Timestamp(6)
+
+  organization Organization? @relation(fields: [organization_id], references: [id], onDelete: Cascade)
+
+  @@unique([key, scope_key])
+  @@index([organization_id, is_active])
+  @@map("platform_settings")
+}
