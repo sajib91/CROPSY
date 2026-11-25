@@ -1,9 +1,7 @@
-const { MODULE_ID, MODULE_NAME, AgricultureEntity } = require('./agriculture.entity');
-const { AgricultureRepositoryToken } = require('./agriculture.repository');
+const entity = require('./agriculture.entity');
+const repository = require('./agriculture.repository');
 
 module.exports = {
-  MODULE_ID,
-  MODULE_NAME,
-  AgricultureEntity,
-  AgricultureRepositoryToken,
+  ...entity,
+  ...repository,
 };

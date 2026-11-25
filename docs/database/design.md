@@ -1,6 +1,6 @@
 # Database design
 
-This document describes the CROPSY PostgreSQL database. Sources of truth are [`schema.prisma`](../../apps/api/prisma/schema.prisma), the [initial migration](../../apps/api/prisma/migrations/20261125000000_init/migration.sql), the [review-hardening migration](../../apps/api/prisma/migrations/20261125120000_review_hardening/migration.sql), the [auth-identity migration](../../apps/api/prisma/migrations/20261125130000_auth_identity/migration.sql), the [organization/profile migration](../../apps/api/prisma/migrations/20261125140000_organization_profile_management/migration.sql), and the [idempotent seed](../../apps/api/prisma/seed.js). The root baseline documents `RTB.md`, `SSD.md`, and `user-story.md` remain unchanged.
+This document describes the CROPSY PostgreSQL database. Sources of truth are [`schema.prisma`](../../apps/api/prisma/schema.prisma), the [initial migration](../../apps/api/prisma/migrations/20261125000000_init/migration.sql), the [review-hardening migration](../../apps/api/prisma/migrations/20261125120000_review_hardening/migration.sql), the [auth-identity migration](../../apps/api/prisma/migrations/20261125130000_auth_identity/migration.sql), the [organization/profile migration](../../apps/api/prisma/migrations/20261125140000_organization_profile_management/migration.sql), the [farm-management migration](../../apps/api/prisma/migrations/20261125150000_farm_management/migration.sql), the [crop/cultivation/expense migration](../../apps/api/prisma/migrations/20261125160000_crop_cultivation_expense_management/migration.sql), and the [idempotent seed](../../apps/api/prisma/seed.js). The root baseline documents `RTB.md`, `SSD.md`, and `user-story.md` remain unchanged.
 
 ## Technology choices
 
@@ -34,7 +34,7 @@ The hierarchy is strict and uses required `RESTRICT` foreign keys:
 
 Addresses, farm locations, listing locations, and warehouses reference division/district/upazila/union through **optional** FKs with `ON DELETE SET NULL`, so deleting a reference row does not destroy the address record. Codes (for example `BD-DHA`, `BD-DHA-DHA`) are unique.
 
-The seed inserts Bangladesh (`BD`), 8 divisions, and 64 districts with English and Bengali names. It does **not** seed upazilas or unions.
+The seed inserts Bangladesh (`BD`), 8 divisions, 64 districts, 64 upazilas, and 64 unions. Each district gets one deterministic Sadar upazila (`<district.code>-S`) and one union (`<district.code>-U`) so farm-location validation works without inventing a full administrative census. Division and district names include Bengali text; generated upazila/union names use English labels only.
 
 ## Tenant isolation and scopes
 
@@ -63,7 +63,7 @@ PostgreSQL enum types are generated from Prisma enums. Representative groups:
 | --- | --- |
 | Identity/access | `AccountStatus`, `Gender`, `PreferredLanguage`, `RoleScope`, `VerificationStatus`, `OtpPurpose` |
 | Organization | `OrganizationStatus`, `OrganizationMemberStatus`, `InvitationStatus` |
-| Agriculture | `FarmType`, `FarmStatus`, `LandOwnership`, `LandParcelStatus`, `CropCategory`, `CultivationStatus`, `FarmActivityType`, `HarvestStatus`, `AgriculturalInputCategory` |
+| Agriculture | `FarmType`, `FarmStatus`, `AreaUnit`, `LandOwnership`, `LandParcelStatus`, `FarmSoilTexture`, `SoilFertility`, `IrrigationSource`, `IrrigationMethod`, `IrrigationStatus`, `CropCategory`, `CultivationStatus`, `GrowthStage`, `ObservationSeverity`, `FarmActivityType`, `HarvestStatus`, `AgriculturalInputCategory`, `ExpenseCategory`, `ExpenseSource`, `RecommendationSource` |
 | Marketplace | `ListingStatus`, `PriceSource` |
 | Commerce | `CartStatus`, `OrderStatus`, `PaymentMethod`, `PaymentStatus`, `RefundStatus`, `RefundReason`, `TransactionType`, `TransactionDirection`, `TransactionStatus`, `LedgerAccountType`, `NormalBalance`, `CommissionBasis`, `CommissionStatus`, `SettlementStatus` |
 | Logistics | `ShipmentStatus`, `DeliveryStatus`, `WarehouseStatus`, `InspectionResult`, `TraceabilityEventType` |
@@ -75,7 +75,7 @@ Enum values are defined in `schema.prisma` and the migration. `OtpPurpose` inclu
 
 ## Indexes and unique constraints
 
-- Prisma-generated B-tree indexes cover FKs and common filters, typically `(organization_id, status)`, `(organization_id, created_at)`, and date/entity lookups. The review migration added 49 indexes that were missing a leading FK column (for example `products.category_id`, `conversations.user_id`, `notifications.user_id`, and Bangladesh district/upazila/union lookups) plus `outbox_events(status, available_at)` for global worker polling.
+- Prisma-generated B-tree indexes cover FKs and common filters, typically `(organization_id, status)`, `(organization_id, created_at)`, and date/entity lookups. The review migration added 49 indexes that were missing a leading FK column (for example `products.category_id`, `conversations.user_id`, `notifications.user_id`, and Bangladesh district/upazila/union lookups) plus `outbox_events(status, available_at)` for global worker polling. The farm migration adds `farms.operator_user_id`, soil type/fertility, and irrigation source/method/status indexes, plus unique keys for one soil profile per farm and `(farm_id, code)` per irrigation record.
 - Composite unique constraints cover join and scoped records, for example `(user_id, role_id, scope_key)`, `(role_id, permission_id)`, `(product_id, scope_key)`, `(cart_id, listing_id)`, `(warehouse_id, product_id, batch_code)`, `(key, scope_key)`, and `(subscription_id, metric_code, recorded_at)`.
 - Partial unique indexes (not expressible in the Prisma schema):
 
@@ -101,7 +101,7 @@ to store `NULL`.
 The migration adds raw SQL invariants so they hold even if application code is bypassed. By category:
 
 - **Identity/access:** non-negative login attempts; OTP attempt bounds; `user_roles.scope_key` must match `organization_id` (`PLATFORM` when null, org UUID when set).
-- **Geography/agriculture:** non-negative farm size and total area; strictly positive land-parcel and cultivation area; season months 1–12; expected harvest not before planting; non-negative activity cost and harvest quantity.
+- **Geography/agriculture:** non-negative farm size and total area; strictly positive land-parcel and cultivation area; season months 1–12; expected harvest not before planting; non-negative activity cost and harvest quantity. Farm-management checks require farm-location points to use SRID 4326 and fall inside the Bangladesh bounding box, require valid SRID 4326 polygons for farm boundaries and parcels, bound farm/parcel areas as non-negative, bound soil pH to 0–14 and organic matter to 0–100%, and bound irrigation capacity, command area, and weekly frequency. Crop/expense checks bound calendar months and harvest windows, require `scope_key = GLOBAL` only with a null organization (otherwise the organization UUID), bound confidence to 0–1 and recommendation validity ordering, require positive expenses with uppercase three-letter currency, require AI estimates to name a rule key, and reject recorded rows carrying estimate metadata. Variety/crop match and recommendation/calendar match are constraint triggers.
 - **Marketplace/inventory:** non-negative image sort order; `product_inventories.scope_key` must match `warehouse_id`; `available_quantity = quantity_on_hand - quantity_reserved` with non-negative bounds and `quantity_reserved <= quantity_on_hand`; positive listing, price-history, and cart prices; positive listing quantities and `min_order_quantity`; listing window ordering; positive location radius.
 - **Commerce/financial:** cart quantity/price positive; order amounts non-negative with `discount_amount <= subtotal_amount` and `total_amount = subtotal - discount + delivery_fee + tax`; `line_total = ROUND(quantity * unit_price, 2)`; payment amounts positive with `captured_amount <= amount` and `refunded_amount <= captured_amount`; refund/transaction/ledger amounts positive; commission amount/rate non-negative; `net_amount = gross_amount - deductions_amount` and settlement period ordering.
 - **Logistics:** positive warehouse capacity when set; warehouse inventory quantity consistency mirroring product inventory.
@@ -111,6 +111,7 @@ Triggers:
 
 - `refunds_within_captured_amount` calls `enforce_refund_cap()` before insert or update of `amount`, `status`, or `payment_id`. For `PROCESSED` refunds, the sum of processed refunds (including the new row) must not exceed the payment's `captured_amount`.
 - `ledger_entries_immutable` calls `prevent_posted_ledger_mutation()` before update or delete. Once `posted_at` is set, a ledger entry cannot be changed or removed; corrections require a reversal entry via `reversal_of_id`.
+- `farm_soil_profiles_tenant_match_check` and `farm_irrigations_tenant_match_check` use the review-hardening tenant function so child tenant keys match their farm. `farms_tenant_immutable_check` was recreated to include soil profiles and irrigations alongside parcels, cultivations, activities, and harvests.
 
 ## Engineering review hardening
 
@@ -163,7 +164,7 @@ auth/RBAC layer. The initial and review-hardening migrations remain immutable.
   `AUTH_STORE=prisma`; development/tests can use the in-memory adapter. Role,
   permission, organization membership, and audit rows are read on every
   authorization decision so policy changes take effect without redeploying.
-- The seed maps 12 canonical categories and 10 legacy aliases to 46 permissions.
+- The seed maps 12 canonical categories and 10 legacy aliases to 50 permissions.
   See [`../security/permission-matrix.md`](../security/permission-matrix.md)
   for the effective grid.
 
@@ -195,6 +196,73 @@ immutable. Prisma generates the `CREATE TABLE`/`ALTER TABLE` DDL; the final
 - Partial unique indexes keep one primary address per user and per organization.
   No verification column was added to `user_profiles`: profile verification is
   derived from `users.is_email_verified` and `users.is_phone_verified`.
+
+## Farm management follow-up
+
+The follow-up migration `20261125150000_farm_management` adds the storage and
+database invariants used by the farm APIs. Earlier migrations remain immutable;
+Prisma generates the table/column/index DDL and the geographic checks, tenant
+triggers, and trigger recreation are raw SQL.
+
+- `farms` gains `description`, `area_unit`, `area_value`, `total_area_hectares`,
+  `ownership_type`, `ownership_reference`, and operator name/contact/since
+  fields. `AreaUnit` accepts only `HECTARE`, `ACRE`, and `SQUARE_METER`; the
+  application converts to a canonical hectare value and does not define
+  bigha/katha rates. `operator_user_id` optionally references `users`.
+- `land_parcels` gains `area_unit`, `area_value`, and canonical
+  `area_hectares`, mirroring farm area storage.
+- `farm_soil_profiles` stores one agronomic profile per farm (unique `farm_id`)
+  with soil type, texture, pH, organic matter, fertility, drainage, test date,
+  lab, and notes. `farm_irrigations` stores multiple records per farm with a
+  unique `(farm_id, code)` key and source/method/status/capacity/command-area/
+  frequency fields.
+- Both child tables repeat `organization_id` and are covered by tenant-match and
+  tenant-immutable constraint triggers. Tenant reassignment of a farm is
+  rejected while any parcel, cultivation, activity, harvest, soil, or
+  irrigation child still references it.
+- Geometry validation is enforced at the database boundary: farm-location points
+  are SRID 4326 inside Bangladesh, and farm/parcel polygons are valid SRID 4326
+  polygons. Raw `$queryRaw`/`$executeRaw` remains necessary for geometry reads
+  and writes.
+- No commission, payment, subscription, settlement, tax, or land-conversion
+  policy was introduced.
+
+## Crop, cultivation, and expense follow-up
+
+The follow-up migration `20261125160000_crop_cultivation_expense_management`
+adds the crop-cycle and expense storage used by the agriculture APIs. It is a
+new migration; earlier migrations remain immutable. Prisma generates the tables,
+columns, enums, indexes, and foreign keys, while scope/value checks and match
+triggers are raw SQL.
+
+- `cultivations` gains `crop_calendar_id`, `crop_id` (derived from the variety),
+  `harvested_at`, `growth_stage`, and expected-yield/notes fields. Unique
+  `(farm_id, code)` and indexes on dates, stage, crop, and calendar support
+  cultivation history and comparisons.
+- `farm_activities` gains `growth_stage`, `observation_severity`, `quantity`,
+  `unit_code`, actor, and index coverage so sowing, stage changes, observations,
+  and other work remain one auditable timeline per farm/cultivation.
+- `crop_calendars` stores tenant or platform sowing windows, optional variety
+  scoping, and configurable harvest-day bounds. `agronomic_recommendations`
+  stores configured or AI guidance with confidence, rule key, and validity
+  window. Both use `scope_key = GLOBAL` for platform rows and the organization
+  UUID for tenant rows; global rows are referenceable by all tenants.
+- `farm_expenses` records actual or AI-estimated costs with category, date,
+  amount, currency, optional cultivation allocation, receipt metadata, rule key,
+  and confidence. Its `source` check keeps `RECORDED` and `AI_ESTIMATED` rows
+  mutually exclusive with their metadata so reports cannot silently treat an
+  estimate as actual cost.
+- Calendar/recommendation scopes, month/harvest bounds, confidence ranges,
+  validity ordering, AI rule keys, and variety/crop matches are database
+  constraints. Tenant-match triggers cover calendar references and expenses;
+  farm/cultivation tenant-immutability triggers were recreated to include
+  `farm_expenses`.
+- Harvest windows, growth/observation vocabularies, expense categories, rule
+  keys, and currencies are stored/configurable. No price, commission, payment
+  provider, subscription, settlement rule, or agronomic value is invented.
+
+`AGRICULTURE_STORE` selects the module's persistence adapter: `memory` is the
+local/test default and production requires `prisma`.
 
 ## PostGIS geometry and nearby listings
 
@@ -232,6 +300,12 @@ const nearby = await prisma.$queryRaw`
 
 `ST_MakePoint` takes **longitude first, latitude second**; SRID 4326 is WGS84. Writes to geometry columns also require raw SQL (or a separate migration), not Prisma Client.
 
+Farm map and spatial queries use the same raw geometry access inside the
+`farmers` module: bounding boxes use `ST_MakeEnvelope`, radius searches cast to
+`geography` for meter-based `ST_DWithin`, and polygon searches use
+`ST_Intersects`. The service filters database candidates by farm visibility and
+private-coordinate policy before serializing any geometry.
+
 ## AI decision-support boundaries
 
 - `knowledge_sources`, `knowledge_documents`, `knowledge_chunks`, and `embedding_references` store ingestion metadata and references to an external vector collection; embeddings themselves are not stored as a Postgres vector type.
@@ -245,8 +319,8 @@ const nearby = await prisma.$queryRaw`
 
 | Data | Contents |
 | --- | --- |
-| Geography | 1 country (`BD`), 8 divisions, 64 districts |
-| Access control | 22 roles (12 canonical categories + 10 legacy aliases), 46 permissions, and 428 role-to-permission assignments |
+| Geography | 1 country (`BD`), 8 divisions, 64 districts, 64 upazilas, 64 unions |
+| Access control | 22 roles (12 canonical categories + 10 legacy aliases), 50 permissions, and 479 role-to-permission assignments |
 | Catalog | 10 product categories |
 | Ledger skeleton | 10 chart-of-accounts entries (assets, liabilities, equity, revenue, expense) |
 | Platform settings | `currency.default` (`BDT`, scale 2) and `geography.default_country` (`BD`) |
@@ -263,7 +337,7 @@ These values remain configurable via `PlatformSetting` (`key` + `scope_key`), th
 
 ## Database tests
 
-[`apps/api/test/database/integrity.test.js`](../../apps/api/test/database/integrity.test.js) runs only when `DATABASE_URL` is set. [`scripts/test-database.sh`](../../scripts/test-database.sh), exposed as `npm run db:test`, provides a complete self-contained check: it starts a temporary PostgreSQL 17 + PostGIS 3.5 container, validates and generates Prisma Client, deploys all migrations, checks for drift, runs the seed twice, then executes the tests.
+[`apps/api/test/database/integrity.test.js`](../../apps/api/test/database/integrity.test.js), [`apps/api/test/database/farms.test.js`](../../apps/api/test/database/farms.test.js), and [`apps/api/test/database/agriculture.test.js`](../../apps/api/test/database/agriculture.test.js) run only when `DATABASE_URL` is set. [`scripts/test-database.sh`](../../scripts/test-database.sh), exposed as `npm run db:test`, provides a complete self-contained check: it starts a temporary PostgreSQL 17 + PostGIS 3.5 container, validates and generates Prisma Client, deploys all migrations, checks for drift, runs the seed twice, then executes the tests. `CROPSY_RUN_DB_TESTS=1 npm run verify` includes this containerized run.
 
 Covered cases:
 
@@ -280,7 +354,14 @@ Covered cases:
 | Preference uniqueness | one row per `(user_id, channel, event_type)` |
 | Profile extension scope | `scope_key` check and `(user_id, role_code, scope_key)` uniqueness |
 | One primary address | partial unique indexes for user and organization addresses |
-| Migration and seed state | four applied migrations, no drift, and stable 22/46/428 counts |
+| Farm bundle persistence | farm, location, parcel, soil, and irrigation round-trip through `FarmPrismaStore` |
+| PostGIS queries | bounding box, meter-based radius, polygon, status, and archived-farm filters |
+| Invalid farm geography | outside-Bangladesh points, wrong SRID, and self-intersecting polygons rejected by checks |
+| Soil and irrigation invariants | pH/organic-matter bounds and tenant-match triggers |
+| Farm tenant immutability | reassignment blocked while child rows still reference the old tenant |
+| Agriculture persistence | `AgriculturePrismaStore` normalizes decimals and filters expense/calendar records |
+| Crop/expense guards | calendar scope/month/harvest window, recommendation AI rule/scope/calendar match, expense amount/currency/source/confidence, and variety/tenant matches |
+| Migration and seed state | six applied migrations, no drift, farm/agriculture objects, and stable 22/50/479 counts |
 
 ## Validation performed
 
@@ -289,15 +370,17 @@ The final review run completed the following checks:
 1. `prisma format` — schema formatted successfully.
 2. `prisma validate` — schema valid.
 3. `prisma generate` — Prisma Client generated successfully.
-4. `prisma migrate deploy` on a fresh temporary PostgreSQL 17 + PostGIS 3.5 instance — all four migrations applied, including indexes, functions, triggers, validated checks, nullable email, the new OTP purpose, organization/profile tables, and the `scope_key` check.
+4. `prisma migrate deploy` on a fresh temporary PostgreSQL 17 + PostGIS 3.5 instance — all six migrations applied, including indexes, functions, triggers, validated checks, nullable email, the new OTP purpose, organization/profile tables, farm soil/irrigation tables, area/soil/irrigation checks, farm geometry/tenant guards, crop calendars, recommendations, and expense guards.
 5. `prisma migrate diff --from-migrations --to-schema-datamodel` — empty diff; no drift between migrations and schema.
-6. Idempotent seed run twice — stable counts: 1 country, 8 divisions, 64 districts, 22 roles (12 canonical + 10 aliases), 46 permissions, 428 assignments, 10 product categories, 10 ledger accounts, and 2 platform settings.
-7. `npm run db:test` — 10/10 database integrity/concurrency tests passed.
+6. Idempotent seed run twice — stable counts: 1 country, 8 divisions, 64 districts, 64 upazilas, 64 unions, 22 roles (12 canonical + 10 aliases), 50 permissions, 479 assignments, 10 product categories, 10 ledger accounts, and 2 platform settings.
+7. `npm run db:test` — 21/21 database tests passed (10 integrity/concurrency, 6 farm/PostGIS, and 5 agriculture persistence/guards).
 8. `npm run verify` — boundary check, lint, format check, builds, API/AI tests, optional database tests, and live health checks passed.
 
 ## Operational notes
 
 - `DATABASE_URL` must be set. The seed throws if it is missing. [`packages/config/index.js`](../../packages/config/index.js) validates a default for the API, but Prisma reads the environment directly; use the template in [`.env.example`](../../.env.example) explicitly.
+- `FARM_STORE` selects the farmers module's persistence adapter. `memory` is the local/test default; production requires `FARM_STORE=prisma` so farm bundles and PostGIS queries use the tables described here.
+- `AGRICULTURE_STORE` selects the agriculture module's persistence adapter. `memory` is the local/test default; production requires `AGRICULTURE_STORE=prisma` so calendars, cultivations, activities, harvests, expenses, and reports use the tables described here.
 - First migration needs a role that can `CREATE EXTENSION postgis`.
 - `Unsupported` geometry fields are not available through Prisma Client. Use `$queryRaw` / `$executeRaw` for geometry reads and writes, and manage spatial indexes in raw SQL migrations.
-- The initial migration is the immutable baseline; `20261125120000_review_hardening`, `20261125130000_auth_identity`, and `20261125140000_organization_profile_management` are follow-ups. Future schema or invariant changes require new migrations; do not edit any applied migration in place.
+- The initial migration is the immutable baseline; `20261125120000_review_hardening`, `20261125130000_auth_identity`, `20261125140000_organization_profile_management`, `20261125150000_farm_management`, and `20261125160000_crop_cultivation_expense_management` are follow-ups. Future schema or invariant changes require new migrations; do not edit any applied migration in place.

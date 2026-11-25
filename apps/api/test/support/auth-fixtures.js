@@ -13,6 +13,7 @@ function authTestEnv(overrides = {}) {
     API_PREFIX: '/api/v1',
     SERVICE_NAME: 'cropsy-auth-test',
     AUTH_STORE: 'memory',
+    FARM_STORE: 'memory',
     AUTH_OTP_PROVIDER_MODE: 'preview',
     AUTH_JWT_SECRET: TEST_SECRET,
     AUTH_RATE_LIMIT_MAX_ATTEMPTS: 1000,

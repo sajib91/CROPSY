@@ -10,6 +10,10 @@ const IdentityStoreToken = Symbol.for('cropsy.platform.identityStore');
 const PlatformAuthorizationToken = Symbol.for('cropsy.platform.authorization');
 const PlatformTokenManagerToken = Symbol.for('cropsy.platform.tokenManager');
 
+// Read-only farm lookup port published by the farmers module so agriculture can
+// validate farm ownership/tenant scope without importing another module.
+const FarmAccessPortToken = Symbol.for('cropsy.platform.farmAccess');
+
 module.exports = {
   ConfigToken,
   LoggerToken,
@@ -18,4 +22,5 @@ module.exports = {
   IdentityStoreToken,
   PlatformAuthorizationToken,
   PlatformTokenManagerToken,
+  FarmAccessPortToken,
 };

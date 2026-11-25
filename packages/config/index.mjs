@@ -30,6 +30,8 @@ const apiSchema = sharedSchema
     CORS_ORIGIN: z.string().trim().min(1).default('http://localhost:3000'),
     SERVICE_NAME: z.string().trim().min(1).default('cropsy-business-api'),
     AUTH_STORE: z.enum(['memory', 'prisma']).default('memory'),
+    FARM_STORE: z.enum(['memory', 'prisma']).default('memory'),
+    AGRICULTURE_STORE: z.enum(['memory', 'prisma']).default('memory'),
     AUTH_JWT_SECRET: z.string().trim().min(1).default('dev-only-cropsy-access-token-secret'),
     AUTH_ACCESS_TOKEN_TTL_SECONDS: z.coerce.number().int().positive().default(900),
     AUTH_REFRESH_TOKEN_TTL_SECONDS: z.coerce.number().int().positive().default(2592000),
@@ -78,6 +80,20 @@ const apiSchema = sharedSchema
           code: z.ZodIssueCode.custom,
           path: ['AUTH_STORE'],
           message: 'Production must use the Prisma authentication store',
+        });
+      }
+      if (value.FARM_STORE !== 'prisma') {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['FARM_STORE'],
+          message: 'Production must use the Prisma farm store',
+        });
+      }
+      if (value.AGRICULTURE_STORE !== 'prisma') {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['AGRICULTURE_STORE'],
+          message: 'Production must use the Prisma agriculture store',
         });
       }
       if (value.AUTH_OTP_PROVIDER_MODE !== 'http') {

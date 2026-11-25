@@ -134,6 +134,61 @@ enum LandParcelStatus {
   UNAVAILABLE
 }
 
+// CROPSY stores a canonical hectare value and the unit the farmer supplied.
+// Only globally unambiguous units are accepted; region-specific bigha/katha
+// conventions belong in notes unless a tenant configures its own conversion.
+enum AreaUnit {
+  HECTARE
+  ACRE
+  SQUARE_METER
+}
+
+enum FarmSoilTexture {
+  CLAY
+  CLAY_LOAM
+  LOAM
+  SANDY_LOAM
+  SANDY
+  SILT
+  SILTY_LOAM
+  OTHER
+}
+
+enum SoilFertility {
+  LOW
+  MEDIUM
+  HIGH
+  UNKNOWN
+}
+
+enum IrrigationSource {
+  RAINFED
+  CANAL
+  RIVER
+  POND
+  GROUNDWATER
+  DEEP_WELL
+  SHALLOW_WELL
+  WATER_SUPPLY
+  OTHER
+}
+
+enum IrrigationMethod {
+  FLOOD
+  FURROW
+  SPRINKLER
+  DRIP
+  CHANNEL
+  MANUAL
+  OTHER
+}
+
+enum IrrigationStatus {
+  ACTIVE
+  INACTIVE
+  SEASONAL
+}
+
 enum CropCategory {
   CEREAL
   PULSE
@@ -156,10 +211,15 @@ enum CultivationStatus {
 }
 
 enum FarmActivityType {
+  LAND_PREPARATION
+  SOWING
   PLANTING
   IRRIGATION
   FERTILIZATION
   PEST_CONTROL
+  GROWTH_STAGE
+  DISEASE_OBSERVATION
+  PEST_OBSERVATION
   WEEDING
   PRUNING
   MONITORING
@@ -180,6 +240,47 @@ enum AgriculturalInputCategory {
   FEED
   TOOL
   OTHER
+}
+
+// Recorded financial events. AI estimates use the same shape but a different
+// source so they can never be silently counted as actual production cost.
+enum ExpenseCategory {
+  SEEDS
+  FERTILIZER
+  PESTICIDE
+  IRRIGATION
+  LABOR
+  MACHINERY
+  TRANSPORTATION
+  LAND_PREPARATION
+  OTHER
+}
+
+enum ExpenseSource {
+  RECORDED
+  AI_ESTIMATED
+}
+
+enum GrowthStage {
+  NOT_SET
+  GERMINATION
+  VEGETATIVE
+  FLOWERING
+  FRUITING
+  MATURITY
+  HARVEST_READY
+}
+
+enum ObservationSeverity {
+  LOW
+  MEDIUM
+  HIGH
+  UNKNOWN
+}
+
+enum RecommendationSource {
+  CONFIGURED
+  AI_ESTIMATED
 }
 
 enum ListingStatus {
@@ -604,6 +705,7 @@ model User {
   notifications            Notification[]
   audit_logs               AuditLog[]               @relation("AuditActor")
   farms                    Farm[]
+  operated_farms           Farm[]                   @relation("FarmOperator")
   productListings          ProductListing[]
 
   @@index([account_status])
@@ -795,55 +897,60 @@ model Organization {
   created_at          DateTime           @default(now()) @db.Timestamp(6)
   updated_at          DateTime           @updatedAt @db.Timestamp(6)
 
-  owner                   User                     @relation("OrganizationOwner", fields: [owner_user_id], references: [id], onDelete: Restrict)
-  verified_by             User?                    @relation("OrganizationVerifiedBy", fields: [verified_by_user_id], references: [id], onDelete: SetNull)
-  documents               OrganizationDocument[]
-  role_profile_extensions RoleProfileExtension[]
-  members                 OrganizationMember[]
-  invitations             OrganizationInvitation[]
-  addresses               OrganizationAddress[]
-  user_roles              UserRole[]
-  farmer_profiles         FarmerProfile[]
-  crop_seasons            CropSeason[]
-  farms                   Farm[]
-  land_parcels            LandParcel[]
-  cultivations            Cultivation[]
-  farm_activities         FarmActivity[]
-  harvests                Harvest[]
-  agricultural_inputs     AgriculturalInput[]
-  product_categories      ProductCategory[]
-  products                Product[]
-  product_inventories     ProductInventory[]
-  product_listings        ProductListing[]
-  price_history           PriceHistory[]
-  carts                   Cart[]
-  orders                  Order[]
-  payments                Payment[]
-  refunds                 Refund[]
-  transactions            Transaction[]
-  ledger_accounts         LedgerAccount[]
-  ledger_entries          LedgerEntry[]
-  commissions             Commission[]
-  settlements             Settlement[]
-  shipments               Shipment[]
-  warehouses              Warehouse[]
-  quality_inspections     QualityInspection[]
-  traceability_records    TraceabilityRecord[]
-  knowledge_sources       KnowledgeSource[]
-  knowledge_documents     KnowledgeDocument[]
-  embedding_references    EmbeddingReference[]
-  conversations           Conversation[]
-  recommendations         AIRecommendation[]
-  agent_executions        AgentExecution[]
-  subscriptions           Subscription[]
-  subscription_invoices   SubscriptionInvoice[]
-  usage_records           UsageRecord[]
-  notifications           Notification[]
-  audit_logs              AuditLog[]
-  outbox_events           OutboxEvent[]
-  feature_flags           FeatureFlag[]
-  platform_settings       PlatformSetting[]
-  aifeedbacks             AIFeedback[]
+  owner                     User                      @relation("OrganizationOwner", fields: [owner_user_id], references: [id], onDelete: Restrict)
+  verified_by               User?                     @relation("OrganizationVerifiedBy", fields: [verified_by_user_id], references: [id], onDelete: SetNull)
+  documents                 OrganizationDocument[]
+  role_profile_extensions   RoleProfileExtension[]
+  members                   OrganizationMember[]
+  invitations               OrganizationInvitation[]
+  addresses                 OrganizationAddress[]
+  user_roles                UserRole[]
+  farmer_profiles           FarmerProfile[]
+  crop_seasons              CropSeason[]
+  farms                     Farm[]
+  farm_soil_profiles        FarmSoilProfile[]
+  farm_irrigations          FarmIrrigation[]
+  land_parcels              LandParcel[]
+  cultivations              Cultivation[]
+  farm_activities           FarmActivity[]
+  harvests                  Harvest[]
+  agricultural_inputs       AgriculturalInput[]
+  crop_calendars            CropCalendar[]
+  agronomic_recommendations AgronomicRecommendation[]
+  farm_expenses             FarmExpense[]
+  product_categories        ProductCategory[]
+  products                  Product[]
+  product_inventories       ProductInventory[]
+  product_listings          ProductListing[]
+  price_history             PriceHistory[]
+  carts                     Cart[]
+  orders                    Order[]
+  payments                  Payment[]
+  refunds                   Refund[]
+  transactions              Transaction[]
+  ledger_accounts           LedgerAccount[]
+  ledger_entries            LedgerEntry[]
+  commissions               Commission[]
+  settlements               Settlement[]
+  shipments                 Shipment[]
+  warehouses                Warehouse[]
+  quality_inspections       QualityInspection[]
+  traceability_records      TraceabilityRecord[]
+  knowledge_sources         KnowledgeSource[]
+  knowledge_documents       KnowledgeDocument[]
+  embedding_references      EmbeddingReference[]
+  conversations             Conversation[]
+  recommendations           AIRecommendation[]
+  agent_executions          AgentExecution[]
+  subscriptions             Subscription[]
+  subscription_invoices     SubscriptionInvoice[]
+  usage_records             UsageRecord[]
+  notifications             Notification[]
+  audit_logs                AuditLog[]
+  outbox_events             OutboxEvent[]
+  feature_flags             FeatureFlag[]
+  platform_settings         PlatformSetting[]
+  aifeedbacks               AIFeedback[]
 
   @@index([owner_user_id])
   @@index([status])
@@ -1050,30 +1157,45 @@ model FarmerProfile {
 }
 
 model Farm {
-  id                  String     @id @default(uuid()) @db.Uuid
-  organization_id     String?    @db.Uuid
-  owner_user_id       String     @db.Uuid
-  name                String     @db.VarChar(180)
-  code                String     @unique @db.VarChar(64)
-  farm_type           FarmType   @default(OTHER)
-  status              FarmStatus @default(ACTIVE)
-  total_area_hectares Decimal    @default(0) @db.Decimal(12, 3)
-  created_at          DateTime   @default(now()) @db.Timestamp(6)
-  updated_at          DateTime   @updatedAt @db.Timestamp(6)
+  id                  String        @id @default(uuid()) @db.Uuid
+  organization_id     String?       @db.Uuid
+  owner_user_id       String        @db.Uuid
+  name                String        @db.VarChar(180)
+  description         String?       @db.Text
+  code                String        @unique @db.VarChar(64)
+  farm_type           FarmType      @default(OTHER)
+  status              FarmStatus    @default(ACTIVE)
+  area_unit           AreaUnit      @default(HECTARE)
+  area_value          Decimal       @default(0) @db.Decimal(12, 3)
+  total_area_hectares Decimal       @default(0) @db.Decimal(12, 3)
+  ownership_type      LandOwnership @default(OWNED)
+  ownership_reference String?       @db.VarChar(180)
+  operator_user_id    String?       @db.Uuid
+  operator_name       String?       @db.VarChar(180)
+  operator_phone      String?       @db.VarChar(32)
+  operator_email      String?       @db.VarChar(255)
+  operating_since     DateTime?     @db.Timestamp(6)
+  created_at          DateTime      @default(now()) @db.Timestamp(6)
+  updated_at          DateTime      @updatedAt @db.Timestamp(6)
 
   organization Organization? @relation(fields: [organization_id], references: [id], onDelete: SetNull)
   owner        User          @relation(fields: [owner_user_id], references: [id], onDelete: Restrict)
+  operator     User?         @relation("FarmOperator", fields: [operator_user_id], references: [id], onDelete: SetNull)
 
   location          FarmLocation?
+  soil_profile      FarmSoilProfile?
+  irrigations       FarmIrrigation[]
   parcels           LandParcel[]
   cultivations      Cultivation[]
   activities        FarmActivity[]
   harvests          Harvest[]
-  farmer_profile    FarmerProfile? @relation(fields: [farmer_profile_id], references: [id])
-  farmer_profile_id String?        @db.Uuid
+  expenses          FarmExpense[]
+  farmer_profile    FarmerProfile?   @relation(fields: [farmer_profile_id], references: [id])
+  farmer_profile_id String?          @db.Uuid
 
   @@index([organization_id, status])
   @@index([owner_user_id])
+  @@index([operator_user_id])
   @@index([farmer_profile_id])
   @@map("farms")
 }
@@ -1110,6 +1232,8 @@ model LandParcel {
   farm_id         String                                  @db.Uuid
   code            String                                  @db.VarChar(64)
   name            String?                                 @db.VarChar(180)
+  area_unit       AreaUnit                                @default(HECTARE)
+  area_value      Decimal                                 @default(0) @db.Decimal(12, 3)
   area_hectares   Decimal                                 @db.Decimal(12, 3)
   ownership_type  LandOwnership                           @default(OWNED)
   status          LandParcelStatus                        @default(AVAILABLE)
@@ -1128,6 +1252,54 @@ model LandParcel {
   @@map("land_parcels")
 }
 
+model FarmSoilProfile {
+  id                     String          @id @default(uuid()) @db.Uuid
+  organization_id        String?         @db.Uuid
+  farm_id                String          @unique @db.Uuid
+  soil_type              String          @db.VarChar(120)
+  texture                FarmSoilTexture @default(OTHER)
+  ph                     Decimal?        @db.Decimal(4, 2)
+  organic_matter_percent Decimal?        @db.Decimal(5, 2)
+  fertility              SoilFertility   @default(UNKNOWN)
+  drainage               String?         @db.VarChar(120)
+  tested_at              DateTime?       @db.Timestamp(6)
+  testing_lab            String?         @db.VarChar(180)
+  notes                  String?         @db.Text
+  created_at             DateTime        @default(now()) @db.Timestamp(6)
+  updated_at             DateTime        @updatedAt @db.Timestamp(6)
+
+  organization Organization? @relation(fields: [organization_id], references: [id], onDelete: SetNull)
+  farm         Farm          @relation(fields: [farm_id], references: [id], onDelete: Cascade)
+
+  @@index([organization_id, soil_type])
+  @@index([fertility])
+  @@map("farm_soil_profiles")
+}
+
+model FarmIrrigation {
+  id                         String           @id @default(uuid()) @db.Uuid
+  organization_id            String?          @db.Uuid
+  farm_id                    String           @db.Uuid
+  code                       String           @db.VarChar(64)
+  source                     IrrigationSource
+  method                     IrrigationMethod
+  status                     IrrigationStatus @default(ACTIVE)
+  capacity_liters_per_minute Decimal?         @db.Decimal(12, 2)
+  command_area_hectares      Decimal?         @db.Decimal(12, 3)
+  frequency_per_week         Int?
+  notes                      String?          @db.Text
+  created_at                 DateTime         @default(now()) @db.Timestamp(6)
+  updated_at                 DateTime         @updatedAt @db.Timestamp(6)
+
+  organization Organization? @relation(fields: [organization_id], references: [id], onDelete: SetNull)
+  farm         Farm          @relation(fields: [farm_id], references: [id], onDelete: Cascade)
+
+  @@unique([farm_id, code])
+  @@index([organization_id, status])
+  @@index([source, method])
+  @@map("farm_irrigations")
+}
+
 model Crop {
   id         String       @id @default(uuid()) @db.Uuid
   code       String       @unique @db.VarChar(64)
@@ -1139,8 +1311,10 @@ model Crop {
   updated_at DateTime     @updatedAt @db.Timestamp(6)
 
   varieties           CropVariety[]
+  calendars           CropCalendar[]
+  recommendations     AgronomicRecommendation[]
   cultivations        Cultivation[]
-  primary_for_farmers FarmerProfile[] @relation("FarmerPrimaryCrop")
+  primary_for_farmers FarmerProfile[]           @relation("FarmerPrimaryCrop")
 
   @@index([category, is_active])
   @@map("crops")
@@ -1156,8 +1330,10 @@ model CropVariety {
   created_at    DateTime @default(now()) @db.Timestamp(6)
   updated_at    DateTime @updatedAt @db.Timestamp(6)
 
-  crop         Crop          @relation(fields: [crop_id], references: [id], onDelete: Cascade)
-  cultivations Cultivation[]
+  crop            Crop                      @relation(fields: [crop_id], references: [id], onDelete: Cascade)
+  cultivations    Cultivation[]
+  calendars       CropCalendar[]
+  recommendations AgronomicRecommendation[]
 
   @@unique([crop_id, code])
   @@map("crop_varieties")
@@ -1190,52 +1366,65 @@ model Cultivation {
   land_parcel_id      String?           @db.Uuid
   crop_variety_id     String            @db.Uuid
   crop_season_id      String?           @db.Uuid
+  crop_calendar_id    String?           @db.Uuid
+  code                String?           @db.VarChar(64)
   status              CultivationStatus @default(PLANNED)
+  sown_at             DateTime?         @db.Timestamp(6)
   planted_at          DateTime?         @db.Timestamp(6)
   expected_harvest_at DateTime?         @db.Timestamp(6)
   harvested_at        DateTime?         @db.Timestamp(6)
+  growth_stage        GrowthStage       @default(NOT_SET)
   area_hectares       Decimal           @db.Decimal(12, 3)
+  expected_yield_kg   Decimal?          @db.Decimal(14, 3)
+  notes               String?           @db.Text
   created_at          DateTime          @default(now()) @db.Timestamp(6)
   updated_at          DateTime          @updatedAt @db.Timestamp(6)
 
-  organization Organization? @relation(fields: [organization_id], references: [id], onDelete: SetNull)
-  farm         Farm          @relation(fields: [farm_id], references: [id], onDelete: Cascade)
-  land_parcel  LandParcel?   @relation(fields: [land_parcel_id], references: [id], onDelete: SetNull)
-  crop_variety CropVariety   @relation(fields: [crop_variety_id], references: [id], onDelete: Restrict)
-  crop_season  CropSeason?   @relation(fields: [crop_season_id], references: [id], onDelete: SetNull)
+  organization  Organization? @relation(fields: [organization_id], references: [id], onDelete: SetNull)
+  farm          Farm          @relation(fields: [farm_id], references: [id], onDelete: Cascade)
+  land_parcel   LandParcel?   @relation(fields: [land_parcel_id], references: [id], onDelete: SetNull)
+  crop_variety  CropVariety   @relation(fields: [crop_variety_id], references: [id], onDelete: Restrict)
+  crop_season   CropSeason?   @relation(fields: [crop_season_id], references: [id], onDelete: SetNull)
+  crop_calendar CropCalendar? @relation(fields: [crop_calendar_id], references: [id], onDelete: SetNull)
 
   activities           FarmActivity[]
   harvests             Harvest[]
+  expenses             FarmExpense[]
   traceability_records TraceabilityRecord[]
   crop                 Crop?                @relation(fields: [crop_id], references: [id])
   crop_id              String?              @db.Uuid
 
+  @@unique([farm_id, code])
   @@index([organization_id, status])
   @@index([farm_id, crop_variety_id])
   @@index([land_parcel_id])
   @@index([crop_variety_id])
   @@index([crop_season_id])
+  @@index([crop_calendar_id])
   @@index([crop_id])
+  @@index([sown_at])
   @@map("cultivations")
 }
 
 model FarmActivity {
-  id                   String           @id @default(uuid()) @db.Uuid
-  organization_id      String?          @db.Uuid
-  farm_id              String           @db.Uuid
-  cultivation_id       String?          @db.Uuid
-  land_parcel_id       String?          @db.Uuid
-  input_id             String?          @db.Uuid
-  performed_by_user_id String?          @db.Uuid
+  id                   String               @id @default(uuid()) @db.Uuid
+  organization_id      String?              @db.Uuid
+  farm_id              String               @db.Uuid
+  cultivation_id       String?              @db.Uuid
+  land_parcel_id       String?              @db.Uuid
+  input_id             String?              @db.Uuid
+  performed_by_user_id String?              @db.Uuid
   activity_type        FarmActivityType
-  activity_date        DateTime         @db.Timestamp(6)
-  quantity             Decimal?         @db.Decimal(14, 3)
-  unit_code            String?          @db.VarChar(16)
-  cost_amount          Decimal?         @db.Decimal(14, 2)
-  currency             String           @default("BDT") @db.Char(3)
-  notes                String?          @db.Text
-  created_at           DateTime         @default(now()) @db.Timestamp(6)
-  updated_at           DateTime         @updatedAt @db.Timestamp(6)
+  activity_date        DateTime             @db.Timestamp(6)
+  growth_stage         GrowthStage          @default(NOT_SET)
+  observation_severity ObservationSeverity?
+  quantity             Decimal?             @db.Decimal(14, 3)
+  unit_code            String?              @db.VarChar(16)
+  cost_amount          Decimal?             @db.Decimal(14, 2)
+  currency             String               @default("BDT") @db.Char(3)
+  notes                String?              @db.Text
+  created_at           DateTime             @default(now()) @db.Timestamp(6)
+  updated_at           DateTime             @updatedAt @db.Timestamp(6)
 
   organization Organization?      @relation(fields: [organization_id], references: [id], onDelete: SetNull)
   farm         Farm               @relation(fields: [farm_id], references: [id], onDelete: Cascade)
@@ -1246,6 +1435,9 @@ model FarmActivity {
 
   @@index([organization_id, activity_date])
   @@index([farm_id, activity_type])
+  @@index([farm_id, activity_date])
+  @@index([cultivation_id, activity_date])
+  @@index([growth_stage])
   @@index([cultivation_id])
   @@index([land_parcel_id])
   @@index([input_id])
@@ -1295,6 +1487,102 @@ model AgriculturalInput {
 
   @@index([organization_id, category, is_active])
   @@map("agricultural_inputs")
+}
+
+// Tenant calendars use scope_key = organization UUID; platform calendars use
+// GLOBAL. The migration adds the matching scope check in raw SQL.
+model CropCalendar {
+  id                 String   @id @default(uuid()) @db.Uuid
+  organization_id    String?  @db.Uuid
+  scope_key          String   @default("GLOBAL") @db.VarChar(64)
+  crop_id            String   @db.Uuid
+  crop_variety_id    String?  @db.Uuid
+  code               String   @db.VarChar(64)
+  name               String   @db.VarChar(180)
+  sowing_start_month Int
+  sowing_end_month   Int
+  harvest_days_min   Int?
+  harvest_days_max   Int?
+  is_active          Boolean  @default(true)
+  notes              String?  @db.Text
+  created_at         DateTime @default(now()) @db.Timestamp(6)
+  updated_at         DateTime @updatedAt @db.Timestamp(6)
+
+  organization    Organization?             @relation(fields: [organization_id], references: [id], onDelete: SetNull)
+  crop            Crop                      @relation(fields: [crop_id], references: [id], onDelete: Cascade)
+  crop_variety    CropVariety?              @relation(fields: [crop_variety_id], references: [id], onDelete: Cascade)
+  cultivations    Cultivation[]
+  recommendations AgronomicRecommendation[]
+
+  @@unique([scope_key, code])
+  @@index([organization_id, is_active])
+  @@index([crop_id, is_active])
+  @@index([crop_variety_id])
+  @@map("crop_calendars")
+}
+
+model AgronomicRecommendation {
+  id              String               @id @default(uuid()) @db.Uuid
+  organization_id String?              @db.Uuid
+  scope_key       String               @default("GLOBAL") @db.VarChar(64)
+  crop_id         String               @db.Uuid
+  crop_variety_id String?              @db.Uuid
+  calendar_id     String?              @db.Uuid
+  code            String               @db.VarChar(64)
+  title           String               @db.VarChar(180)
+  body            String               @db.Text
+  source          RecommendationSource @default(CONFIGURED)
+  confidence      Decimal?             @db.Decimal(5, 4)
+  rule_key        String?              @db.VarChar(120)
+  valid_from      DateTime?            @db.Timestamp(6)
+  valid_until     DateTime?            @db.Timestamp(6)
+  is_active       Boolean              @default(true)
+  created_at      DateTime             @default(now()) @db.Timestamp(6)
+  updated_at      DateTime             @updatedAt @db.Timestamp(6)
+
+  organization Organization? @relation(fields: [organization_id], references: [id], onDelete: SetNull)
+  crop         Crop          @relation(fields: [crop_id], references: [id], onDelete: Cascade)
+  crop_variety CropVariety?  @relation(fields: [crop_variety_id], references: [id], onDelete: Cascade)
+  calendar     CropCalendar? @relation(fields: [calendar_id], references: [id], onDelete: SetNull)
+
+  @@unique([scope_key, code])
+  @@index([organization_id, is_active])
+  @@index([crop_id, source])
+  @@index([crop_variety_id])
+  @@index([calendar_id])
+  @@map("agronomic_recommendations")
+}
+
+model FarmExpense {
+  id                String          @id @default(uuid()) @db.Uuid
+  organization_id   String?         @db.Uuid
+  farm_id           String          @db.Uuid
+  cultivation_id    String?         @db.Uuid
+  category          ExpenseCategory
+  source            ExpenseSource   @default(RECORDED)
+  expense_date      DateTime        @db.Timestamp(6)
+  amount            Decimal         @db.Decimal(14, 2)
+  currency          String          @default("BDT") @db.Char(3)
+  description       String?         @db.VarChar(255)
+  quantity          Decimal?        @db.Decimal(14, 3)
+  unit_code         String?         @db.VarChar(16)
+  receipt_url       String?         @db.VarChar(512)
+  receipt_note      String?         @db.Text
+  estimate_rule_key String?         @db.VarChar(120)
+  confidence        Decimal?        @db.Decimal(5, 4)
+  created_at        DateTime        @default(now()) @db.Timestamp(6)
+  updated_at        DateTime        @updatedAt @db.Timestamp(6)
+
+  organization Organization? @relation(fields: [organization_id], references: [id], onDelete: SetNull)
+  farm         Farm          @relation(fields: [farm_id], references: [id], onDelete: Cascade)
+  cultivation  Cultivation?  @relation(fields: [cultivation_id], references: [id], onDelete: SetNull)
+
+  @@index([organization_id, expense_date])
+  @@index([farm_id, expense_date])
+  @@index([farm_id, category])
+  @@index([cultivation_id, expense_date])
+  @@index([source, category])
+  @@map("farm_expenses")
 }
 
 // ---------------------------------------------------------------------------

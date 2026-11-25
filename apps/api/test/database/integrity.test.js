@@ -328,17 +328,21 @@ describeDatabase('database integrity and concurrency', () => {
         (SELECT COUNT(*)::int FROM countries) AS "countries",
         (SELECT COUNT(*)::int FROM divisions) AS "divisions",
         (SELECT COUNT(*)::int FROM districts) AS "districts",
+        (SELECT COUNT(*)::int FROM upazilas) AS "upazilas",
+        (SELECT COUNT(*)::int FROM unions) AS "unions",
         (SELECT COUNT(*)::int FROM product_categories WHERE code NOT LIKE 'DBTEST-%') AS "categories",
         (SELECT COUNT(*)::int FROM ledger_accounts WHERE code NOT LIKE 'DBTEST-%') AS "accounts",
         (SELECT COUNT(*)::int FROM platform_settings) AS "settings"
     `;
     const counts = rows[0];
     assert.equal(Number(counts.roles), 22);
-    assert.equal(Number(counts.permissions), 46);
-    assert.equal(Number(counts.assignments), 428);
+    assert.equal(Number(counts.permissions), 50);
+    assert.equal(Number(counts.assignments), 479);
     assert.equal(Number(counts.countries), 1);
     assert.equal(Number(counts.divisions), 8);
     assert.equal(Number(counts.districts), 64);
+    assert.equal(Number(counts.upazilas), 64);
+    assert.equal(Number(counts.unions), 64);
     assert.equal(Number(counts.categories), 10);
     assert.equal(Number(counts.accounts), 10);
     assert.equal(Number(counts.settings), 2);
@@ -353,14 +357,15 @@ describeDatabase('database integrity and concurrency', () => {
     const permissionRows = await prisma.$queryRaw`
       SELECT code FROM permissions WHERE code IN (
         'organizations.create', 'organizations.verify', 'members.read',
-        'members.manage', 'invitations.manage', 'documents.manage'
+        'members.manage', 'invitations.manage', 'documents.manage',
+        'crops.read', 'crops.manage', 'expenses.read', 'expenses.manage'
       )
     `;
     const permissionCodes = permissionRows.map((row) => row.code);
-    assert.equal(permissionCodes.length, 6);
+    assert.equal(permissionCodes.length, 10);
   });
 
-  test('organization/profile migration is applied without drift', async () => {
+  test('organization/profile and farm migrations are applied without drift', async () => {
     const migrations = await prisma.$queryRaw`
       SELECT migration_name, finished_at, rolled_back_at
       FROM _prisma_migrations
@@ -371,6 +376,8 @@ describeDatabase('database integrity and concurrency', () => {
       '20261125120000_review_hardening',
       '20261125130000_auth_identity',
       '20261125140000_organization_profile_management',
+      '20261125150000_farm_management',
+      '20261125160000_crop_cultivation_expense_management',
     ]) {
       assert.ok(names.includes(name), `missing applied migration ${name}`);
     }

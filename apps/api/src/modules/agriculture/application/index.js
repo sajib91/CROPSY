@@ -1,9 +1,9 @@
-const { AgricultureService, AgricultureServiceToken } = require('./agriculture.service');
-const { moduleInfoSchema, toModuleInfoDto } = require('./agriculture.dto');
+const dto = require('./agriculture.dto');
+const { EVENTS, AgricultureService, AgricultureServiceToken } = require('./agriculture.service');
 
 module.exports = {
+  EVENTS,
   AgricultureService,
   AgricultureServiceToken,
-  moduleInfoSchema,
-  toModuleInfoDto,
+  ...dto,
 };

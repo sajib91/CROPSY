@@ -272,10 +272,21 @@ erDiagram
     uuid id PK
     uuid organization_id FK
     uuid owner_user_id FK
+    varchar name
+    text description
     varchar code UK
     FarmType farm_type
     FarmStatus status
+    AreaUnit area_unit
+    decimal area_value
     decimal total_area_hectares
+    LandOwnership ownership_type
+    varchar ownership_reference
+    uuid operator_user_id FK
+    varchar operator_name
+    varchar operator_phone
+    varchar operator_email
+    timestamp operating_since
     uuid farmer_profile_id FK
   }
   farm_locations {
@@ -293,10 +304,39 @@ erDiagram
     uuid organization_id FK
     uuid farm_id FK
     varchar code
+    AreaUnit area_unit
+    decimal area_value
     decimal area_hectares
     LandOwnership ownership_type
     LandParcelStatus status
     geometry boundary
+  }
+  farm_soil_profiles {
+    uuid id PK
+    uuid organization_id FK
+    uuid farm_id FK UK
+    varchar soil_type
+    FarmSoilTexture texture
+    decimal ph
+    decimal organic_matter_percent
+    SoilFertility fertility
+    varchar drainage
+    timestamp tested_at
+    varchar testing_lab
+    text notes
+  }
+  farm_irrigations {
+    uuid id PK
+    uuid organization_id FK
+    uuid farm_id FK
+    varchar code
+    IrrigationSource source
+    IrrigationMethod method
+    IrrigationStatus status
+    decimal capacity_liters_per_minute
+    decimal command_area_hectares
+    int frequency_per_week
+    text notes
   }
   crops {
     uuid id PK
@@ -317,6 +357,34 @@ erDiagram
     int start_month
     int end_month
   }
+  crop_calendars {
+    uuid id PK
+    uuid organization_id FK
+    varchar scope_key
+    uuid crop_id FK
+    uuid crop_variety_id FK
+    varchar code
+    int sowing_start_month
+    int sowing_end_month
+    int harvest_days_min
+    int harvest_days_max
+    boolean is_active
+  }
+  agronomic_recommendations {
+    uuid id PK
+    uuid organization_id FK
+    varchar scope_key
+    uuid crop_id FK
+    uuid crop_variety_id FK
+    uuid calendar_id FK
+    varchar code
+    RecommendationSource source
+    decimal confidence
+    varchar rule_key
+    timestamp valid_from
+    timestamp valid_until
+    boolean is_active
+  }
   cultivations {
     uuid id PK
     uuid organization_id FK
@@ -324,9 +392,17 @@ erDiagram
     uuid land_parcel_id FK
     uuid crop_variety_id FK
     uuid crop_season_id FK
+    uuid crop_calendar_id FK
     uuid crop_id FK
+    varchar code
     CultivationStatus status
+    timestamp sown_at
+    timestamp planted_at
+    timestamp expected_harvest_at
+    timestamp harvested_at
+    GrowthStage growth_stage
     decimal area_hectares
+    decimal expected_yield_kg
   }
   farm_activities {
     uuid id PK
@@ -337,6 +413,11 @@ erDiagram
     uuid input_id FK
     uuid performed_by_user_id FK
     FarmActivityType activity_type
+    timestamp activity_date
+    GrowthStage growth_stage
+    ObservationSeverity observation_severity
+    decimal quantity
+    varchar unit_code
     decimal cost_amount
     char currency
   }
@@ -347,6 +428,20 @@ erDiagram
     uuid farm_id FK
     decimal quantity_kg
     HarvestStatus status
+  }
+  farm_expenses {
+    uuid id PK
+    uuid organization_id FK
+    uuid farm_id FK
+    uuid cultivation_id FK
+    ExpenseCategory category
+    ExpenseSource source
+    timestamp expense_date
+    decimal amount
+    char currency
+    varchar receipt_url
+    varchar estimate_rule_key
+    decimal confidence
   }
   agricultural_inputs {
     uuid id PK
@@ -361,6 +456,7 @@ erDiagram
   organizations |o--o{ farmer_profiles : organization
   crops |o--o{ farmer_profiles : primary_crop
   users ||--o{ farms : owner
+  users |o--o{ farms : operator
   organizations |o--o{ farms : organization
   farmer_profiles |o--o{ farms : farmer_profile
   farms ||--o| farm_locations : farm
@@ -370,13 +466,25 @@ erDiagram
   unions |o--o{ farm_locations : union
   organizations |o--o{ land_parcels : organization
   farms ||--o{ land_parcels : farm
+  organizations |o--o{ farm_soil_profiles : organization
+  farms ||--o| farm_soil_profiles : soil_profile
+  organizations |o--o{ farm_irrigations : organization
+  farms ||--o{ farm_irrigations : irrigation
   crops ||--o{ crop_varieties : crop
   organizations |o--o{ crop_seasons : organization
+  organizations |o--o{ crop_calendars : organization
+  crops ||--o{ crop_calendars : crop
+  crop_varieties |o--o{ crop_calendars : crop_variety
+  organizations |o--o{ agronomic_recommendations : organization
+  crops ||--o{ agronomic_recommendations : crop
+  crop_varieties |o--o{ agronomic_recommendations : crop_variety
+  crop_calendars |o--o{ agronomic_recommendations : calendar
   organizations |o--o{ cultivations : organization
   farms ||--o{ cultivations : farm
   land_parcels |o--o{ cultivations : land_parcel
   crop_varieties ||--o{ cultivations : crop_variety
   crop_seasons |o--o{ cultivations : crop_season
+  crop_calendars |o--o{ cultivations : crop_calendar
   crops |o--o{ cultivations : crop
   organizations |o--o{ farm_activities : organization
   farms ||--o{ farm_activities : farm
@@ -387,10 +495,15 @@ erDiagram
   organizations |o--o{ harvests : organization
   cultivations ||--o{ harvests : cultivation
   farms ||--o{ harvests : farm
+  organizations |o--o{ farm_expenses : organization
+  farms ||--o{ farm_expenses : farm
+  cultivations |o--o{ farm_expenses : cultivation
   organizations |o--o{ agricultural_inputs : organization
 ```
 
-`farm_locations.farm_id` is also `UNIQUE` (one location per farm), and all foreign-key columns use `snake_case`.
+`farm_locations.farm_id` is also `UNIQUE` (one location per farm), and all foreign-key columns use `snake_case`. Farm and parcel areas store both the submitted `area_unit`/`area_value` and a canonical `area_hectares` (`total_area_hectares` on farms); allowed units are `HECTARE`, `ACRE`, and `SQUARE_METER`. `farm_soil_profiles.farm_id` is unique (one profile per farm), while `farm_irrigations` is unique on `(farm_id, code)` and holds multiple records per farm. Soil and irrigation rows repeat `organization_id` and are covered by the same tenant-match and farm tenant-immutability triggers as parcels.
+
+`crop_calendars` and `agronomic_recommendations` are unique on `(scope_key, code)`, and cultivations are unique on `(farm_id, code)`. `scope_key` is `GLOBAL` only when `organization_id` is null; tenant rows use the organization UUID as both values. Cultivations and expenses carry `organization_id` from their farm, and constraint triggers reject mixed crop/variety pairs, mismatched recommendation calendars, and tenant reassignment while expenses still reference the old tenant. `farm_expenses.source` separates `RECORDED` actual costs from `AI_ESTIMATED` values; estimates require `estimate_rule_key`, while recorded rows must not carry estimate metadata. A cultivation may omit `cultivation_id` on an expense, in which case the farm-level cost remains unallocated in per-cultivation reports.
 
 ## Marketplace
 

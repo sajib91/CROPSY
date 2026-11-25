@@ -35,9 +35,9 @@ boundary.
 | `iam` | `/iam` | Identity and Access Management | — | `iam.initialized`, `iam.role.assigned`, `iam.permission.granted` | — |
 | `users` | `/users` | User Management | `iam` | `users.initialized`, `users.profile.updated` | — |
 | `organizations` | `/organizations` | Organization Management | `iam`, `users` | `organizations.initialized`, `organizations.created` | — |
-| `farmers` | `/farmers` | Farmer Management | `users`, `organizations` | `farmers.initialized`, `farmers.registered` | — |
+| `farmers` | `/farmers` | Farmer Management | `iam`, `users`, `organizations` | `farmers.initialized`, `farmers.registered`, `farmers.farm.created`, `farmers.farm.updated`, `farmers.farm.archived`, `farmers.farm.location.updated`, `farmers.parcel.created`, `farmers.parcel.updated`, `farmers.soil.updated`, `farmers.irrigation.created`, `farmers.irrigation.updated`, `farmers.coordinates.denied` | — |
 | `buyers` | `/buyers` | Buyer Management | `users`, `organizations` | `buyers.initialized`, `buyers.registered` | — |
-| `agriculture` | `/agriculture` | Agriculture and Crop Management | `organizations`, `farmers` | `agriculture.initialized`, `agriculture.season.created` | — |
+| `agriculture` | `/agriculture` | Agriculture and Crop Management | `organizations`, `farmers` | `agriculture.initialized`, `agriculture.season.created`, `agriculture.crop.created`, `agriculture.crop.updated`, `agriculture.variety.created`, `agriculture.variety.updated`, `agriculture.calendar.created`, `agriculture.calendar.updated`, `agriculture.recommendation.created`, `agriculture.recommendation.updated`, `agriculture.cultivation.created`, `agriculture.cultivation.updated`, `agriculture.activity.recorded`, `agriculture.harvest.recorded`, `agriculture.expense.recorded`, `agriculture.expense.updated`, `agriculture.expense.estimated` | — |
 | `catalog` | `/catalog` | Product Catalog | `organizations`, `farmers`, `agriculture` | `catalog.initialized`, `catalog.product.published` | — |
 | `marketplace` | `/marketplace` | Marketplace | `catalog`, `organizations`, `buyers` | `marketplace.initialized`, `marketplace.listing.created` | — |
 | `orders` | `/orders` | Orders | `marketplace`, `buyers`, `catalog` | `orders.initialized`, `orders.order.placed` | — |
@@ -93,8 +93,16 @@ apps/api/src/modules/<module-id>/
 Every module has its own entity class, repository token, service class, DTO schema, adapter, and
 route plugin. There is no generic "business service" shared between unrelated modules. IAM
 publishes narrow composition ports (`IdentityStoreToken`, `PlatformAuthorizationToken`, and
-`PlatformTokenManagerToken`) so `users` and `organizations` can share identity and authorization
-without importing another module's source.
+`PlatformTokenManagerToken`) so `users`, `organizations`, and `farmers` can share identity and
+authorization without importing another module's source. The `farmers` module publishes a
+read-only `FarmAccessPortToken`; agriculture consumes that port through DI to validate farm
+ownership and tenant scope without importing farmer source. The shared `ConfigToken` supplies
+`FARM_STORE` and `AGRICULTURE_STORE`; each module registers its own store token and defaults to
+`memory` for development/tests while production requires `prisma`. All farm CRUD, parcel,
+soil, irrigation, map, spatial, and Bangladesh geo workflows stay inside the existing 20-module
+`farmers` boundary. Crop catalog, calendars, cultivations, activities, harvests, expenses, and
+reports stay inside the existing `agriculture` boundary; no 21st module or direct cross-module
+source import was added.
 
 ## HTTP surface
 
@@ -112,8 +120,10 @@ All routes are mounted under `API_PREFIX` (default `/api/v1`).
 | `GET /<module-path>/info/:moduleId` | Same DTO with validated module id matching |
 
 All non-public routes are default-deny. The `info` endpoints are the only module routes in the
-public allowlist; authenticated organization and user routes are documented in
-[`../api/README.md`](../api/README.md).
+public allowlist; authenticated organization, user, farm, and agriculture routes are documented in
+[`../api/README.md`](../api/README.md). Farm coordinate reads enforce an additional private-data
+policy beyond the `farms.read` permission. Agriculture separates catalog/calendar, cultivation,
+harvest, and expense permissions, and keeps recorded costs distinct from AI estimates.
 
 Requests may send `x-request-id`; it is echoed on the response and included in structured logs.
 An `x-api-version` header is accepted only when it matches the active version.

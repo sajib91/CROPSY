@@ -34,7 +34,7 @@ Platform role grants apply globally. Organization role grants apply only when
 the organization is the active tenant; a caller must also be an active member
 of that tenant. Super admin bypasses tenant scoping but is still audited.
 `ORGANIZATION_MEMBER` is the non-admin grant issued by invitations; it can read
-organization and member data but cannot manage members, documents, or
+organization, member, and farm data but cannot manage members, documents, or
 organizations. `ORGANIZATION_ADMIN` adds tenant management permissions.
 `organizations.verify` is reserved for `CROPSY_SUPER_ADMIN` by default.
 
@@ -60,12 +60,16 @@ organizations. `ORGANIZATION_ADMIN` adds tenant management permissions.
 | `sessions.manage` | — | — | — | — | — | — | — | — | — | — | — | ✓ |
 | `audit.read` | — | — | — | — | — | — | — | — | — | — | ✓ | ✓ |
 | `settings.manage` | — | — | — | — | — | — | — | — | — | — | — | ✓ |
-| `farms.read` | ✓ | — | — | — | — | — | — | ✓ | ✓ | — | ✓ | ✓ |
+| `farms.read` | ✓ | — | — | — | — | — | — | ✓ | ✓ | ✓ | ✓ | ✓ |
 | `farms.manage` | ✓ | — | — | — | — | — | — | — | — | — | ✓ | ✓ |
 | `cultivations.read` | ✓ | — | — | — | — | — | — | ✓ | — | — | ✓ | ✓ |
 | `cultivations.manage` | ✓ | — | — | — | — | — | — | — | — | — | — | ✓ |
 | `harvests.read` | ✓ | — | — | — | — | — | — | ✓ | — | — | ✓ | ✓ |
 | `harvests.manage` | ✓ | — | — | — | — | — | — | — | — | — | — | ✓ |
+| `crops.read` | ✓ | — | — | — | — | — | — | ✓ | — | ✓ | ✓ | ✓ |
+| `crops.manage` | — | — | — | — | — | — | — | — | — | — | ✓ | ✓ |
+| `expenses.read` | ✓ | — | — | — | — | — | — | ✓ | — | ✓ | ✓ | ✓ |
+| `expenses.manage` | ✓ | — | — | — | — | — | — | — | — | — | ✓ | ✓ |
 | `products.read` | ✓ | ✓ | ✓ | ✓ | ✓ | — | ✓ | — | — | ✓ | ✓ | ✓ |
 | `products.manage` | ✓ | — | — | — | ✓ | — | — | — | — | — | ✓ | ✓ |
 | `listings.read` | ✓ | ✓ | ✓ | ✓ | ✓ | — | — | — | — | ✓ | ✓ | ✓ |
@@ -123,9 +127,15 @@ super-admin access, and live permission reconfiguration.
 `apps/api/test/organizations.test.js` and `apps/api/test/users.test.js` cover
 organization registration, membership, invitations, switching, tenant
 isolation, reusable profile APIs, role-specific profile storage, verification
-restrictions, and audit events. Database integrity and migration tests live in
-`apps/api/test/database/integrity.test.js`.
+restrictions, and audit events. `apps/api/test/farms.test.js` covers farm
+registration, tenant isolation, coordinate privacy, map/spatial filtering, and
+soil/irrigation validation. `apps/api/test/agriculture.test.js` covers crop and
+calendar configuration, tenant/farm isolation, cultivation activity, harvests,
+expense sources, and cost/profitability reports. Database integrity and migration
+tests live in `apps/api/test/database/integrity.test.js`; farm persistence and
+PostGIS tests live in `apps/api/test/database/farms.test.js`; crop/expense guard
+tests live in `apps/api/test/database/agriculture.test.js`.
 
-The generated matrix contains 46 permissions and 12 canonical roles; the seed
-creates 22 role rows (12 canonical plus 10 legacy aliases) and 428
+The generated matrix contains 50 permissions and 12 canonical roles; the seed
+creates 22 role rows (12 canonical plus 10 legacy aliases) and 479
 role-permission assignments.

@@ -202,15 +202,50 @@ async function seedGeography(tx) {
     );
   }
 
+  const districtByCode = new Map();
   for (const [divisionCode, code, name] of DISTRICTS) {
-    await tx.district.upsert({
-      where: { code },
-      update: { division_id: divisionByCode.get(divisionCode).id, name },
-      create: { division_id: divisionByCode.get(divisionCode).id, code, name },
+    districtByCode.set(
+      code,
+      await tx.district.upsert({
+        where: { code },
+        update: { division_id: divisionByCode.get(divisionCode).id, name },
+        create: { division_id: divisionByCode.get(divisionCode).id, code, name },
+      }),
+    );
+  }
+
+  // Farm locations need a complete administrative chain. Seed one Sadar
+  // upazila and one union per district; tenants may add more through their own
+  // reference-data workflows. Codes stay within the 16-character schema limit.
+  for (const [code, district] of districtByCode) {
+    const upazilaCode = `${code}-S`;
+    const upazila = await tx.upazila.upsert({
+      where: { code: upazilaCode },
+      update: { district_id: district.id, name: `${district.name} Sadar` },
+      create: {
+        district_id: district.id,
+        code: upazilaCode,
+        name: `${district.name} Sadar`,
+      },
+    });
+    await tx.union.upsert({
+      where: { code: `${code}-U` },
+      update: { upazila_id: upazila.id, name: `${upazila.name} Union` },
+      create: {
+        upazila_id: upazila.id,
+        code: `${code}-U`,
+        name: `${upazila.name} Union`,
+      },
     });
   }
 
-  return { countries: 1, divisions: DIVISIONS.length, districts: DISTRICTS.length };
+  return {
+    countries: 1,
+    divisions: DIVISIONS.length,
+    districts: DISTRICTS.length,
+    upazilas: DISTRICTS.length,
+    unions: DISTRICTS.length,
+  };
 }
 
 async function seedAccessControl(tx) {
