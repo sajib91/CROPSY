@@ -60,6 +60,7 @@ enum OtpPurpose {
   PHONE_VERIFICATION
   PASSWORD_RESET
   LOGIN
+  ACCOUNT_RECOVERY
 }
 
 enum OrganizationStatus {
@@ -538,7 +539,9 @@ model Union {
 
 model User {
   id                    String        @id @default(uuid()) @db.Uuid
-  email                 String        @unique @db.VarChar(255)
+  // Phone-only registrations have no email. The partial unique index for
+  // non-null emails is applied in the auth identity migration.
+  email                 String?       @db.VarChar(255)
   phone                 String?       @unique @db.VarChar(32)
   password_hash         String        @db.Text
   account_status        AccountStatus @default(ACTIVE)

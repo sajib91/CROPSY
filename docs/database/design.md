@@ -1,6 +1,6 @@
 # Database design
 
-This document describes the CROPSY PostgreSQL database. Sources of truth are [`schema.prisma`](../../apps/api/prisma/schema.prisma), the [initial migration](../../apps/api/prisma/migrations/20261125000000_init/migration.sql), the [review-hardening migration](../../apps/api/prisma/migrations/20261125120000_review_hardening/migration.sql), and the [idempotent seed](../../apps/api/prisma/seed.js). The root baseline documents `RTB.md`, `SSD.md`, and `user-story.md` remain unchanged.
+This document describes the CROPSY PostgreSQL database. Sources of truth are [`schema.prisma`](../../apps/api/prisma/schema.prisma), the [initial migration](../../apps/api/prisma/migrations/20261125000000_init/migration.sql), the [review-hardening migration](../../apps/api/prisma/migrations/20261125120000_review_hardening/migration.sql), the [auth-identity migration](../../apps/api/prisma/migrations/20261125130000_auth_identity/migration.sql), and the [idempotent seed](../../apps/api/prisma/seed.js). The root baseline documents `RTB.md`, `SSD.md`, and `user-story.md` remain unchanged.
 
 ## Technology choices
 
@@ -17,7 +17,7 @@ This document describes the CROPSY PostgreSQL database. Sources of truth are [`s
 - Every table has a UUID primary key (`@id @default(uuid()) @db.Uuid`).
 - Every table is mapped to `snake_case` with `@@map` (for example, `ProductListing` → `product_listings`). All columns, including foreign keys, are `snake_case`.
 - Most tables carry `created_at` and `updated_at` timestamps. `audit_logs` is append-only by design and has no `updated_at`.
-- Natural/business keys are explicitly unique: `users.email`, `users.phone`, `roles.code`, `permissions.code`, `crops.code`, `products.sku`, `farmer_profiles.farmer_code`, `organizations.slug`, `subscription_invoices.invoice_number`, and others.
+- Natural/business keys are explicitly unique: `users.phone`, `roles.code`, `permissions.code`, `crops.code`, `products.sku`, `farmer_profiles.farmer_code`, `organizations.slug`, `subscription_invoices.invoice_number`, and others. `users.email` is nullable for phone-only accounts and unique through a partial index for non-null values.
 
 ## Money and measurement
 
@@ -71,7 +71,7 @@ PostgreSQL enum types are generated from Prisma enums. Representative groups:
 | SaaS | `BillingInterval`, `SubscriptionStatus`, `InvoiceStatus` |
 | System | `NotificationChannel`, `NotificationStatus`, `AuditSeverity`, `OutboxStatus` |
 
-Enum values are defined in `schema.prisma` and the migration. Enum defaults describe lifecycle state, not business pricing or settlement policy.
+Enum values are defined in `schema.prisma` and the migration. `OtpPurpose` includes `EMAIL_VERIFICATION`, `PHONE_VERIFICATION`, `PASSWORD_RESET`, `LOGIN`, and the follow-up `ACCOUNT_RECOVERY` value used by deactivated/locked account recovery. Enum defaults describe lifecycle state, not business pricing or settlement policy.
 
 ## Indexes and unique constraints
 
@@ -88,7 +88,13 @@ CREATE UNIQUE INDEX "user_addresses_one_primary_per_user" ON "user_addresses" ("
   WHERE "is_primary" = true;
 CREATE UNIQUE INDEX "subscriptions_one_active_per_org" ON "subscriptions" ("organization_id")
   WHERE "status" IN ('TRIALING'::"SubscriptionStatus", 'ACTIVE'::"SubscriptionStatus", 'PAST_DUE'::"SubscriptionStatus");
+CREATE UNIQUE INDEX "users_email_not_null_key" ON "users" ("email")
+  WHERE "email" IS NOT NULL;
 ```
+
+The last index replaced the baseline `users_email_key` when `users.email` became
+nullable. It keeps non-null emails unique while allowing many phone-only users
+to store `NULL`.
 
 ## Database `CHECK` constraints and triggers
 
@@ -141,6 +147,26 @@ The follow-up migration `20261125120000_review_hardening` was added after a full
 - `outbox_events(status, available_at)` supports global polling; the existing `(organization_id, status, available_at)` index still supports tenant-scoped polling.
 - PostGIS GiST indexes from the baseline remain unchanged.
 
+## Authentication identity follow-up
+
+The follow-up migration `20261125130000_auth_identity` supports the implemented
+auth/RBAC layer. The initial and review-hardening migrations remain immutable.
+
+- `users.email` is now nullable so a user can register with only a Bangladesh
+  mobile number. The previous unique constraint was replaced by
+  `users_email_not_null_key`, a partial unique index over non-null emails.
+- `OtpPurpose` gained `ACCOUNT_RECOVERY` for deactivated/locked account recovery.
+  Verification codes are stored as salted HMACs in `otp_verifications`; only
+  hashes of refresh/session tokens are persisted in `refresh_tokens` and
+  `sessions`.
+- The production auth repository uses these Prisma tables through
+  `AUTH_STORE=prisma`; development/tests can use the in-memory adapter. Role,
+  permission, organization membership, and audit rows are read on every
+  authorization decision so policy changes take effect without redeploying.
+- The seed now maps the 11 canonical user categories and 10 legacy aliases to
+  40 permissions. See [`../security/permission-matrix.md`](../security/permission-matrix.md)
+  for the effective grid.
+
 ## PostGIS geometry and nearby listings
 
 Geometry columns are `Unsupported("geometry(...)")` in Prisma and are created by the migration:
@@ -186,12 +212,12 @@ const nearby = await prisma.$queryRaw`
 
 ## Seed contents and policy boundaries
 
-[`seed.js`](../../apps/api/prisma/seed.js) runs all upserts in one transaction and is idempotent. It seeds reference data only:
+[`seed.js`](../../apps/api/prisma/seed.js) runs all writes in one transaction and is idempotent. It uses `upsert` for reference rows and removes stale role-permission assignments so changed policies do not leave obsolete grants. It seeds reference data only:
 
 | Data | Contents |
 | --- | --- |
 | Geography | 1 country (`BD`), 8 divisions, 64 districts |
-| Access control | 14 roles, 35 permissions, and the role-to-permission assignments |
+| Access control | 21 roles (11 canonical categories + 10 legacy aliases), 40 permissions, and 363 role-to-permission assignments |
 | Catalog | 10 product categories |
 | Ledger skeleton | 10 chart-of-accounts entries (assets, liabilities, equity, revenue, expense) |
 | Platform settings | `currency.default` (`BDT`, scale 2) and `geography.default_country` (`BD`) |
@@ -208,7 +234,7 @@ These values remain configurable via `PlatformSetting` (`key` + `scope_key`), th
 
 ## Database tests
 
-[`apps/api/test/database/integrity.test.js`](../../apps/api/test/database/integrity.test.js) runs only when `DATABASE_URL` is set. [`scripts/test-database.sh`](../../scripts/test-database.sh), exposed as `npm run db:test`, provides a complete self-contained check: it starts a temporary PostgreSQL 17 + PostGIS 3.5 container, validates and generates Prisma Client, deploys both migrations, checks for drift, runs the seed twice, then executes the tests.
+[`apps/api/test/database/integrity.test.js`](../../apps/api/test/database/integrity.test.js) runs only when `DATABASE_URL` is set. [`scripts/test-database.sh`](../../scripts/test-database.sh), exposed as `npm run db:test`, provides a complete self-contained check: it starts a temporary PostgreSQL 17 + PostGIS 3.5 container, validates and generates Prisma Client, deploys all migrations, checks for drift, runs the seed twice, then executes the tests.
 
 Covered cases:
 
@@ -229,9 +255,9 @@ The final review run completed the following checks:
 1. `prisma format` — schema formatted successfully.
 2. `prisma validate` — schema valid.
 3. `prisma generate` — Prisma Client generated successfully.
-4. `prisma migrate deploy` on a fresh temporary PostgreSQL 17 + PostGIS 3.5 instance — both migrations applied, including the new indexes, functions, triggers, and validated checks.
+4. `prisma migrate deploy` on a fresh temporary PostgreSQL 17 + PostGIS 3.5 instance — all three migrations applied, including the new indexes, functions, triggers, validated checks, nullable email, and the new OTP purpose.
 5. `prisma migrate diff --from-migrations --to-schema-datamodel` — empty diff; no drift between migrations and schema.
-6. Idempotent seed run twice — stable counts: 1 country, 8 divisions, 64 districts, 14 roles, 35 permissions, 134 assignments, 10 product categories, 10 ledger accounts, and 2 platform settings.
+6. Idempotent seed run twice — stable counts: 1 country, 8 divisions, 64 districts, 21 roles (11 canonical + 10 aliases), 40 permissions, 363 assignments, 10 product categories, 10 ledger accounts, and 2 platform settings.
 7. `npm run db:test` — 7/7 database integrity/concurrency tests passed.
 8. `npm run verify` — boundary check, lint, format check, builds, API/AI tests, and live health checks passed.
 
@@ -240,4 +266,4 @@ The final review run completed the following checks:
 - `DATABASE_URL` must be set. The seed throws if it is missing. [`packages/config/index.js`](../../packages/config/index.js) validates a default for the API, but Prisma reads the environment directly; use the template in [`.env.example`](../../.env.example) explicitly.
 - First migration needs a role that can `CREATE EXTENSION postgis`.
 - `Unsupported` geometry fields are not available through Prisma Client. Use `$queryRaw` / `$executeRaw` for geometry reads and writes, and manage spatial indexes in raw SQL migrations.
-- The initial migration is the immutable baseline; `20261125120000_review_hardening` is the reviewed follow-up. Future schema or invariant changes require new migrations; do not edit either applied migration in place.
+- The initial migration is the immutable baseline; `20261125120000_review_hardening` and `20261125130000_auth_identity` are follow-ups. Future schema or invariant changes require new migrations; do not edit any applied migration in place.

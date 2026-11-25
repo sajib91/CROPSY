@@ -8,6 +8,9 @@ const { registerErrorHandling } = require('./shared/presentation/error-handler')
 const observability = require('./shared/presentation/observability');
 const { resolveApiVersion } = require('./shared/http/versioning');
 const { createContainer, registerModules } = require('./modules');
+const { AuthStoreToken } = require('./modules/iam/domain/auth.repository');
+const { OtpProvidersToken, RateLimiterToken } = require('./modules/iam/application/tokens');
+const { registerHttpAuthorization } = require('./modules/iam/presentation/http-authorization');
 const healthRoutes = require('./routes/health');
 const platformRoutes = require('./routes/platform');
 
@@ -21,11 +24,16 @@ async function buildServer(options = {}) {
   const eventBusLogger =
     logger === false ? undefined : app.log.child({ component: 'domain-events' });
   const eventBus = new InProcessEventBus({ logger: eventBusLogger });
+  const overrides = new Map();
+  if (options.authStore) overrides.set(AuthStoreToken, () => options.authStore);
+  if (options.otpProviders) overrides.set(OtpProvidersToken, () => options.otpProviders);
+  if (options.rateLimiter) overrides.set(RateLimiterToken, () => options.rateLimiter);
   const container = createContainer({
     env,
     logger: app.log,
     eventBus,
     apiVersion,
+    overrides,
   });
 
   app.decorate('cropsyEnv', env);
@@ -36,6 +44,7 @@ async function buildServer(options = {}) {
 
   registerErrorHandling(app);
   observability(app, { apiVersion });
+  registerHttpAuthorization(app);
 
   await app.register(helmet);
   await app.register(cors, { origin: env.CORS_ORIGIN });

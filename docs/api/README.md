@@ -1,6 +1,6 @@
 # API
 
-Health endpoints currently available:
+The business API uses the `/api/v1` prefix. Health endpoints currently available:
 
 | Service | Endpoint |
 | --- | --- |
@@ -21,6 +21,17 @@ The business API also exposes versioned architecture introspection:
 | `GET /api/v1/observability` | Uptime, request id, and bounded recent events |
 | `GET /api/v1/<module-path>/info` | Validated module DTO from its application service |
 
+Authentication and authorization are implemented in the IAM module:
+
+| Topic | Documentation |
+| --- | --- |
+| Registration, OTP, login, tokens, sessions, password/recovery flows | [`authentication.md`](./authentication.md) |
+| Roles, tenants, permission checks, configurable policy, audit | [`authorization.md`](./authorization.md) |
+
+Auth endpoints are under `/api/v1/iam/auth`. All routes outside the explicit
+public allowlist require a valid access token; cookie clients must also send a
+matching `x-csrf-token` for mutations.
+
 All 20 module paths and their dependency direction are documented in
 [`../architecture/modules.md`](../architecture/modules.md). Failures return
 `{ "success": false, "error": "<code>", "meta": { ... } }` with a request id.
@@ -39,5 +50,6 @@ Service responses use the standard envelope where practical:
 }
 ```
 
-Shared health response contracts live in `packages/api-contracts`. Business workflows and
-product-specific policies are not defined yet; the `/info` endpoints expose architecture DTOs only.
+Shared health response contracts live in `packages/api-contracts`. The `/info`
+endpoints expose validated architecture DTOs; domain business workflows and
+product-specific commercial policies remain outside this scaffold.

@@ -10,6 +10,7 @@ Source of truth:
 - [`apps/api/prisma/schema.prisma`](../../apps/api/prisma/schema.prisma)
 - [`apps/api/prisma/migrations/20261125000000_init/migration.sql`](../../apps/api/prisma/migrations/20261125000000_init/migration.sql) — immutable baseline
 - [`apps/api/prisma/migrations/20261125120000_review_hardening/migration.sql`](../../apps/api/prisma/migrations/20261125120000_review_hardening/migration.sql) — review-driven indexes, tenant/financial/ledger/audit invariants, and inventory helpers
+- [`apps/api/prisma/migrations/20261125130000_auth_identity/migration.sql`](../../apps/api/prisma/migrations/20261125130000_auth_identity/migration.sql) — nullable `users.email`, partial unique email index, and `ACCOUNT_RECOVERY` OTP purpose
 - [`apps/api/prisma/seed.js`](../../apps/api/prisma/seed.js)
 
 ## Quick commands
@@ -25,7 +26,7 @@ npm run db:seed              # idempotent reference-data seed
 npm run db:test              # temporary PostGIS container + migration drift check + DB tests
 ```
 
-`db:generate` is required after schema changes so Prisma Client matches the schema. `db:seed` is safe to re-run; it uses `upsert` only. `db:test` requires Docker; it starts and removes its own PostgreSQL 17 + PostGIS 3.5 container and does not need `DATABASE_URL` in advance.
+`db:generate` is required after schema changes so Prisma Client matches the schema. `db:seed` is safe to re-run; it uses `upsert` plus targeted cleanup of stale role-permission rows. `db:test` requires Docker; it starts and removes its own PostgreSQL 17 + PostGIS 3.5 container and does not need `DATABASE_URL` in advance.
 
 ## Baseline documents
 

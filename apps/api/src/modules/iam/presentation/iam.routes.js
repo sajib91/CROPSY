@@ -10,6 +10,8 @@ const paramsSchema = z.object({ moduleId: z.string().trim().min(1) });
 module.exports = async function iamRoutes(fastify) {
   const service = fastify.cropsyContainer.resolve(IamServiceToken);
 
+  await fastify.register(require('./auth.routes'), { prefix: '/auth' });
+
   fastify.get('/info', async (request) =>
     ok(await service.describe(), {
       requestId: request.requestId,

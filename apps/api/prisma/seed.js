@@ -102,186 +102,45 @@ const DISTRICTS = [
   ['BD-SYL', 'BD-SYL-SYL', 'Sylhet'],
 ];
 
+const {
+  LEGACY_ROLE_ALIASES,
+  PERMISSION_CATALOG,
+  ROLE_CATEGORIES,
+  ROLE_PERMISSIONS: DEFAULT_ROLE_PERMISSIONS,
+} = require('../src/modules/iam/domain/auth-policy');
+
+const LEGACY_ROLE_METADATA = {
+  SUPER_ADMIN: ['Super Admin', 'Legacy alias for CROPSY Super Administrator'],
+  DISTRICT_ADMIN: ['District Admin', 'Legacy district-scoped administrator'],
+  UPAZILA_COORDINATOR: ['Upazila Coordinator', 'Legacy upazila-scoped coordinator'],
+  FARMER_GROUP_LEADER: ['Farmer Group Leader', 'Legacy farmer group role'],
+  INSTITUTIONAL_BUYER: ['Institutional Buyer', 'Legacy institutional procurement role'],
+  CONSUMER: ['Consumer', 'Legacy individual buyer role'],
+  TRANSPORTER: ['Transporter', 'Legacy logistics provider role'],
+  WAREHOUSE_MANAGER: ['Warehouse Manager', 'Legacy warehouse operator role'],
+  PAYMENT_OFFICER: ['Payment Officer', 'Legacy payment operations role'],
+  DISPUTE_OFFICER: ['Dispute Officer', 'Legacy dispute operations role'],
+};
+
 const ROLES = [
-  ['SUPER_ADMIN', 'Super Admin', 'Platform-wide administrator'],
-  ['DISTRICT_ADMIN', 'District Admin', 'District-scoped administrator'],
-  ['UPAZILA_COORDINATOR', 'Upazila Coordinator', 'Upazila-scoped coordinator'],
-  ['FARMER', 'Farmer', 'Producer of agricultural products'],
-  ['FARMER_GROUP_LEADER', 'Farmer Group Leader', 'Leader of a farmer group'],
-  ['WHOLESALER', 'Wholesaler', 'Bulk buyer'],
-  ['RETAILER', 'Retailer', 'Retail buyer'],
-  ['INSTITUTIONAL_BUYER', 'Institutional Buyer', 'Institutional procurement buyer'],
-  ['CONSUMER', 'Consumer', 'Individual buyer'],
-  ['TRANSPORTER', 'Transporter', 'Logistics provider user'],
-  ['QUALITY_INSPECTOR', 'Quality Inspector', 'Quality inspection user'],
-  ['WAREHOUSE_MANAGER', 'Warehouse Manager', 'Warehouse operations user'],
-  ['PAYMENT_OFFICER', 'Payment Officer', 'Payment operations user'],
-  ['DISPUTE_OFFICER', 'Dispute Officer', 'Dispute resolution user'],
+  ...ROLE_CATEGORIES.map((role) => [role.code, role.name, role.name, role.scope]),
+  ...Object.entries(LEGACY_ROLE_ALIASES).map(([code, canonical]) => {
+    const [name, description] = LEGACY_ROLE_METADATA[code];
+    const scope = ROLE_CATEGORIES.find((role) => role.code === canonical)?.scope || 'PLATFORM';
+    return [code, name, description, scope];
+  }),
 ];
 
-const PERMISSIONS = [
-  ['users.read', 'users', 'read', 'View users'],
-  ['users.manage', 'users', 'manage', 'Create and update users'],
-  ['roles.manage', 'roles', 'manage', 'Manage roles and permissions'],
-  ['organizations.read', 'organizations', 'read', 'View organizations'],
-  ['organizations.manage', 'organizations', 'manage', 'Manage organizations'],
-  ['farms.read', 'farms', 'read', 'View farms'],
-  ['farms.manage', 'farms', 'manage', 'Manage farms'],
-  ['cultivations.read', 'cultivations', 'read', 'View cultivations'],
-  ['cultivations.manage', 'cultivations', 'manage', 'Manage cultivations'],
-  ['harvests.read', 'harvests', 'read', 'View harvests'],
-  ['harvests.manage', 'harvests', 'manage', 'Manage harvests'],
-  ['products.read', 'products', 'read', 'View products'],
-  ['products.manage', 'products', 'manage', 'Manage products'],
-  ['listings.read', 'listings', 'read', 'View listings'],
-  ['listings.manage', 'listings', 'manage', 'Manage listings'],
-  ['orders.read', 'orders', 'read', 'View orders'],
-  ['orders.manage', 'orders', 'manage', 'Manage orders'],
-  ['payments.read', 'payments', 'read', 'View payments'],
-  ['payments.manage', 'payments', 'manage', 'Manage payments'],
-  ['refunds.manage', 'refunds', 'manage', 'Manage refunds'],
-  ['ledger.read', 'ledger', 'read', 'View ledger entries'],
-  ['ledger.manage', 'ledger', 'manage', 'Post ledger adjustments'],
-  ['shipments.read', 'shipments', 'read', 'View shipments'],
-  ['shipments.manage', 'shipments', 'manage', 'Manage shipments'],
-  ['warehouses.read', 'warehouses', 'read', 'View warehouses'],
-  ['warehouses.manage', 'warehouses', 'manage', 'Manage warehouses'],
-  ['quality.read', 'quality', 'read', 'View quality inspections'],
-  ['quality.manage', 'quality', 'manage', 'Record quality inspections'],
-  ['traceability.read', 'traceability', 'read', 'View traceability records'],
-  ['ai.read', 'ai', 'read', 'View AI recommendations'],
-  ['ai.feedback', 'ai', 'feedback', 'Provide AI feedback'],
-  ['subscriptions.manage', 'subscriptions', 'manage', 'Manage subscriptions'],
-  ['notifications.read', 'notifications', 'read', 'View notifications'],
-  ['audit.read', 'audit', 'read', 'View audit logs'],
-  ['settings.manage', 'settings', 'manage', 'Manage platform settings'],
-];
-
-const ALL_PERMISSION_CODES = PERMISSIONS.map(([code]) => code);
+const PERMISSIONS = PERMISSION_CATALOG;
 
 const ROLE_PERMISSIONS = {
-  SUPER_ADMIN: ALL_PERMISSION_CODES,
-  DISTRICT_ADMIN: [
-    'users.read',
-    'organizations.read',
-    'farms.read',
-    'cultivations.read',
-    'harvests.read',
-    'products.read',
-    'listings.read',
-    'orders.read',
-    'shipments.read',
-    'quality.read',
-    'traceability.read',
-    'notifications.read',
-  ],
-  UPAZILA_COORDINATOR: [
-    'users.read',
-    'farms.read',
-    'cultivations.read',
-    'harvests.read',
-    'products.read',
-    'listings.read',
-    'traceability.read',
-    'notifications.read',
-  ],
-  FARMER: [
-    'farms.read',
-    'farms.manage',
-    'cultivations.read',
-    'cultivations.manage',
-    'harvests.read',
-    'harvests.manage',
-    'products.read',
-    'products.manage',
-    'listings.read',
-    'listings.manage',
-    'orders.read',
-    'ai.read',
-    'ai.feedback',
-    'notifications.read',
-  ],
-  FARMER_GROUP_LEADER: [
-    'users.read',
-    'farms.read',
-    'cultivations.read',
-    'harvests.read',
-    'products.read',
-    'listings.read',
-    'orders.read',
-    'traceability.read',
-    'notifications.read',
-  ],
-  WHOLESALER: [
-    'products.read',
-    'listings.read',
-    'orders.read',
-    'orders.manage',
-    'payments.read',
-    'shipments.read',
-    'ai.read',
-    'notifications.read',
-  ],
-  RETAILER: [
-    'products.read',
-    'listings.read',
-    'orders.read',
-    'orders.manage',
-    'payments.read',
-    'shipments.read',
-    'notifications.read',
-  ],
-  INSTITUTIONAL_BUYER: [
-    'products.read',
-    'listings.read',
-    'orders.read',
-    'orders.manage',
-    'payments.read',
-    'shipments.read',
-    'traceability.read',
-    'notifications.read',
-  ],
-  CONSUMER: [
-    'products.read',
-    'listings.read',
-    'orders.read',
-    'orders.manage',
-    'payments.read',
-    'shipments.read',
-    'notifications.read',
-  ],
-  TRANSPORTER: ['shipments.read', 'shipments.manage', 'notifications.read'],
-  QUALITY_INSPECTOR: [
-    'quality.read',
-    'quality.manage',
-    'traceability.read',
-    'shipments.read',
-    'notifications.read',
-  ],
-  WAREHOUSE_MANAGER: [
-    'warehouses.read',
-    'warehouses.manage',
-    'products.read',
-    'quality.read',
-    'traceability.read',
-    'notifications.read',
-  ],
-  PAYMENT_OFFICER: [
-    'payments.read',
-    'payments.manage',
-    'refunds.manage',
-    'orders.read',
-    'ledger.read',
-    'notifications.read',
-  ],
-  DISPUTE_OFFICER: [
-    'orders.read',
-    'payments.read',
-    'refunds.manage',
-    'audit.read',
-    'traceability.read',
-    'notifications.read',
-  ],
+  ...DEFAULT_ROLE_PERMISSIONS,
+  ...Object.fromEntries(
+    Object.entries(LEGACY_ROLE_ALIASES).map(([code, canonical]) => [
+      code,
+      [...DEFAULT_ROLE_PERMISSIONS[canonical]],
+    ]),
+  ),
 };
 
 const PRODUCT_CATEGORIES = [
@@ -356,13 +215,13 @@ async function seedGeography(tx) {
 
 async function seedAccessControl(tx) {
   const roleByCode = new Map();
-  for (const [code, name, description] of ROLES) {
+  for (const [code, name, description, scope] of ROLES) {
     roleByCode.set(
       code,
       await tx.role.upsert({
         where: { code },
-        update: { name, description, scope: 'PLATFORM', is_system: true },
-        create: { code, name, description, scope: 'PLATFORM', is_system: true },
+        update: { name, description, scope, is_system: true },
+        create: { code, name, description, scope, is_system: true },
       }),
     );
   }
@@ -382,17 +241,22 @@ async function seedAccessControl(tx) {
   let assignments = 0;
   for (const [roleCode, permissionCodes] of Object.entries(ROLE_PERMISSIONS)) {
     const role = roleByCode.get(roleCode);
-    for (const permissionCode of permissionCodes) {
-      const permission = permissionByCode.get(permissionCode);
+    const permissionIds = permissionCodes.map((code) => permissionByCode.get(code).id);
+
+    await tx.rolePermission.deleteMany({
+      where: { role_id: role.id, permission_id: { notIn: permissionIds } },
+    });
+
+    for (const permissionId of permissionIds) {
       await tx.rolePermission.upsert({
         where: {
           role_id_permission_id: {
             role_id: role.id,
-            permission_id: permission.id,
+            permission_id: permissionId,
           },
         },
         update: {},
-        create: { role_id: role.id, permission_id: permission.id },
+        create: { role_id: role.id, permission_id: permissionId },
       });
       assignments += 1;
     }

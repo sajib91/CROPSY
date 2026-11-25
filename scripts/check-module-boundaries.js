@@ -24,6 +24,7 @@ const allowedPackages = new Set([
   '@cropsy/config',
   '@cropsy/shared',
   '@cropsy/validation',
+  '@prisma/client',
   'fastify',
 ]);
 

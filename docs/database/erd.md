@@ -190,6 +190,10 @@ erDiagram
   unions |o--o{ user_addresses : union
 ```
 
+`users.email` is nullable for phone-only accounts; uniqueness is enforced by
+`users_email_not_null_key`, a partial index over non-null values. `OtpPurpose`
+includes `ACCOUNT_RECOVERY` for locked/deactivated account recovery.
+
 `refresh_tokens.rotated_to_id` is the single self-FK; Prisma exposes the inverse side as `rotated_from`.
 
 ## Agriculture

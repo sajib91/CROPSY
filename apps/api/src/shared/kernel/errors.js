@@ -35,9 +35,27 @@ class NotFoundError extends DomainError {
   }
 }
 
+class UnauthorizedError extends AppError {
+  constructor({ message = 'Authentication is required', details, cause } = {}) {
+    super({ code: 'unauthorized', message, status: 401, details, cause });
+  }
+}
+
+class ForbiddenError extends AppError {
+  constructor({ message = 'Access is denied', details, cause } = {}) {
+    super({ code: 'forbidden', message, status: 403, details, cause });
+  }
+}
+
 class ConflictError extends DomainError {
   constructor({ message = 'Resource conflict', details } = {}) {
     super({ code: 'conflict', message, status: 409, details });
+  }
+}
+
+class TooManyRequestsError extends AppError {
+  constructor({ message = 'Too many requests', details } = {}) {
+    super({ code: 'rate_limited', message, status: 429, details });
   }
 }
 
@@ -67,7 +85,10 @@ module.exports = {
   DomainError,
   ValidationError,
   NotFoundError,
+  UnauthorizedError,
+  ForbiddenError,
   ConflictError,
+  TooManyRequestsError,
   InfrastructureError,
   NotImplementedError,
   isAppError,
