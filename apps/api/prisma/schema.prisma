@@ -69,6 +69,26 @@ enum OrganizationStatus {
   INACTIVE
 }
 
+enum OrganizationType {
+  AGRICULTURAL_COMPANY
+  FARMER_COOPERATIVE
+  WHOLESALE_BUSINESS
+  RETAIL_BUSINESS
+  AGRICULTURAL_SUPPLIER
+  LOGISTICS_COMPANY
+  WAREHOUSE
+  OTHER
+}
+
+enum OrganizationDocumentType {
+  REGISTRATION_CERTIFICATE
+  TAX_DOCUMENT
+  TRADE_LICENSE
+  BANK_STATEMENT
+  INSURANCE
+  OTHER
+}
+
 enum OrganizationMemberStatus {
   ACTIVE
   INVITED
@@ -553,34 +573,38 @@ model User {
   created_at            DateTime      @default(now()) @db.Timestamp(6)
   updated_at            DateTime      @updatedAt @db.Timestamp(6)
 
-  profile              UserProfile?
-  roles                UserRole[]
-  sessions             Session[]
-  refresh_tokens       RefreshToken[]
-  otp_verifications    OTPVerification[]
-  owned_organizations  Organization[]           @relation("OrganizationOwner")
-  organization_members OrganizationMember[]
-  invitations_sent     OrganizationInvitation[] @relation("OrganizationInvitationInvitedBy")
-  granted_roles        UserRole[]               @relation("UserRoleGrantedBy")
-  addresses            UserAddress[]
-  farmer_profiles      FarmerProfile[]
-  farm_activities      FarmActivity[]           @relation("FarmActivityPerformer")
-  inspections          QualityInspection[]      @relation("QualityInspector")
-  managed_warehouses   Warehouse[]              @relation("WarehouseManager")
-  carts                Cart[]
-  orders_as_buyer      Order[]                  @relation("OrderBuyer")
-  orders_as_seller     Order[]                  @relation("OrderSeller")
-  payments             Payment[]
-  commissions          Commission[]             @relation("CommissionSeller")
-  settlements          Settlement[]             @relation("SettlementSeller")
-  conversations        Conversation[]
-  recommendations      AIRecommendation[]
-  agent_executions     AgentExecution[]         @relation("AgentInitiator")
-  ai_feedback          AIFeedback[]
-  notifications        Notification[]
-  audit_logs           AuditLog[]               @relation("AuditActor")
-  farms                Farm[]
-  productListings      ProductListing[]
+  profile                  UserProfile?
+  roles                    UserRole[]
+  sessions                 Session[]
+  refresh_tokens           RefreshToken[]
+  otp_verifications        OTPVerification[]
+  owned_organizations      Organization[]           @relation("OrganizationOwner")
+  verified_organizations   Organization[]           @relation("OrganizationVerifiedBy")
+  uploaded_org_documents   OrganizationDocument[]   @relation("OrganizationDocumentUploader")
+  notification_preferences NotificationPreference[]
+  role_profile_extensions  RoleProfileExtension[]
+  organization_members     OrganizationMember[]
+  invitations_sent         OrganizationInvitation[] @relation("OrganizationInvitationInvitedBy")
+  granted_roles            UserRole[]               @relation("UserRoleGrantedBy")
+  addresses                UserAddress[]
+  farmer_profiles          FarmerProfile[]
+  farm_activities          FarmActivity[]           @relation("FarmActivityPerformer")
+  inspections              QualityInspection[]      @relation("QualityInspector")
+  managed_warehouses       Warehouse[]              @relation("WarehouseManager")
+  carts                    Cart[]
+  orders_as_buyer          Order[]                  @relation("OrderBuyer")
+  orders_as_seller         Order[]                  @relation("OrderSeller")
+  payments                 Payment[]
+  commissions              Commission[]             @relation("CommissionSeller")
+  settlements              Settlement[]             @relation("SettlementSeller")
+  conversations            Conversation[]
+  recommendations          AIRecommendation[]
+  agent_executions         AgentExecution[]         @relation("AgentInitiator")
+  ai_feedback              AIFeedback[]
+  notifications            Notification[]
+  audit_logs               AuditLog[]               @relation("AuditActor")
+  farms                    Farm[]
+  productListings          ProductListing[]
 
   @@index([account_status])
   @@index([created_at])
@@ -748,70 +772,85 @@ model OTPVerification {
 // ---------------------------------------------------------------------------
 
 model Organization {
-  id               String             @id @default(uuid()) @db.Uuid
-  name             String             @db.VarChar(180)
-  slug             String             @unique @db.VarChar(180)
-  legal_name       String?            @db.VarChar(255)
-  tax_id           String?            @db.VarChar(64)
-  owner_user_id    String             @db.Uuid
-  default_currency String             @default("BDT") @db.Char(3)
-  status           OrganizationStatus @default(ACTIVE)
+  id                  String             @id @default(uuid()) @db.Uuid
+  name                String             @db.VarChar(180)
+  slug                String             @unique @db.VarChar(180)
+  legal_name          String?            @db.VarChar(255)
+  tax_id              String?            @db.VarChar(64)
+  owner_user_id       String             @db.Uuid
+  organization_type   OrganizationType   @default(OTHER)
+  description         String?            @db.Text
+  website             String?            @db.VarChar(255)
+  contact_email       String?            @db.VarChar(255)
+  contact_phone       String?            @db.VarChar(32)
+  verification_status VerificationStatus @default(UNVERIFIED)
+  verification_note   String?            @db.Text
+  verified_at         DateTime?          @db.Timestamp(6)
+  verified_by_user_id String?            @db.Uuid
+  default_currency    String             @default("BDT") @db.Char(3)
+  status              OrganizationStatus @default(ACTIVE)
   // Soft deletion is justified here because orders, payments, ledger entries,
   // and audit history must survive organization closure.
-  deleted_at       DateTime?          @db.Timestamp(6)
-  created_at       DateTime           @default(now()) @db.Timestamp(6)
-  updated_at       DateTime           @updatedAt @db.Timestamp(6)
+  deleted_at          DateTime?          @db.Timestamp(6)
+  created_at          DateTime           @default(now()) @db.Timestamp(6)
+  updated_at          DateTime           @updatedAt @db.Timestamp(6)
 
-  owner                 User                     @relation("OrganizationOwner", fields: [owner_user_id], references: [id], onDelete: Restrict)
-  members               OrganizationMember[]
-  invitations           OrganizationInvitation[]
-  addresses             OrganizationAddress[]
-  user_roles            UserRole[]
-  farmer_profiles       FarmerProfile[]
-  crop_seasons          CropSeason[]
-  farms                 Farm[]
-  land_parcels          LandParcel[]
-  cultivations          Cultivation[]
-  farm_activities       FarmActivity[]
-  harvests              Harvest[]
-  agricultural_inputs   AgriculturalInput[]
-  product_categories    ProductCategory[]
-  products              Product[]
-  product_inventories   ProductInventory[]
-  product_listings      ProductListing[]
-  price_history         PriceHistory[]
-  carts                 Cart[]
-  orders                Order[]
-  payments              Payment[]
-  refunds               Refund[]
-  transactions          Transaction[]
-  ledger_accounts       LedgerAccount[]
-  ledger_entries        LedgerEntry[]
-  commissions           Commission[]
-  settlements           Settlement[]
-  shipments             Shipment[]
-  warehouses            Warehouse[]
-  quality_inspections   QualityInspection[]
-  traceability_records  TraceabilityRecord[]
-  knowledge_sources     KnowledgeSource[]
-  knowledge_documents   KnowledgeDocument[]
-  embedding_references  EmbeddingReference[]
-  conversations         Conversation[]
-  recommendations       AIRecommendation[]
-  agent_executions      AgentExecution[]
-  subscriptions         Subscription[]
-  subscription_invoices SubscriptionInvoice[]
-  usage_records         UsageRecord[]
-  notifications         Notification[]
-  audit_logs            AuditLog[]
-  outbox_events         OutboxEvent[]
-  feature_flags         FeatureFlag[]
-  platform_settings     PlatformSetting[]
-  aifeedbacks           AIFeedback[]
+  owner                   User                     @relation("OrganizationOwner", fields: [owner_user_id], references: [id], onDelete: Restrict)
+  verified_by             User?                    @relation("OrganizationVerifiedBy", fields: [verified_by_user_id], references: [id], onDelete: SetNull)
+  documents               OrganizationDocument[]
+  role_profile_extensions RoleProfileExtension[]
+  members                 OrganizationMember[]
+  invitations             OrganizationInvitation[]
+  addresses               OrganizationAddress[]
+  user_roles              UserRole[]
+  farmer_profiles         FarmerProfile[]
+  crop_seasons            CropSeason[]
+  farms                   Farm[]
+  land_parcels            LandParcel[]
+  cultivations            Cultivation[]
+  farm_activities         FarmActivity[]
+  harvests                Harvest[]
+  agricultural_inputs     AgriculturalInput[]
+  product_categories      ProductCategory[]
+  products                Product[]
+  product_inventories     ProductInventory[]
+  product_listings        ProductListing[]
+  price_history           PriceHistory[]
+  carts                   Cart[]
+  orders                  Order[]
+  payments                Payment[]
+  refunds                 Refund[]
+  transactions            Transaction[]
+  ledger_accounts         LedgerAccount[]
+  ledger_entries          LedgerEntry[]
+  commissions             Commission[]
+  settlements             Settlement[]
+  shipments               Shipment[]
+  warehouses              Warehouse[]
+  quality_inspections     QualityInspection[]
+  traceability_records    TraceabilityRecord[]
+  knowledge_sources       KnowledgeSource[]
+  knowledge_documents     KnowledgeDocument[]
+  embedding_references    EmbeddingReference[]
+  conversations           Conversation[]
+  recommendations         AIRecommendation[]
+  agent_executions        AgentExecution[]
+  subscriptions           Subscription[]
+  subscription_invoices   SubscriptionInvoice[]
+  usage_records           UsageRecord[]
+  notifications           Notification[]
+  audit_logs              AuditLog[]
+  outbox_events           OutboxEvent[]
+  feature_flags           FeatureFlag[]
+  platform_settings       PlatformSetting[]
+  aifeedbacks             AIFeedback[]
 
   @@index([owner_user_id])
   @@index([status])
   @@index([deleted_at])
+  @@index([organization_type])
+  @@index([verification_status])
+  @@index([verified_by_user_id])
   @@map("organizations")
 }
 
@@ -891,6 +930,64 @@ model OrganizationAddress {
   @@index([upazila_id])
   @@index([union_id])
   @@map("organization_addresses")
+}
+
+model OrganizationDocument {
+  id                  String                   @id @default(uuid()) @db.Uuid
+  organization_id     String                   @db.Uuid
+  uploaded_by_user_id String                   @db.Uuid
+  document_type       OrganizationDocumentType
+  file_name           String                   @db.VarChar(255)
+  file_url            String                   @db.Text
+  mime_type           String?                  @db.VarChar(120)
+  size_bytes          Int?
+  verification_status VerificationStatus       @default(PENDING)
+  notes               String?                  @db.Text
+  created_at          DateTime                 @default(now()) @db.Timestamp(6)
+  updated_at          DateTime                 @updatedAt @db.Timestamp(6)
+
+  organization Organization @relation(fields: [organization_id], references: [id], onDelete: Cascade)
+  uploaded_by  User         @relation("OrganizationDocumentUploader", fields: [uploaded_by_user_id], references: [id], onDelete: Restrict)
+
+  @@index([organization_id, document_type])
+  @@index([verification_status])
+  @@index([uploaded_by_user_id])
+  @@map("organization_documents")
+}
+
+model NotificationPreference {
+  id         String              @id @default(uuid()) @db.Uuid
+  user_id    String              @db.Uuid
+  channel    NotificationChannel
+  event_type String              @db.VarChar(80)
+  enabled    Boolean             @default(true)
+  created_at DateTime            @default(now()) @db.Timestamp(6)
+  updated_at DateTime            @updatedAt @db.Timestamp(6)
+
+  user User @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@unique([user_id, channel, event_type])
+  @@index([user_id, enabled])
+  @@map("notification_preferences")
+}
+
+model RoleProfileExtension {
+  id              String   @id @default(uuid()) @db.Uuid
+  user_id         String   @db.Uuid
+  role_code       String   @db.VarChar(80)
+  organization_id String?  @db.Uuid
+  // PLATFORM or the organization UUID; kept consistent by a CHECK constraint.
+  scope_key       String   @default("PLATFORM") @db.VarChar(64)
+  data            Json
+  created_at      DateTime @default(now()) @db.Timestamp(6)
+  updated_at      DateTime @updatedAt @db.Timestamp(6)
+
+  user         User          @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  organization Organization? @relation(fields: [organization_id], references: [id], onDelete: SetNull)
+
+  @@unique([user_id, role_code, scope_key])
+  @@index([organization_id])
+  @@map("role_profile_extensions")
 }
 
 model UserAddress {

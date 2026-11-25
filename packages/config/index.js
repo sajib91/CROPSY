@@ -66,6 +66,7 @@ const apiSchema = sharedSchema
         'FARMER,BUYER,WHOLESALER,RETAILER,AGRICULTURAL_INPUT_SUPPLIER,LOGISTICS_PROVIDER,WAREHOUSE_OPERATOR,AGRICULTURAL_EXPERT,QUALITY_INSPECTOR',
       ),
     AUTHZ_POLICY_JSON: z.string().trim().default(''),
+    ORGANIZATION_INVITATION_TTL_HOURS: z.coerce.number().int().min(1).max(720).default(72),
   })
   .superRefine((value, context) => {
     if (value.NODE_ENV === 'production') {

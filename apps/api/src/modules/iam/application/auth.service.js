@@ -456,6 +456,7 @@ class AuthService {
       sessionId: session.id,
       sessionTokenHash,
       csrfToken,
+      organizationId: null,
     });
     const refreshToken = this.tokenManager.createOpaqueToken(48);
     await this.store.createRefreshToken({
@@ -636,6 +637,7 @@ class AuthService {
       sessionId: session.id,
       sessionTokenHash: session.session_token_hash,
       csrfToken,
+      organizationId: input.organizationId || null,
     });
 
     await this.audit(

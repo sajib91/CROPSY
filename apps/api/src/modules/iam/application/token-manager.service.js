@@ -10,7 +10,14 @@ class TokenManager {
     this.env = env;
   }
 
-  createAccessToken({ userId, sessionId, sessionTokenHash, csrfToken, rolesVersion = 1 }) {
+  createAccessToken({
+    userId,
+    sessionId,
+    sessionTokenHash,
+    csrfToken,
+    rolesVersion = 1,
+    organizationId = null,
+  }) {
     return tokenSecurity.createAccessToken({
       secret: this.secret,
       userId,
@@ -19,6 +26,7 @@ class TokenManager {
       csrfToken,
       ttlSeconds: this.env.AUTH_ACCESS_TOKEN_TTL_SECONDS,
       rolesVersion,
+      organizationId,
     });
   }
 

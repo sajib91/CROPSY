@@ -7,14 +7,15 @@ require a valid access token. The complete role/permission grid lives in
 
 ## Model
 
-- **11 canonical role categories**: `FARMER`, `BUYER`, `WHOLESALER`, `RETAILER`,
+- **12 canonical role categories**: `FARMER`, `BUYER`, `WHOLESALER`, `RETAILER`,
   `AGRICULTURAL_INPUT_SUPPLIER`, `LOGISTICS_PROVIDER`, `WAREHOUSE_OPERATOR`,
-  `AGRICULTURAL_EXPERT`, `QUALITY_INSPECTOR`, `ORGANIZATION_ADMIN`, and
-  `CROPSY_SUPER_ADMIN`. Legacy seed roles remain as aliases mapped to canonical
-  permissions for existing data.
+  `AGRICULTURAL_EXPERT`, `QUALITY_INSPECTOR`, `ORGANIZATION_MEMBER`,
+  `ORGANIZATION_ADMIN`, and `CROPSY_SUPER_ADMIN`. Legacy seed roles remain as
+  aliases mapped to canonical permissions for existing data.
 - **Multiple roles**: a user may hold several platform roles. Super admin is
   exclusive (`allowMultiple: false`). Organization roles are scoped to one
-  organization.
+  organization. Invitations grant `ORGANIZATION_MEMBER`; `ORGANIZATION_ADMIN`
+  is reserved for tenant management.
 - **Multiple organizations**: `organization_memberships` plus organization-scoped
   `user_roles` grants give a user access to more than one tenant. The active
   tenant is selected by `x-organization-id`, `?organizationId=`, or a route
@@ -95,3 +96,8 @@ as `iam.authz.allowed` / `iam.authz.denied`.
 - denials appear in `/audit`;
 - super admins can inspect every tenant;
 - changing a role's permissions changes the next request's effective permissions.
+
+Organization and profile route coverage is documented in
+[`README.md`](./README.md) and exercised by `organizations.test.js` and
+`users.test.js`, including default-deny checks for unauthenticated and
+under-privileged callers.

@@ -1,3 +1,4 @@
+const { IdentityStoreToken, PlatformAuthorizationToken } = require('../../shared/di/tokens');
 const { defineModule } = require('../../shared/module/define-module');
 const { MODULE_ID, MODULE_NAME } = require('./domain/users.entity');
 const { UsersRepositoryToken } = require('./domain/users.repository');
@@ -17,6 +18,10 @@ const definition = defineModule({
   repository: UsersInMemoryRepository,
   serviceToken: UsersServiceToken,
   service: UsersService,
+  serviceDependencies: {
+    identityStore: IdentityStoreToken,
+    authorization: PlatformAuthorizationToken,
+  },
   routes: usersRoutes,
 });
 

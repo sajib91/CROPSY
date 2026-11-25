@@ -8,8 +8,18 @@ const { registerErrorHandling } = require('./shared/presentation/error-handler')
 const observability = require('./shared/presentation/observability');
 const { resolveApiVersion } = require('./shared/http/versioning');
 const { createContainer, registerModules } = require('./modules');
+const {
+  IdentityStoreToken,
+  PlatformAuthorizationToken,
+  PlatformTokenManagerToken,
+} = require('./shared/di/tokens');
 const { AuthStoreToken } = require('./modules/iam/domain/auth.repository');
-const { OtpProvidersToken, RateLimiterToken } = require('./modules/iam/application/tokens');
+const {
+  AuthorizationServiceToken,
+  OtpProvidersToken,
+  RateLimiterToken,
+  TokenManagerToken,
+} = require('./modules/iam/application/tokens');
 const { registerHttpAuthorization } = require('./modules/iam/presentation/http-authorization');
 const healthRoutes = require('./routes/health');
 const platformRoutes = require('./routes/platform');
@@ -35,6 +45,14 @@ async function buildServer(options = {}) {
     apiVersion,
     overrides,
   });
+
+  // Composition-root aliases: business modules consume these shared ports
+  // without depending on the IAM module's source files.
+  container.register(IdentityStoreToken, (resolver) => resolver.resolve(AuthStoreToken));
+  container.register(PlatformAuthorizationToken, (resolver) =>
+    resolver.resolve(AuthorizationServiceToken),
+  );
+  container.register(PlatformTokenManagerToken, (resolver) => resolver.resolve(TokenManagerToken));
 
   app.decorate('cropsyEnv', env);
   app.decorate('startedAt', Date.now());

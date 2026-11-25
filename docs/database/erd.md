@@ -56,15 +56,23 @@ erDiagram
 erDiagram
   users {
     uuid id PK
-    varchar email UK
+    varchar email
     varchar phone UK
     text password_hash
     AccountStatus account_status
+    boolean is_email_verified
+    boolean is_phone_verified
     int failed_login_attempts
   }
   user_profiles {
     uuid id PK
     uuid user_id FK
+    varchar first_name
+    varchar last_name
+    varchar name_bn
+    varchar avatar_url
+    date date_of_birth
+    Gender gender
     varchar national_id_hash UK
     PreferredLanguage preferred_language
     char default_currency
@@ -118,6 +126,15 @@ erDiagram
     uuid id PK
     varchar slug UK
     uuid owner_user_id FK
+    OrganizationType organization_type
+    VerificationStatus verification_status
+    varchar verification_note
+    timestamp verified_at
+    uuid verified_by_user_id FK
+    varchar contact_email
+    varchar contact_phone
+    text description
+    varchar website
     OrganizationStatus status
     char default_currency
     timestamp deleted_at
@@ -136,6 +153,8 @@ erDiagram
     uuid invited_by_user_id FK
     varchar token_hash UK
     InvitationStatus status
+    timestamp expires_at
+    timestamp accepted_at
   }
   organization_addresses {
     uuid id PK
@@ -148,6 +167,15 @@ erDiagram
     geometry location
     boolean is_primary
   }
+  organization_documents {
+    uuid id PK
+    uuid organization_id FK
+    uuid uploaded_by_user_id FK
+    OrganizationDocumentType document_type
+    varchar file_name
+    text file_url
+    VerificationStatus verification_status
+  }
   user_addresses {
     uuid id PK
     uuid user_id FK
@@ -158,6 +186,21 @@ erDiagram
     uuid union_id FK
     geometry location
     boolean is_primary
+  }
+  notification_preferences {
+    uuid id PK
+    uuid user_id FK
+    NotificationChannel channel
+    varchar event_type
+    boolean enabled
+  }
+  role_profile_extensions {
+    uuid id PK
+    uuid user_id FK
+    varchar role_code
+    uuid organization_id FK
+    varchar scope_key
+    jsonb data
   }
 
   users ||--o| user_profiles : user
@@ -173,6 +216,7 @@ erDiagram
   refresh_tokens |o--o{ refresh_tokens : rotated_to
   users |o--o{ otp_verifications : user
   users ||--o{ organizations : owner
+  users |o--o{ organizations : verified_by
   organizations ||--o{ organization_members : organization
   users ||--o{ organization_members : user
   organizations ||--o{ organization_invitations : organization
@@ -183,16 +227,31 @@ erDiagram
   districts |o--o{ organization_addresses : district
   upazilas |o--o{ organization_addresses : upazila
   unions |o--o{ organization_addresses : union
+  organizations ||--o{ organization_documents : documents
+  users ||--o{ organization_documents : uploaded_by
   users ||--o{ user_addresses : user
   divisions |o--o{ user_addresses : division
   districts |o--o{ user_addresses : district
   upazilas |o--o{ user_addresses : upazila
   unions |o--o{ user_addresses : union
+  users ||--o{ notification_preferences : user
+  users ||--o{ role_profile_extensions : user
+  organizations |o--o{ role_profile_extensions : organization
 ```
 
 `users.email` is nullable for phone-only accounts; uniqueness is enforced by
 `users_email_not_null_key`, a partial index over non-null values. `OtpPurpose`
-includes `ACCOUNT_RECOVERY` for locked/deactivated account recovery.
+includes `ACCOUNT_RECOVERY` for locked/deactivated account recovery. Profile
+verification status is derived from the `users` email/phone flags;
+`user_profiles` has no verification column.
+
+`organization_documents` stores metadata only; file bytes and storage providers
+are external. `notification_preferences` is unique per user/channel/event.
+`role_profile_extensions` is unique per user/role/scope and its raw check
+requires `PLATFORM` with a null organization or the organization UUID repeated
+in `scope_key`. Farmer agricultural data remains in `farmer_profiles` rather
+than a `FARMER` role extension. Partial unique indexes keep one primary address
+per user and per organization.
 
 `refresh_tokens.rotated_to_id` is the single self-FK; Prisma exposes the inverse side as `rotated_from`.
 

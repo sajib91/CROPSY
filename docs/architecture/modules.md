@@ -6,8 +6,9 @@ explicit layers: `domain`, `application`, `infrastructure`, and `presentation`. 
 is declared in `apps/api/src/modules/registry.js` and implemented through the shared in-process
 event bus, never through another module's service class.
 
-This scaffolding establishes boundaries and service seams only. It does not implement business
-workflows, commission rules, payment providers, prices, or settlement policies.
+The scaffolding establishes boundaries and service seams; IAM authentication/RBAC and the
+organization/user profile workflows are implemented inside those boundaries. It does not
+implement commission rules, payment providers, prices, or settlement policies.
 
 ## Layer rules
 
@@ -81,7 +82,7 @@ apps/api/src/modules/<module-id>/
 │   ├── <module-id>.service.js      # module-specific application service
 │   └── index.js
 ├── infrastructure/
-│   ├── <module-id>.repository.js   # in-memory adapter; replace with Prisma adapter later
+│   ├── <module-id>.repository.js   # module adapter; IAM also exposes Prisma/in-memory stores
 │   └── index.js
 ├── presentation/
 │   ├── <module-id>.routes.js       # Fastify plugin, validation, response envelope
@@ -90,7 +91,10 @@ apps/api/src/modules/<module-id>/
 ```
 
 Every module has its own entity class, repository token, service class, DTO schema, adapter, and
-route plugin. There is no generic "business service" shared between unrelated modules.
+route plugin. There is no generic "business service" shared between unrelated modules. IAM
+publishes narrow composition ports (`IdentityStoreToken`, `PlatformAuthorizationToken`, and
+`PlatformTokenManagerToken`) so `users` and `organizations` can share identity and authorization
+without importing another module's source.
 
 ## HTTP surface
 
@@ -106,6 +110,10 @@ All routes are mounted under `API_PREFIX` (default `/api/v1`).
 | `GET /health`, `GET /health/ready` | Foundation health endpoints |
 | `GET /<module-path>/info` | Validated module DTO from the DI-resolved service |
 | `GET /<module-path>/info/:moduleId` | Same DTO with validated module id matching |
+
+All non-public routes are default-deny. The `info` endpoints are the only module routes in the
+public allowlist; authenticated organization and user routes are documented in
+[`../api/README.md`](../api/README.md).
 
 Requests may send `x-request-id`; it is echoed on the response and included in structured logs.
 An `x-api-version` header is accepted only when it matches the active version.

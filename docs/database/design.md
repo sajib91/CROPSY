@@ -1,6 +1,6 @@
 # Database design
 
-This document describes the CROPSY PostgreSQL database. Sources of truth are [`schema.prisma`](../../apps/api/prisma/schema.prisma), the [initial migration](../../apps/api/prisma/migrations/20261125000000_init/migration.sql), the [review-hardening migration](../../apps/api/prisma/migrations/20261125120000_review_hardening/migration.sql), the [auth-identity migration](../../apps/api/prisma/migrations/20261125130000_auth_identity/migration.sql), and the [idempotent seed](../../apps/api/prisma/seed.js). The root baseline documents `RTB.md`, `SSD.md`, and `user-story.md` remain unchanged.
+This document describes the CROPSY PostgreSQL database. Sources of truth are [`schema.prisma`](../../apps/api/prisma/schema.prisma), the [initial migration](../../apps/api/prisma/migrations/20261125000000_init/migration.sql), the [review-hardening migration](../../apps/api/prisma/migrations/20261125120000_review_hardening/migration.sql), the [auth-identity migration](../../apps/api/prisma/migrations/20261125130000_auth_identity/migration.sql), the [organization/profile migration](../../apps/api/prisma/migrations/20261125140000_organization_profile_management/migration.sql), and the [idempotent seed](../../apps/api/prisma/seed.js). The root baseline documents `RTB.md`, `SSD.md`, and `user-story.md` remain unchanged.
 
 ## Technology choices
 
@@ -40,7 +40,7 @@ The seed inserts Bangladesh (`BD`), 8 divisions, and 64 districts with English a
 
 - `organization_id` identifies tenant-owned rows. `NULL` means platform scope. It is optional on most domain tables (with `ON DELETE SET NULL`) and required on `warehouses` and `subscriptions` (with `ON DELETE RESTRICT`).
 - `scope_key` is a non-null surrogate used in unique keys because PostgreSQL treats `NULL`s as distinct:
-  - `user_roles`: `PLATFORM` or the organization UUID.
+  - `user_roles` and `role_profile_extensions`: `PLATFORM` or the organization UUID.
   - `feature_flags` and `platform_settings`: `GLOBAL` or the organization UUID.
   - `product_inventories`: `UNALLOCATED` or the warehouse UUID (inventory scope, not tenant scope).
 - `CHECK` constraints keep `scope_key` consistent with `organization_id` / `warehouse_id`.
@@ -163,9 +163,38 @@ auth/RBAC layer. The initial and review-hardening migrations remain immutable.
   `AUTH_STORE=prisma`; development/tests can use the in-memory adapter. Role,
   permission, organization membership, and audit rows are read on every
   authorization decision so policy changes take effect without redeploying.
-- The seed now maps the 11 canonical user categories and 10 legacy aliases to
-  40 permissions. See [`../security/permission-matrix.md`](../security/permission-matrix.md)
+- The seed maps 12 canonical categories and 10 legacy aliases to 46 permissions.
+  See [`../security/permission-matrix.md`](../security/permission-matrix.md)
   for the effective grid.
+
+## Organization and profile follow-up
+
+The follow-up migration `20261125140000_organization_profile_management` adds the
+storage needed by the organization and profile APIs. Earlier migrations remain
+immutable. Prisma generates the `CREATE TABLE`/`ALTER TABLE` DDL; the final
+`scope_key` check is raw SQL because Prisma cannot express that invariant.
+
+- `organizations` gains `organization_type`, `verification_status`,
+  `verification_note`, `verified_at`, `verified_by_user_id`, `contact_email`,
+  `contact_phone`, `description`, and `website`. `OrganizationType` covers
+  agricultural companies, farmer cooperatives, wholesale and retail businesses,
+  agricultural suppliers, logistics companies, warehouses, and `OTHER`.
+  Filter indexes cover type, verification status, and verifier.
+- `organization_documents` stores document metadata only: organization, uploader,
+  document type, file name/URL, MIME type, size, verification status, and notes.
+  Binary files and providers stay outside the database. FKs cascade on
+  organization deletion and restrict uploader deletion.
+- `notification_preferences` stores per-user channel/event toggles with a unique
+  `(user_id, channel, event_type)` key. `NotificationChannel` values are
+  `IN_APP`, `EMAIL`, `SMS`, and `PUSH`.
+- `role_profile_extensions` stores role-specific JSON keyed by
+  `(user_id, role_code, scope_key)`. `FARMER` data is deliberately excluded and
+  lives in `farmer_profiles`; other roles use this table. The raw
+  `role_profile_extensions_scope_key_check` requires `PLATFORM` with a null
+  organization or the organization UUID repeated in `scope_key`.
+- Partial unique indexes keep one primary address per user and per organization.
+  No verification column was added to `user_profiles`: profile verification is
+  derived from `users.is_email_verified` and `users.is_phone_verified`.
 
 ## PostGIS geometry and nearby listings
 
@@ -217,7 +246,7 @@ const nearby = await prisma.$queryRaw`
 | Data | Contents |
 | --- | --- |
 | Geography | 1 country (`BD`), 8 divisions, 64 districts |
-| Access control | 21 roles (11 canonical categories + 10 legacy aliases), 40 permissions, and 363 role-to-permission assignments |
+| Access control | 22 roles (12 canonical categories + 10 legacy aliases), 46 permissions, and 428 role-to-permission assignments |
 | Catalog | 10 product categories |
 | Ledger skeleton | 10 chart-of-accounts entries (assets, liabilities, equity, revenue, expense) |
 | Platform settings | `currency.default` (`BDT`, scale 2) and `geography.default_country` (`BD`) |
@@ -247,6 +276,11 @@ Covered cases:
 | Invalid financial transactions | payment status/amount check, refund cap trigger, balanced-ledger deferred trigger |
 | Concurrent updates | two parallel `reserve_product_inventory` calls; only one succeeds and stock is never oversold |
 | Auditability | audit log update/delete rejection |
+| Organization documents | FK rejection for unknown organization/uploader and `PENDING` verification default |
+| Preference uniqueness | one row per `(user_id, channel, event_type)` |
+| Profile extension scope | `scope_key` check and `(user_id, role_code, scope_key)` uniqueness |
+| One primary address | partial unique indexes for user and organization addresses |
+| Migration and seed state | four applied migrations, no drift, and stable 22/46/428 counts |
 
 ## Validation performed
 
@@ -255,15 +289,15 @@ The final review run completed the following checks:
 1. `prisma format` — schema formatted successfully.
 2. `prisma validate` — schema valid.
 3. `prisma generate` — Prisma Client generated successfully.
-4. `prisma migrate deploy` on a fresh temporary PostgreSQL 17 + PostGIS 3.5 instance — all three migrations applied, including the new indexes, functions, triggers, validated checks, nullable email, and the new OTP purpose.
+4. `prisma migrate deploy` on a fresh temporary PostgreSQL 17 + PostGIS 3.5 instance — all four migrations applied, including indexes, functions, triggers, validated checks, nullable email, the new OTP purpose, organization/profile tables, and the `scope_key` check.
 5. `prisma migrate diff --from-migrations --to-schema-datamodel` — empty diff; no drift between migrations and schema.
-6. Idempotent seed run twice — stable counts: 1 country, 8 divisions, 64 districts, 21 roles (11 canonical + 10 aliases), 40 permissions, 363 assignments, 10 product categories, 10 ledger accounts, and 2 platform settings.
-7. `npm run db:test` — 7/7 database integrity/concurrency tests passed.
-8. `npm run verify` — boundary check, lint, format check, builds, API/AI tests, and live health checks passed.
+6. Idempotent seed run twice — stable counts: 1 country, 8 divisions, 64 districts, 22 roles (12 canonical + 10 aliases), 46 permissions, 428 assignments, 10 product categories, 10 ledger accounts, and 2 platform settings.
+7. `npm run db:test` — 10/10 database integrity/concurrency tests passed.
+8. `npm run verify` — boundary check, lint, format check, builds, API/AI tests, optional database tests, and live health checks passed.
 
 ## Operational notes
 
 - `DATABASE_URL` must be set. The seed throws if it is missing. [`packages/config/index.js`](../../packages/config/index.js) validates a default for the API, but Prisma reads the environment directly; use the template in [`.env.example`](../../.env.example) explicitly.
 - First migration needs a role that can `CREATE EXTENSION postgis`.
 - `Unsupported` geometry fields are not available through Prisma Client. Use `$queryRaw` / `$executeRaw` for geometry reads and writes, and manage spatial indexes in raw SQL migrations.
-- The initial migration is the immutable baseline; `20261125120000_review_hardening` and `20261125130000_auth_identity` are follow-ups. Future schema or invariant changes require new migrations; do not edit any applied migration in place.
+- The initial migration is the immutable baseline; `20261125120000_review_hardening`, `20261125130000_auth_identity`, and `20261125140000_organization_profile_management` are follow-ups. Future schema or invariant changes require new migrations; do not edit any applied migration in place.

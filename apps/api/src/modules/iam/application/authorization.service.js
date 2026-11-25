@@ -55,6 +55,7 @@ class AuthorizationService {
     via = 'bearer',
     csrfToken = null,
     requestedOrganizationId = null,
+    tokenOrganizationId = null,
     token = null,
   }) {
     const roleAssignments = await this.store.listUserRoles(user.id);
@@ -92,6 +93,10 @@ class AuthorizationService {
         });
       }
       activeOrganizationId = requestedOrganizationId;
+    } else if (tokenOrganizationId) {
+      if (isSuperAdmin || organizationIds.includes(tokenOrganizationId)) {
+        activeOrganizationId = tokenOrganizationId;
+      }
     } else if (!isSuperAdmin && organizationIds.length > 0) {
       activeOrganizationId = organizationIds[0];
     }
@@ -114,6 +119,7 @@ class AuthorizationService {
     return {
       user: publicUser(user),
       session: session ? { ...session } : null,
+      sessionTokenHash: _sessionTokenHash || null,
       roles,
       organizations: organizations.map((membership) => ({
         id: membership.organization_id,
@@ -154,10 +160,11 @@ class AuthorizationService {
     return this.buildContext({
       user,
       session: { ...session, last_seen_at: new Date() },
-      sessionTokenHash: payload.sth,
+      _sessionTokenHash: payload.sth,
       via,
       csrfToken: payload.csrf,
       requestedOrganizationId: request ? this.requestedOrganizationId(request) : null,
+      tokenOrganizationId: payload.org || null,
       token,
     });
   }

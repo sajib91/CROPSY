@@ -26,57 +26,68 @@ configured default policy.
 | `WAREHOUSE_OPERATOR` | Platform | Yes | Yes |
 | `AGRICULTURAL_EXPERT` | Platform | Yes | Yes |
 | `QUALITY_INSPECTOR` | Platform | Yes | Yes |
+| `ORGANIZATION_MEMBER` | Organization | No | Yes |
 | `ORGANIZATION_ADMIN` | Organization | No | Yes |
 | `CROPSY_SUPER_ADMIN` | Platform | No | No |
 
 Platform role grants apply globally. Organization role grants apply only when
 the organization is the active tenant; a caller must also be an active member
 of that tenant. Super admin bypasses tenant scoping but is still audited.
+`ORGANIZATION_MEMBER` is the non-admin grant issued by invitations; it can read
+organization and member data but cannot manage members, documents, or
+organizations. `ORGANIZATION_ADMIN` adds tenant management permissions.
+`organizations.verify` is reserved for `CROPSY_SUPER_ADMIN` by default.
 
 ## Default role/permission grid
 
-| Permission | FARMER | BUYER | WHOLESALER | RETAILER | AGRICULTURAL_INPUT_SUPPLIER | LOGISTICS_PROVIDER | WAREHOUSE_OPERATOR | AGRICULTURAL_EXPERT | QUALITY_INSPECTOR | ORGANIZATION_ADMIN | CROPSY_SUPER_ADMIN |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| `profile.read` | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
-| `profile.manage` | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
-| `users.read` | — | — | — | — | — | — | — | — | — | ✓ | ✓ |
-| `users.manage` | — | — | — | — | — | — | — | — | — | ✓ | ✓ |
-| `roles.manage` | — | — | — | — | — | — | — | — | — | ✓ | ✓ |
-| `permissions.read` | — | — | — | — | — | — | — | — | — | ✓ | ✓ |
-| `organizations.read` | — | — | — | — | — | — | — | — | — | ✓ | ✓ |
-| `organizations.manage` | — | — | — | — | — | — | — | — | — | ✓ | ✓ |
-| `sessions.read` | — | — | — | — | — | — | — | — | — | ✓ | ✓ |
-| `sessions.manage` | — | — | — | — | — | — | — | — | — | — | ✓ |
-| `audit.read` | — | — | — | — | — | — | — | — | — | ✓ | ✓ |
-| `settings.manage` | — | — | — | — | — | — | — | — | — | — | ✓ |
-| `farms.read` | ✓ | — | — | — | — | — | — | ✓ | ✓ | ✓ | ✓ |
-| `farms.manage` | ✓ | — | — | — | — | — | — | — | — | ✓ | ✓ |
-| `cultivations.read` | ✓ | — | — | — | — | — | — | ✓ | — | ✓ | ✓ |
-| `cultivations.manage` | ✓ | — | — | — | — | — | — | — | — | — | ✓ |
-| `harvests.read` | ✓ | — | — | — | — | — | — | ✓ | — | ✓ | ✓ |
-| `harvests.manage` | ✓ | — | — | — | — | — | — | — | — | — | ✓ |
-| `products.read` | ✓ | ✓ | ✓ | ✓ | ✓ | — | ✓ | — | — | ✓ | ✓ |
-| `products.manage` | ✓ | — | — | — | ✓ | — | — | — | — | ✓ | ✓ |
-| `listings.read` | ✓ | ✓ | ✓ | ✓ | ✓ | — | — | — | — | ✓ | ✓ |
-| `listings.manage` | ✓ | — | — | — | ✓ | — | — | — | — | ✓ | ✓ |
-| `orders.read` | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | — | — | — | ✓ | ✓ |
-| `orders.manage` | — | ✓ | ✓ | ✓ | — | — | — | — | — | ✓ | ✓ |
-| `payments.read` | — | ✓ | ✓ | ✓ | — | — | — | — | — | ✓ | ✓ |
-| `payments.manage` | — | — | — | — | — | — | — | — | — | — | ✓ |
-| `refunds.manage` | — | — | — | — | — | — | — | — | — | — | ✓ |
-| `ledger.read` | — | — | — | — | — | — | — | — | — | — | ✓ |
-| `ledger.manage` | — | — | — | — | — | — | — | — | — | — | ✓ |
-| `shipments.read` | — | ✓ | ✓ | ✓ | — | ✓ | ✓ | — | ✓ | ✓ | ✓ |
-| `shipments.manage` | — | — | — | — | — | ✓ | — | — | — | ✓ | ✓ |
-| `warehouses.read` | — | — | — | — | — | — | ✓ | — | — | ✓ | ✓ |
-| `warehouses.manage` | — | — | — | — | — | — | ✓ | — | — | ✓ | ✓ |
-| `quality.read` | — | — | — | — | — | — | ✓ | — | ✓ | ✓ | ✓ |
-| `quality.manage` | — | — | — | — | — | — | — | — | ✓ | — | ✓ |
-| `traceability.read` | — | — | ✓ | — | — | — | ✓ | ✓ | ✓ | ✓ | ✓ |
-| `ai.read` | ✓ | ✓ | ✓ | — | ✓ | — | — | ✓ | — | ✓ | ✓ |
-| `ai.feedback` | ✓ | — | — | — | — | — | — | ✓ | — | — | ✓ |
-| `subscriptions.manage` | — | — | — | — | — | — | — | — | — | — | ✓ |
-| `notifications.read` | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| Permission | FARMER | BUYER | WHOLESALER | RETAILER | AGRICULTURAL_INPUT_SUPPLIER | LOGISTICS_PROVIDER | WAREHOUSE_OPERATOR | AGRICULTURAL_EXPERT | QUALITY_INSPECTOR | ORGANIZATION_MEMBER | ORGANIZATION_ADMIN | CROPSY_SUPER_ADMIN |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `profile.read` | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| `profile.manage` | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| `users.read` | — | — | — | — | — | — | — | — | — | — | ✓ | ✓ |
+| `users.manage` | — | — | — | — | — | — | — | — | — | — | ✓ | ✓ |
+| `roles.manage` | — | — | — | — | — | — | — | — | — | — | ✓ | ✓ |
+| `permissions.read` | — | — | — | — | — | — | — | — | — | — | ✓ | ✓ |
+| `organizations.create` | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| `organizations.read` | — | — | — | — | — | — | — | — | — | ✓ | ✓ | ✓ |
+| `organizations.manage` | — | — | — | — | — | — | — | — | — | — | ✓ | ✓ |
+| `organizations.verify` | — | — | — | — | — | — | — | — | — | — | — | ✓ |
+| `members.read` | — | — | — | — | — | — | — | — | — | ✓ | ✓ | ✓ |
+| `members.manage` | — | — | — | — | — | — | — | — | — | — | ✓ | ✓ |
+| `invitations.manage` | — | — | — | — | — | — | — | — | — | — | ✓ | ✓ |
+| `documents.manage` | — | — | — | — | — | — | — | — | — | — | ✓ | ✓ |
+| `sessions.read` | — | — | — | — | — | — | — | — | — | — | ✓ | ✓ |
+| `sessions.manage` | — | — | — | — | — | — | — | — | — | — | — | ✓ |
+| `audit.read` | — | — | — | — | — | — | — | — | — | — | ✓ | ✓ |
+| `settings.manage` | — | — | — | — | — | — | — | — | — | — | — | ✓ |
+| `farms.read` | ✓ | — | — | — | — | — | — | ✓ | ✓ | — | ✓ | ✓ |
+| `farms.manage` | ✓ | — | — | — | — | — | — | — | — | — | ✓ | ✓ |
+| `cultivations.read` | ✓ | — | — | — | — | — | — | ✓ | — | — | ✓ | ✓ |
+| `cultivations.manage` | ✓ | — | — | — | — | — | — | — | — | — | — | ✓ |
+| `harvests.read` | ✓ | — | — | — | — | — | — | ✓ | — | — | ✓ | ✓ |
+| `harvests.manage` | ✓ | — | — | — | — | — | — | — | — | — | — | ✓ |
+| `products.read` | ✓ | ✓ | ✓ | ✓ | ✓ | — | ✓ | — | — | ✓ | ✓ | ✓ |
+| `products.manage` | ✓ | — | — | — | ✓ | — | — | — | — | — | ✓ | ✓ |
+| `listings.read` | ✓ | ✓ | ✓ | ✓ | ✓ | — | — | — | — | ✓ | ✓ | ✓ |
+| `listings.manage` | ✓ | — | — | — | ✓ | — | — | — | — | — | ✓ | ✓ |
+| `orders.read` | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | — | — | — | ✓ | ✓ | ✓ |
+| `orders.manage` | — | ✓ | ✓ | ✓ | — | — | — | — | — | — | ✓ | ✓ |
+| `payments.read` | — | ✓ | ✓ | ✓ | — | — | — | — | — | ✓ | ✓ | ✓ |
+| `payments.manage` | — | — | — | — | — | — | — | — | — | — | — | ✓ |
+| `refunds.manage` | — | — | — | — | — | — | — | — | — | — | — | ✓ |
+| `ledger.read` | — | — | — | — | — | — | — | — | — | — | — | ✓ |
+| `ledger.manage` | — | — | — | — | — | — | — | — | — | — | — | ✓ |
+| `shipments.read` | — | ✓ | ✓ | ✓ | — | ✓ | ✓ | — | ✓ | ✓ | ✓ | ✓ |
+| `shipments.manage` | — | — | — | — | — | ✓ | — | — | — | — | ✓ | ✓ |
+| `warehouses.read` | — | — | — | — | — | — | ✓ | — | — | — | ✓ | ✓ |
+| `warehouses.manage` | — | — | — | — | — | — | ✓ | — | — | — | ✓ | ✓ |
+| `quality.read` | — | — | — | — | — | — | ✓ | — | ✓ | ✓ | ✓ | ✓ |
+| `quality.manage` | — | — | — | — | — | — | — | — | ✓ | — | — | ✓ |
+| `traceability.read` | — | — | ✓ | — | — | — | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| `ai.read` | ✓ | ✓ | ✓ | — | ✓ | — | — | ✓ | — | ✓ | ✓ | ✓ |
+| `ai.feedback` | ✓ | — | — | — | — | — | — | ✓ | — | — | — | ✓ |
+| `subscriptions.manage` | — | — | — | — | — | — | — | — | — | — | — | ✓ |
+| `notifications.read` | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
 
 ## Legacy role aliases
 
@@ -108,6 +119,13 @@ normalization.
 
 `apps/api/test/authorization.test.js` covers same-tenant access, cross-tenant
 denial, forged tenant headers, ordinary-role privilege denial, audit records,
-super-admin access, and live permission reconfiguration. The generated matrix
-contains 40 permissions and 11 canonical roles; the seed creates 21 role rows
-(11 canonical plus 10 legacy aliases) and 363 role-permission assignments.
+super-admin access, and live permission reconfiguration.
+`apps/api/test/organizations.test.js` and `apps/api/test/users.test.js` cover
+organization registration, membership, invitations, switching, tenant
+isolation, reusable profile APIs, role-specific profile storage, verification
+restrictions, and audit events. Database integrity and migration tests live in
+`apps/api/test/database/integrity.test.js`.
+
+The generated matrix contains 46 permissions and 12 canonical roles; the seed
+creates 22 role rows (12 canonical plus 10 legacy aliases) and 428
+role-permission assignments.

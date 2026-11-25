@@ -37,16 +37,20 @@ function defineModule(spec) {
         container.register(spec.repositoryToken, () => new spec.repository());
       }
 
-      container.register(
-        spec.serviceToken,
-        (resolver) =>
-          new spec.service({
-            repository: resolver.resolve(spec.repositoryToken),
-            eventBus: resolver.resolve(EventBusToken),
-            logger: resolver.resolve(LoggerToken),
-            metadata,
-          }),
-      );
+      container.register(spec.serviceToken, (resolver) => {
+        const dependencies = {
+          repository: resolver.resolve(spec.repositoryToken),
+          eventBus: resolver.resolve(EventBusToken),
+          logger: resolver.resolve(LoggerToken),
+          metadata,
+        };
+        // Optional shared composition ports. Business modules declare DI
+        // tokens instead of importing another module's implementation.
+        for (const [key, token] of Object.entries(spec.serviceDependencies || {})) {
+          dependencies[key] = resolver.resolve(token);
+        }
+        return new spec.service(dependencies);
+      });
 
       if (typeof spec.subscriptions === 'function') {
         spec.subscriptions({ container, definition });

@@ -37,9 +37,13 @@ function createAccessToken({
   csrfToken,
   ttlSeconds,
   rolesVersion = 1,
+  organizationId = null,
 }) {
   if (!secret || !userId || !sessionId || !csrfToken) {
     throw new TypeError('createAccessToken requires a secret, user, session, and CSRF token.');
+  }
+  if (organizationId !== null && typeof organizationId !== 'string') {
+    throw new TypeError('Access token organizationId must be a string or null.');
   }
   const issuedAt = Math.floor(Date.now() / 1000);
   const header = encodeJson({ alg: 'HS256', typ: 'JWT' });
@@ -50,6 +54,7 @@ function createAccessToken({
     sth: sessionTokenHash,
     csrf: csrfToken,
     rv: rolesVersion,
+    org: organizationId,
     iat: issuedAt,
     exp: issuedAt + ttlSeconds,
     jti: randomBytes(12).toString('base64url'),

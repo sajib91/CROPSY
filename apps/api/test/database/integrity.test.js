@@ -27,6 +27,18 @@ function uuid(number) {
   return `00000000-0000-0000-0000-${String(number).padStart(12, '0')}`;
 }
 
+const PROFILE_IDS = {
+  preference: uuid(5001),
+  preferenceDuplicate: uuid(5002),
+  roleExtension: uuid(5003),
+  roleExtensionDuplicate: uuid(5004),
+  organizationDocument: uuid(5005),
+  userAddress: uuid(5006),
+  userAddressDuplicate: uuid(5007),
+  organizationAddress: uuid(5008),
+  organizationAddressDuplicate: uuid(5009),
+};
+
 function sqlState(error) {
   return error?.meta?.code || error?.code;
 }
@@ -303,6 +315,248 @@ describeDatabase('database integrity and concurrency', () => {
     await expectSqlState('23514', async () => {
       await prisma.$executeRaw`
         DELETE FROM audit_logs WHERE id = ${ID.audit}::uuid
+      `;
+    });
+  });
+
+  test('seed installs organization/profile RBAC counts and reference data', async () => {
+    const rows = await prisma.$queryRaw`
+      SELECT
+        (SELECT COUNT(*)::int FROM roles WHERE is_system = true) AS "roles",
+        (SELECT COUNT(*)::int FROM permissions) AS "permissions",
+        (SELECT COUNT(*)::int FROM role_permissions) AS "assignments",
+        (SELECT COUNT(*)::int FROM countries) AS "countries",
+        (SELECT COUNT(*)::int FROM divisions) AS "divisions",
+        (SELECT COUNT(*)::int FROM districts) AS "districts",
+        (SELECT COUNT(*)::int FROM product_categories WHERE code NOT LIKE 'DBTEST-%') AS "categories",
+        (SELECT COUNT(*)::int FROM ledger_accounts WHERE code NOT LIKE 'DBTEST-%') AS "accounts",
+        (SELECT COUNT(*)::int FROM platform_settings) AS "settings"
+    `;
+    const counts = rows[0];
+    assert.equal(Number(counts.roles), 22);
+    assert.equal(Number(counts.permissions), 46);
+    assert.equal(Number(counts.assignments), 428);
+    assert.equal(Number(counts.countries), 1);
+    assert.equal(Number(counts.divisions), 8);
+    assert.equal(Number(counts.districts), 64);
+    assert.equal(Number(counts.categories), 10);
+    assert.equal(Number(counts.accounts), 10);
+    assert.equal(Number(counts.settings), 2);
+
+    const roleRows = await prisma.$queryRaw`
+      SELECT code FROM roles WHERE is_system = true
+    `;
+    const roleCodes = roleRows.map((row) => row.code);
+    assert.ok(roleCodes.includes('ORGANIZATION_MEMBER'));
+    assert.ok(roleCodes.includes('ORGANIZATION_ADMIN'));
+
+    const permissionRows = await prisma.$queryRaw`
+      SELECT code FROM permissions WHERE code IN (
+        'organizations.create', 'organizations.verify', 'members.read',
+        'members.manage', 'invitations.manage', 'documents.manage'
+      )
+    `;
+    const permissionCodes = permissionRows.map((row) => row.code);
+    assert.equal(permissionCodes.length, 6);
+  });
+
+  test('organization/profile migration is applied without drift', async () => {
+    const migrations = await prisma.$queryRaw`
+      SELECT migration_name, finished_at, rolled_back_at
+      FROM _prisma_migrations
+    `;
+    const names = migrations.map((migration) => migration.migration_name);
+    for (const name of [
+      '20261125000000_init',
+      '20261125120000_review_hardening',
+      '20261125130000_auth_identity',
+      '20261125140000_organization_profile_management',
+    ]) {
+      assert.ok(names.includes(name), `missing applied migration ${name}`);
+    }
+    assert.ok(
+      migrations.every((migration) => migration.finished_at && !migration.rolled_back_at),
+      'every recorded migration must be applied and not rolled back',
+    );
+
+    const columns = await prisma.$queryRaw`
+      SELECT table_name, column_name
+      FROM information_schema.columns
+      WHERE table_schema = 'public'
+        AND (
+          (table_name = 'organizations' AND column_name IN (
+            'organization_type', 'verification_status', 'verification_note',
+            'verified_at', 'verified_by_user_id', 'contact_email', 'contact_phone',
+            'description', 'website'
+          ))
+          OR (table_name = 'organization_documents' AND column_name IN (
+            'id', 'organization_id', 'uploaded_by_user_id', 'document_type',
+            'file_name', 'file_url', 'verification_status'
+          ))
+          OR (table_name = 'notification_preferences' AND column_name IN (
+            'id', 'user_id', 'channel', 'event_type', 'enabled'
+          ))
+          OR (table_name = 'role_profile_extensions' AND column_name IN (
+            'id', 'user_id', 'role_code', 'organization_id', 'scope_key', 'data'
+          ))
+        )
+    `;
+    const actualColumns = new Set(columns.map((row) => `${row.table_name}.${row.column_name}`));
+    for (const column of [
+      'organizations.organization_type',
+      'organizations.verification_status',
+      'organization_documents.file_url',
+      'notification_preferences.event_type',
+      'role_profile_extensions.scope_key',
+      'role_profile_extensions.data',
+    ]) {
+      assert.ok(actualColumns.has(column), `missing column ${column}`);
+    }
+
+    const constraints = await prisma.$queryRaw`
+      SELECT conname FROM pg_constraint
+      WHERE conname = 'role_profile_extensions_scope_key_check'
+    `;
+    assert.equal(constraints.length, 1);
+
+    const indexes = await prisma.$queryRaw`
+      SELECT indexname FROM pg_indexes
+      WHERE schemaname = 'public' AND indexname IN (
+        'organizations_organization_type_idx',
+        'organizations_verification_status_idx',
+        'organization_documents_organization_id_document_type_idx',
+        'notification_preferences_user_id_channel_event_type_key',
+        'role_profile_extensions_user_id_role_code_scope_key_key'
+      )
+    `;
+    assert.equal(indexes.length, 5);
+  });
+
+  test('enforces organization document, preference, and profile extension invariants', async () => {
+    await expectSqlState('23503', async () => {
+      await prisma.$executeRaw`
+        INSERT INTO organization_documents (
+          id, organization_id, uploaded_by_user_id, document_type, file_name,
+          file_url, created_at, updated_at
+        )
+        VALUES (${PROFILE_IDS.organizationDocument}::uuid, ${uuid(9998)}::uuid,
+                ${ID.userA}::uuid, 'TRADE_LICENSE', 'bad-org.pdf',
+                'https://storage.example.com/bad-org.pdf', NOW(), NOW())
+      `;
+    });
+
+    await expectSqlState('23503', async () => {
+      await prisma.$executeRaw`
+        INSERT INTO organization_documents (
+          id, organization_id, uploaded_by_user_id, document_type, file_name,
+          file_url, created_at, updated_at
+        )
+        VALUES (${PROFILE_IDS.organizationDocument}::uuid, ${ID.orgA}::uuid,
+                ${uuid(9999)}::uuid, 'TRADE_LICENSE', 'bad-user.pdf',
+                'https://storage.example.com/bad-user.pdf', NOW(), NOW())
+      `;
+    });
+
+    await prisma.$executeRaw`
+      INSERT INTO organization_documents (
+        id, organization_id, uploaded_by_user_id, document_type, file_name,
+        file_url, mime_type, size_bytes, created_at, updated_at
+      )
+      VALUES (${PROFILE_IDS.organizationDocument}::uuid, ${ID.orgA}::uuid,
+              ${ID.userA}::uuid, 'TRADE_LICENSE', 'trade-license.pdf',
+              'https://storage.example.com/trade-license.pdf', 'application/pdf',
+              2048, NOW(), NOW())
+    `;
+    const documents = await prisma.$queryRaw`
+      SELECT verification_status FROM organization_documents
+      WHERE id = ${PROFILE_IDS.organizationDocument}::uuid
+    `;
+    assert.equal(documents[0].verification_status, 'PENDING');
+
+    await prisma.$executeRaw`
+      INSERT INTO notification_preferences (
+        id, user_id, channel, event_type, enabled, created_at, updated_at
+      )
+      VALUES (${PROFILE_IDS.preference}::uuid, ${ID.userA}::uuid, 'IN_APP',
+              'DBTEST_EVENT', true, NOW(), NOW())
+    `;
+    await expectSqlState('23505', async () => {
+      await prisma.$executeRaw`
+        INSERT INTO notification_preferences (
+          id, user_id, channel, event_type, enabled, created_at, updated_at
+        )
+        VALUES (${PROFILE_IDS.preferenceDuplicate}::uuid, ${ID.userA}::uuid, 'IN_APP',
+                'DBTEST_EVENT', false, NOW(), NOW())
+      `;
+    });
+
+    await expectSqlState('23514', async () => {
+      await prisma.$executeRaw`
+        INSERT INTO role_profile_extensions (
+          id, user_id, role_code, organization_id, scope_key, data, created_at, updated_at
+        )
+        VALUES (${PROFILE_IDS.roleExtension}::uuid, ${ID.userA}::uuid, 'DBTEST_ROLE',
+                NULL, ${ID.orgA}::text, '{}'::jsonb, NOW(), NOW())
+      `;
+    });
+    await expectSqlState('23514', async () => {
+      await prisma.$executeRaw`
+        INSERT INTO role_profile_extensions (
+          id, user_id, role_code, organization_id, scope_key, data, created_at, updated_at
+        )
+        VALUES (${PROFILE_IDS.roleExtension}::uuid, ${ID.userA}::uuid, 'DBTEST_ROLE',
+                ${ID.orgA}::uuid, 'PLATFORM', '{}'::jsonb, NOW(), NOW())
+      `;
+    });
+    await prisma.$executeRaw`
+      INSERT INTO role_profile_extensions (
+        id, user_id, role_code, organization_id, scope_key, data, created_at, updated_at
+      )
+      VALUES (${PROFILE_IDS.roleExtension}::uuid, ${ID.userA}::uuid, 'DBTEST_ROLE',
+              ${ID.orgA}::uuid, ${ID.orgA}::text,
+              '{"preferredContactMethod":"EMAIL"}'::jsonb, NOW(), NOW())
+    `;
+    await expectSqlState('23505', async () => {
+      await prisma.$executeRaw`
+        INSERT INTO role_profile_extensions (
+          id, user_id, role_code, organization_id, scope_key, data, created_at, updated_at
+        )
+        VALUES (${PROFILE_IDS.roleExtensionDuplicate}::uuid, ${ID.userA}::uuid, 'DBTEST_ROLE',
+                ${ID.orgA}::uuid, ${ID.orgA}::text, '{}'::jsonb, NOW(), NOW())
+      `;
+    });
+
+    await prisma.$executeRaw`
+      INSERT INTO user_addresses (
+        id, user_id, label, address_line_1, is_primary, created_at, updated_at
+      )
+      VALUES (${PROFILE_IDS.userAddress}::uuid, ${ID.userA}::uuid,
+              'DBTEST-HOME', '123 Test Road', true, NOW(), NOW())
+    `;
+    await expectSqlState('23505', async () => {
+      await prisma.$executeRaw`
+        INSERT INTO user_addresses (
+          id, user_id, label, address_line_1, is_primary, created_at, updated_at
+        )
+        VALUES (${PROFILE_IDS.userAddressDuplicate}::uuid, ${ID.userA}::uuid,
+                'DBTEST-OFFICE', '456 Test Road', true, NOW(), NOW())
+      `;
+    });
+
+    await prisma.$executeRaw`
+      INSERT INTO organization_addresses (
+        id, organization_id, label, address_line_1, is_primary, created_at, updated_at
+      )
+      VALUES (${PROFILE_IDS.organizationAddress}::uuid, ${ID.orgA}::uuid,
+              'DBTEST-HQ', '123 Test Road', true, NOW(), NOW())
+    `;
+    await expectSqlState('23505', async () => {
+      await prisma.$executeRaw`
+        INSERT INTO organization_addresses (
+          id, organization_id, label, address_line_1, is_primary, created_at, updated_at
+        )
+        VALUES (${PROFILE_IDS.organizationAddressDuplicate}::uuid, ${ID.orgA}::uuid,
+                'DBTEST-WAREHOUSE', '456 Test Road', true, NOW(), NOW())
       `;
     });
   });

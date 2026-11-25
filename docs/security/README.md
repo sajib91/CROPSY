@@ -32,9 +32,10 @@ detail live in the API docs.
 
 ## Authorization
 
-- Eleven canonical user categories, multiple roles per user, multiple organizations per user, and
-  40 granular permissions are supported. The matrix is documented in
-  [`permission-matrix.md`](./permission-matrix.md) and exposed at `GET /api/v1/iam/auth/matrix`.
+- Twelve canonical user categories (including organization-scoped member and admin roles),
+  multiple roles per user, multiple organizations per user, and 46 granular permissions are
+  supported. The matrix is documented in [`permission-matrix.md`](./permission-matrix.md) and
+  exposed at `GET /api/v1/iam/auth/matrix`.
 - Every non-public route is default-deny. Route handlers receive a verified context built from the
   database on each request; client-supplied role codes and organization ids are never trusted as
   proof of access.
@@ -51,4 +52,6 @@ detail live in the API docs.
 `npm run test -w @cropsy/api` includes auth integration tests for password policy, OTP limits and
 single-use behavior, refresh reuse revocation, password reset/recovery, cookie CSRF, and
 default-deny. Authorization tests cover cross-organization denial, forged tenant headers, audit
-events, super-admin access, and runtime permission reconfiguration.
+events, super-admin access, and runtime permission reconfiguration. Organization and profile
+suites cover registration, invitations, switching, tenant isolation, reusable profile APIs,
+role-specific storage, verification restrictions, and audit events.

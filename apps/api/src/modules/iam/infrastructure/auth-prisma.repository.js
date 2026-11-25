@@ -6,6 +6,15 @@ function normalizeIdentifier(value) {
   return typeof value === 'string' ? value.trim().toLowerCase() : '';
 }
 
+function slugify(name, id) {
+  const base = String(name || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-|-$/g, '');
+  return `${base || 'organization'}-${id.slice(0, 8)}`;
+}
+
 function roleRecord(role) {
   if (!role) return null;
   return {
@@ -28,6 +37,18 @@ function permissionCodesFrom(role) {
   );
 }
 
+function invitationRecord(invitation) {
+  if (!invitation) return null;
+  return {
+    ...invitation,
+    roleCode: invitation.role?.code || invitation.role_code || null,
+  };
+}
+
+function isUniqueViolation(error) {
+  return Boolean(error && error.code === 'P2002');
+}
+
 class IamAuthPrismaRepository {
   constructor({ prisma }) {
     if (!prisma || typeof prisma.$transaction !== 'function') {
@@ -39,6 +60,14 @@ class IamAuthPrismaRepository {
   async findRoleByCode(code) {
     const role = await this.prisma.role.findUnique({
       where: { code: normalizeRoleCode(code) },
+      include: { permissions: { include: { permission: true } } },
+    });
+    return roleRecord(role);
+  }
+
+  async findRoleById(id) {
+    const role = await this.prisma.role.findUnique({
+      where: { id },
       include: { permissions: { include: { permission: true } } },
     });
     return roleRecord(role);
@@ -137,40 +166,51 @@ class IamAuthPrismaRepository {
       resolved.push({ ...assignment, roleCode: role.code, roleId: role.id });
     }
 
-    return this.prisma.user.create({
-      data: {
-        id: randomUUID(),
-        email: normalizedEmail,
-        phone: normalizedPhone,
-        password_hash: passwordHash,
-        ...(profile
-          ? {
-              profile: {
-                create: {
-                  id: randomUUID(),
-                  first_name: profile.firstName,
-                  last_name: profile.lastName,
-                  name_bn: profile.nameBn || null,
-                  preferred_language: profile.preferredLanguage || 'EN',
+    try {
+      return await this.prisma.user.create({
+        data: {
+          id: randomUUID(),
+          email: normalizedEmail,
+          phone: normalizedPhone,
+          password_hash: passwordHash,
+          ...(profile
+            ? {
+                profile: {
+                  create: {
+                    id: randomUUID(),
+                    first_name: profile.firstName,
+                    last_name: profile.lastName,
+                    name_bn: profile.nameBn || null,
+                    preferred_language: profile.preferredLanguage || 'EN',
+                  },
                 },
-              },
-            }
-          : {}),
-        roles: {
-          create: resolved.map((assignment) => ({
-            id: randomUUID(),
-            role_id: assignment.roleId,
-            organization_id: assignment.organizationId || null,
-            scope_key: assignment.organizationId || 'PLATFORM',
-            granted_by_user_id: assignment.grantedBy || null,
-          })),
+              }
+            : {}),
+          roles: {
+            create: resolved.map((assignment) => ({
+              id: randomUUID(),
+              role_id: assignment.roleId,
+              organization_id: assignment.organizationId || null,
+              scope_key: assignment.organizationId || 'PLATFORM',
+              granted_by_user_id: assignment.grantedBy || null,
+            })),
+          },
         },
-      },
-    });
+      });
+    } catch (error) {
+      if (isUniqueViolation(error)) {
+        const conflict = new Error('Email or phone is already registered.');
+        conflict.code = 'IDENTITY_CONFLICT';
+        throw conflict;
+      }
+      throw error;
+    }
   }
 
   async updateUser(id, patch) {
     const allowed = new Set([
+      'email',
+      'phone',
       'password_hash',
       'account_status',
       'is_email_verified',
@@ -182,7 +222,27 @@ class IamAuthPrismaRepository {
     const data = {};
     for (const [key, value] of Object.entries(patch)) {
       if (!allowed.has(key)) throw new Error(`Cannot update user field '${key}'.`);
-      data[key] = value;
+      if ((key === 'email' || key === 'phone') && value) {
+        const conflict = await this.prisma.user.findFirst({
+          where: {
+            id: { not: id },
+            OR: [
+              ...(key === 'email' ? [{ email: normalizeIdentifier(value) }] : []),
+              ...(key === 'phone' ? [{ phone: String(value).trim() }] : []),
+            ],
+          },
+        });
+        if (conflict) {
+          const error = new Error(
+            key === 'email' ? 'Email is already registered.' : 'Phone is already registered.',
+          );
+          error.code = key === 'email' ? 'EMAIL_CONFLICT' : 'PHONE_CONFLICT';
+          throw error;
+        }
+        data[key] = key === 'email' ? normalizeIdentifier(value) : String(value).trim();
+      } else {
+        data[key] = value;
+      }
     }
     return this.prisma.user.update({ where: { id }, data });
   }
@@ -228,32 +288,182 @@ class IamAuthPrismaRepository {
     });
   }
 
-  async createOrganization({ id = randomUUID(), name, status = 'ACTIVE', ownerUserId }) {
-    if (!ownerUserId) throw new Error('Creating an organization requires an owner user id.');
-    const slug = `${name
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, '-')
-      .replace(/^-|-$/g, '')}-${id.slice(0, 8)}`;
-    return this.prisma.organization.create({
-      data: { id, name, slug, status, owner_user_id: ownerUserId },
+  async removeUserRole({ userId, roleCode, organizationId = null }) {
+    const role = await this.findRoleByCode(roleCode);
+    if (!role) return 0;
+    const result = await this.prisma.userRole.deleteMany({
+      where: {
+        user_id: userId,
+        role_id: role.id,
+        scope_key: organizationId || 'PLATFORM',
+      },
     });
+    return result.count;
+  }
+
+  async removeUserRolesForOrganization(userId, organizationId) {
+    const result = await this.prisma.userRole.deleteMany({
+      where: { user_id: userId, organization_id: organizationId },
+    });
+    return result.count;
+  }
+
+  async createOrganization({
+    id = randomUUID(),
+    name,
+    slug,
+    legalName = null,
+    taxId = null,
+    ownerUserId = null,
+    organizationType = 'OTHER',
+    description = null,
+    website = null,
+    contactEmail = null,
+    contactPhone = null,
+    verificationStatus = 'UNVERIFIED',
+    defaultCurrency = 'BDT',
+    status = 'ACTIVE',
+  }) {
+    if (!ownerUserId) throw new Error('Creating an organization requires an owner user id.');
+    const normalizedSlug = slug ? String(slug).trim() : slugify(name, id);
+    const existing = await this.prisma.organization.findUnique({ where: { slug: normalizedSlug } });
+    if (existing) {
+      const error = new Error('Organization slug is already in use.');
+      error.code = 'SLUG_CONFLICT';
+      throw error;
+    }
+    try {
+      return await this.prisma.organization.create({
+        data: {
+          id,
+          name,
+          slug: normalizedSlug,
+          legal_name: legalName,
+          tax_id: taxId,
+          owner_user_id: ownerUserId,
+          organization_type: organizationType,
+          description,
+          website,
+          contact_email: contactEmail ? normalizeIdentifier(contactEmail) : null,
+          contact_phone: contactPhone ? String(contactPhone).trim() : null,
+          verification_status: verificationStatus,
+          default_currency: defaultCurrency,
+          status,
+        },
+      });
+    } catch (error) {
+      if (isUniqueViolation(error)) {
+        const conflict = new Error('Organization slug is already in use.');
+        conflict.code = 'SLUG_CONFLICT';
+        throw conflict;
+      }
+      throw error;
+    }
   }
 
   async findOrganization(id) {
     return this.prisma.organization.findUnique({ where: { id } });
   }
 
+  async findOrganizationBySlug(slug) {
+    return this.prisma.organization.findUnique({ where: { slug: String(slug || '').trim() } });
+  }
+
+  async listOrganizations({
+    ownerUserId = undefined,
+    organizationType = undefined,
+    status = undefined,
+    verificationStatus = undefined,
+  } = {}) {
+    return this.prisma.organization.findMany({
+      where: {
+        deleted_at: null,
+        ...(ownerUserId === undefined ? {} : { owner_user_id: ownerUserId }),
+        ...(organizationType === undefined ? {} : { organization_type: organizationType }),
+        ...(status === undefined ? {} : { status }),
+        ...(verificationStatus === undefined ? {} : { verification_status: verificationStatus }),
+      },
+      orderBy: { created_at: 'desc' },
+    });
+  }
+
+  async updateOrganization(id, patch) {
+    const fieldMap = {
+      name: 'name',
+      slug: 'slug',
+      legalName: 'legal_name',
+      taxId: 'tax_id',
+      organizationType: 'organization_type',
+      description: 'description',
+      website: 'website',
+      contactEmail: 'contact_email',
+      contactPhone: 'contact_phone',
+      verificationStatus: 'verification_status',
+      verificationNote: 'verification_note',
+      verifiedAt: 'verified_at',
+      verifiedByUserId: 'verified_by_user_id',
+      defaultCurrency: 'default_currency',
+      status: 'status',
+      deletedAt: 'deleted_at',
+    };
+    const data = {};
+    for (const [key, value] of Object.entries(patch)) {
+      const field = fieldMap[key];
+      if (!field) throw new Error(`Cannot update organization field '${key}'.`);
+      if (field === 'slug' && value) {
+        const conflict = await this.prisma.organization.findFirst({
+          where: { id: { not: id }, slug: String(value).trim() },
+        });
+        if (conflict) {
+          const error = new Error('Organization slug is already in use.');
+          error.code = 'SLUG_CONFLICT';
+          throw error;
+        }
+      }
+      data[field] = field === 'contact_email' && value ? normalizeIdentifier(value) : value;
+    }
+    try {
+      return await this.prisma.organization.update({ where: { id }, data });
+    } catch (error) {
+      if (isUniqueViolation(error)) {
+        const conflict = new Error('Organization slug is already in use.');
+        conflict.code = 'SLUG_CONFLICT';
+        throw conflict;
+      }
+      throw error;
+    }
+  }
+
   async addOrganizationMember({ organizationId, userId, status = 'ACTIVE' }) {
     return this.prisma.organizationMember.upsert({
       where: { organization_id_user_id: { organization_id: organizationId, user_id: userId } },
-      update: { status },
+      update: {
+        status,
+        joined_at: status === 'ACTIVE' ? new Date() : undefined,
+        left_at: status === 'LEFT' ? new Date() : null,
+      },
       create: {
         id: randomUUID(),
         organization_id: organizationId,
         user_id: userId,
         status,
         joined_at: status === 'ACTIVE' ? new Date() : null,
+        left_at: status === 'LEFT' ? new Date() : null,
       },
+    });
+  }
+
+  async updateOrganizationMember(organizationId, userId, patch) {
+    const data = {};
+    if (patch.status !== undefined) {
+      data.status = patch.status;
+      if (patch.status === 'LEFT') data.left_at = new Date();
+    }
+    if (patch.joinedAt !== undefined) data.joined_at = patch.joinedAt;
+    if (patch.leftAt !== undefined) data.left_at = patch.leftAt;
+    return this.prisma.organizationMember.update({
+      where: { organization_id_user_id: { organization_id: organizationId, user_id: userId } },
+      data,
     });
   }
 
@@ -293,8 +503,515 @@ class IamAuthPrismaRepository {
       organization_id: member.organization_id,
       user_id: member.user_id,
       status: member.status,
+      joined_at: member.joined_at,
       user: member.user,
     }));
+  }
+
+  async createOrganizationInvitation({
+    organizationId,
+    email,
+    roleId,
+    invitedByUserId,
+    tokenHash,
+    status = 'PENDING',
+    expiresAt,
+  }) {
+    try {
+      return await this.prisma.organizationInvitation.create({
+        data: {
+          id: randomUUID(),
+          organization_id: organizationId,
+          email: normalizeIdentifier(email),
+          role_id: roleId,
+          invited_by_user_id: invitedByUserId,
+          token_hash: tokenHash,
+          status,
+          expires_at: expiresAt,
+        },
+        include: { role: true },
+      });
+    } catch (error) {
+      if (isUniqueViolation(error)) {
+        const conflict = new Error('Invitation token is already in use.');
+        conflict.code = 'INVITATION_TOKEN_CONFLICT';
+        throw conflict;
+      }
+      throw error;
+    }
+  }
+
+  async findOrganizationInvitationByTokenHash(tokenHash) {
+    const invitation = await this.prisma.organizationInvitation.findUnique({
+      where: { token_hash: tokenHash },
+      include: { role: true },
+    });
+    return invitationRecord(invitation);
+  }
+
+  async listOrganizationInvitations(organizationId, { status = undefined } = {}) {
+    const invitations = await this.prisma.organizationInvitation.findMany({
+      where: {
+        organization_id: organizationId,
+        ...(status === undefined ? {} : { status }),
+      },
+      include: { role: true },
+      orderBy: { created_at: 'desc' },
+    });
+    return invitations.map(invitationRecord);
+  }
+
+  async updateOrganizationInvitation(id, patch) {
+    const data = {};
+    const fieldMap = {
+      status: 'status',
+      acceptedAt: 'accepted_at',
+      expiresAt: 'expires_at',
+    };
+    for (const [key, value] of Object.entries(patch)) {
+      const field = fieldMap[key];
+      if (!field) throw new Error(`Cannot update invitation field '${key}'.`);
+      data[field] = value;
+    }
+    const invitation = await this.prisma.organizationInvitation.update({
+      where: { id },
+      data,
+      include: { role: true },
+    });
+    return invitationRecord(invitation);
+  }
+
+  async createOrganizationAddress({
+    organizationId,
+    label,
+    addressLine1,
+    addressLine2 = null,
+    city = null,
+    divisionId = null,
+    districtId = null,
+    upazilaId = null,
+    unionId = null,
+    postalCode = null,
+    isPrimary = false,
+  }) {
+    try {
+      return await this.prisma.$transaction(async (tx) => {
+        if (isPrimary) {
+          await tx.organizationAddress.updateMany({
+            where: { organization_id: organizationId, is_primary: true },
+            data: { is_primary: false },
+          });
+        }
+        return tx.organizationAddress.create({
+          data: {
+            id: randomUUID(),
+            organization_id: organizationId,
+            label,
+            address_line_1: addressLine1,
+            address_line_2: addressLine2,
+            city,
+            division_id: divisionId,
+            district_id: districtId,
+            upazila_id: upazilaId,
+            union_id: unionId,
+            postal_code: postalCode,
+            is_primary: isPrimary,
+          },
+        });
+      });
+    } catch (error) {
+      if (isUniqueViolation(error)) {
+        const conflict = new Error('Organization address label is already in use.');
+        conflict.code = 'ADDRESS_LABEL_CONFLICT';
+        throw conflict;
+      }
+      throw error;
+    }
+  }
+
+  async listOrganizationAddresses(organizationId) {
+    return this.prisma.organizationAddress.findMany({
+      where: { organization_id: organizationId },
+      orderBy: [{ is_primary: 'desc' }, { created_at: 'asc' }],
+    });
+  }
+
+  async updateOrganizationAddress(id, patch) {
+    const fieldMap = {
+      label: 'label',
+      addressLine1: 'address_line_1',
+      addressLine2: 'address_line_2',
+      city: 'city',
+      divisionId: 'division_id',
+      districtId: 'district_id',
+      upazilaId: 'upazila_id',
+      unionId: 'union_id',
+      postalCode: 'postal_code',
+      isPrimary: 'is_primary',
+    };
+    const data = {};
+    for (const [key, value] of Object.entries(patch)) {
+      const field = fieldMap[key];
+      if (!field) throw new Error(`Cannot update organization address field '${key}'.`);
+      data[field] = value;
+    }
+    try {
+      return await this.prisma.$transaction(async (tx) => {
+        const address = await tx.organizationAddress.findUnique({ where: { id } });
+        if (!address) throw new Error(`Unknown organization address '${id}'.`);
+        if (data.is_primary) {
+          await tx.organizationAddress.updateMany({
+            where: { organization_id: address.organization_id, id: { not: id }, is_primary: true },
+            data: { is_primary: false },
+          });
+        }
+        return tx.organizationAddress.update({ where: { id }, data });
+      });
+    } catch (error) {
+      if (isUniqueViolation(error)) {
+        const conflict = new Error('Organization address label is already in use.');
+        conflict.code = 'ADDRESS_LABEL_CONFLICT';
+        throw conflict;
+      }
+      throw error;
+    }
+  }
+
+  async createOrganizationDocument({
+    organizationId,
+    uploadedByUserId,
+    documentType,
+    fileName,
+    fileUrl,
+    mimeType = null,
+    sizeBytes = null,
+    verificationStatus = 'PENDING',
+    notes = null,
+  }) {
+    return this.prisma.organizationDocument.create({
+      data: {
+        id: randomUUID(),
+        organization_id: organizationId,
+        uploaded_by_user_id: uploadedByUserId,
+        document_type: documentType,
+        file_name: fileName,
+        file_url: fileUrl,
+        mime_type: mimeType,
+        size_bytes: sizeBytes,
+        verification_status: verificationStatus,
+        notes,
+      },
+    });
+  }
+
+  async listOrganizationDocuments(organizationId) {
+    return this.prisma.organizationDocument.findMany({
+      where: { organization_id: organizationId },
+      orderBy: { created_at: 'desc' },
+    });
+  }
+
+  async updateOrganizationDocument(id, patch) {
+    const fieldMap = {
+      fileName: 'file_name',
+      fileUrl: 'file_url',
+      mimeType: 'mime_type',
+      sizeBytes: 'size_bytes',
+      verificationStatus: 'verification_status',
+      notes: 'notes',
+    };
+    const data = {};
+    for (const [key, value] of Object.entries(patch)) {
+      const field = fieldMap[key];
+      if (!field) throw new Error(`Cannot update document field '${key}'.`);
+      data[field] = value;
+    }
+    return this.prisma.organizationDocument.update({ where: { id }, data });
+  }
+
+  async findUserProfile(userId) {
+    return this.prisma.userProfile.findUnique({ where: { user_id: userId } });
+  }
+
+  async upsertUserProfile(userId, patch) {
+    const fieldMap = {
+      firstName: 'first_name',
+      lastName: 'last_name',
+      nameBn: 'name_bn',
+      avatarUrl: 'avatar_url',
+      dateOfBirth: 'date_of_birth',
+      gender: 'gender',
+      nationalIdHash: 'national_id_hash',
+      preferredLanguage: 'preferred_language',
+      defaultCurrency: 'default_currency',
+    };
+    const data = {};
+    for (const [key, value] of Object.entries(patch)) {
+      const field = fieldMap[key];
+      if (!field) throw new Error(`Cannot update profile field '${key}'.`);
+      data[field] = field === 'date_of_birth' && value ? new Date(value) : value;
+    }
+
+    try {
+      const existing = await this.findUserProfile(userId);
+      if (!existing) {
+        if (!patch.firstName || !patch.lastName) {
+          throw new Error('Creating a profile requires firstName and lastName.');
+        }
+        return await this.prisma.userProfile.create({
+          data: {
+            id: randomUUID(),
+            user_id: userId,
+            first_name: patch.firstName,
+            last_name: patch.lastName,
+            name_bn: patch.nameBn || null,
+            avatar_url: patch.avatarUrl || null,
+            date_of_birth: patch.dateOfBirth ? new Date(patch.dateOfBirth) : null,
+            gender: patch.gender || null,
+            national_id_hash: patch.nationalIdHash || null,
+            preferred_language: patch.preferredLanguage || 'EN',
+            default_currency: patch.defaultCurrency || 'BDT',
+          },
+        });
+      }
+      return await this.prisma.userProfile.update({
+        where: { user_id: userId },
+        data,
+      });
+    } catch (error) {
+      if (isUniqueViolation(error)) {
+        const conflict = new Error('National id is already registered.');
+        conflict.code = 'NATIONAL_ID_CONFLICT';
+        throw conflict;
+      }
+      throw error;
+    }
+  }
+
+  async createUserAddress({
+    userId,
+    label,
+    addressLine1,
+    addressLine2 = null,
+    city = null,
+    divisionId = null,
+    districtId = null,
+    upazilaId = null,
+    unionId = null,
+    postalCode = null,
+    isPrimary = false,
+  }) {
+    try {
+      return await this.prisma.$transaction(async (tx) => {
+        if (isPrimary) {
+          await tx.userAddress.updateMany({
+            where: { user_id: userId, is_primary: true },
+            data: { is_primary: false },
+          });
+        }
+        return tx.userAddress.create({
+          data: {
+            id: randomUUID(),
+            user_id: userId,
+            label,
+            address_line_1: addressLine1,
+            address_line_2: addressLine2,
+            city,
+            division_id: divisionId,
+            district_id: districtId,
+            upazila_id: upazilaId,
+            union_id: unionId,
+            postal_code: postalCode,
+            is_primary: isPrimary,
+          },
+        });
+      });
+    } catch (error) {
+      if (isUniqueViolation(error)) {
+        const conflict = new Error('Address label is already in use.');
+        conflict.code = 'ADDRESS_LABEL_CONFLICT';
+        throw conflict;
+      }
+      throw error;
+    }
+  }
+
+  async listUserAddresses(userId) {
+    return this.prisma.userAddress.findMany({
+      where: { user_id: userId },
+      orderBy: [{ is_primary: 'desc' }, { created_at: 'asc' }],
+    });
+  }
+
+  async updateUserAddress(id, patch) {
+    const fieldMap = {
+      label: 'label',
+      addressLine1: 'address_line_1',
+      addressLine2: 'address_line_2',
+      city: 'city',
+      divisionId: 'division_id',
+      districtId: 'district_id',
+      upazilaId: 'upazila_id',
+      unionId: 'union_id',
+      postalCode: 'postal_code',
+      isPrimary: 'is_primary',
+    };
+    const data = {};
+    for (const [key, value] of Object.entries(patch)) {
+      const field = fieldMap[key];
+      if (!field) throw new Error(`Cannot update user address field '${key}'.`);
+      data[field] = value;
+    }
+    try {
+      return await this.prisma.$transaction(async (tx) => {
+        const address = await tx.userAddress.findUnique({ where: { id } });
+        if (!address) throw new Error(`Unknown user address '${id}'.`);
+        if (data.is_primary) {
+          await tx.userAddress.updateMany({
+            where: { user_id: address.user_id, id: { not: id }, is_primary: true },
+            data: { is_primary: false },
+          });
+        }
+        return tx.userAddress.update({ where: { id }, data });
+      });
+    } catch (error) {
+      if (isUniqueViolation(error)) {
+        const conflict = new Error('Address label is already in use.');
+        conflict.code = 'ADDRESS_LABEL_CONFLICT';
+        throw conflict;
+      }
+      throw error;
+    }
+  }
+
+  async listNotificationPreferences(userId) {
+    return this.prisma.notificationPreference.findMany({
+      where: { user_id: userId },
+      orderBy: [{ channel: 'asc' }, { event_type: 'asc' }],
+    });
+  }
+
+  async replaceNotificationPreferences(userId, preferences) {
+    return this.prisma.$transaction(async (tx) => {
+      await tx.notificationPreference.deleteMany({ where: { user_id: userId } });
+      await tx.notificationPreference.createMany({
+        data: preferences.map((preference) => ({
+          id: randomUUID(),
+          user_id: userId,
+          channel: preference.channel,
+          event_type: preference.eventType,
+          enabled: preference.enabled !== false,
+        })),
+      });
+      return tx.notificationPreference.findMany({
+        where: { user_id: userId },
+        orderBy: [{ channel: 'asc' }, { event_type: 'asc' }],
+      });
+    });
+  }
+
+  async findRoleProfileExtension({ userId, roleCode, scopeKey }) {
+    return this.prisma.roleProfileExtension.findUnique({
+      where: {
+        user_id_role_code_scope_key: {
+          user_id: userId,
+          role_code: normalizeRoleCode(roleCode),
+          scope_key: scopeKey,
+        },
+      },
+    });
+  }
+
+  async upsertRoleProfileExtension({ userId, roleCode, organizationId = null, scopeKey, data }) {
+    const code = normalizeRoleCode(roleCode);
+    try {
+      return await this.prisma.roleProfileExtension.upsert({
+        where: {
+          user_id_role_code_scope_key: {
+            user_id: userId,
+            role_code: code,
+            scope_key: scopeKey,
+          },
+        },
+        update: { data, organization_id: organizationId },
+        create: {
+          id: randomUUID(),
+          user_id: userId,
+          role_code: code,
+          organization_id: organizationId,
+          scope_key: scopeKey,
+          data,
+        },
+      });
+    } catch (error) {
+      if (isUniqueViolation(error)) {
+        const conflict = new Error('Role profile extension already exists.');
+        conflict.code = 'ROLE_PROFILE_CONFLICT';
+        throw conflict;
+      }
+      throw error;
+    }
+  }
+
+  async listRoleProfileExtensions(userId) {
+    return this.prisma.roleProfileExtension.findMany({
+      where: { user_id: userId },
+      orderBy: { created_at: 'asc' },
+    });
+  }
+
+  async findFarmerProfile(userId) {
+    return this.prisma.farmerProfile.findUnique({ where: { user_id: userId } });
+  }
+
+  async upsertFarmerProfile({
+    userId,
+    organizationId = null,
+    farmerCode,
+    verificationStatus,
+    farmSizeHectares,
+    experienceYears,
+    primaryCropId,
+  }) {
+    const existing = await this.findFarmerProfile(userId);
+    if (existing) {
+      return this.prisma.farmerProfile.update({
+        where: { user_id: userId },
+        data: {
+          organization_id: organizationId === undefined ? existing.organization_id : organizationId,
+          verification_status:
+            verificationStatus === undefined ? existing.verification_status : verificationStatus,
+          farm_size_hectares:
+            farmSizeHectares === undefined ? existing.farm_size_hectares : farmSizeHectares,
+          experience_years:
+            experienceYears === undefined ? existing.experience_years : experienceYears,
+          primary_crop_id: primaryCropId === undefined ? existing.primary_crop_id : primaryCropId,
+        },
+      });
+    }
+
+    const code = farmerCode || `FRM-${randomUUID().replace(/-/g, '').slice(0, 12).toUpperCase()}`;
+    try {
+      return await this.prisma.farmerProfile.create({
+        data: {
+          id: randomUUID(),
+          user_id: userId,
+          organization_id: organizationId,
+          farmer_code: code,
+          verification_status: verificationStatus || 'UNVERIFIED',
+          farm_size_hectares: farmSizeHectares || 0,
+          experience_years: experienceYears,
+          primary_crop_id: primaryCropId,
+        },
+      });
+    } catch (error) {
+      if (isUniqueViolation(error)) {
+        const conflict = new Error('Farmer code is already in use.');
+        conflict.code = 'FARMER_CODE_CONFLICT';
+        throw conflict;
+      }
+      throw error;
+    }
   }
 
   async createOtp({

@@ -63,6 +63,13 @@ const ROLE_CATEGORIES = Object.freeze([
     allowMultiple: true,
   },
   {
+    code: 'ORGANIZATION_MEMBER',
+    name: 'Organization Member',
+    scope: 'ORGANIZATION',
+    selfRegisterable: false,
+    allowMultiple: true,
+  },
+  {
     code: 'ORGANIZATION_ADMIN',
     name: 'Organization Administrator',
     scope: 'ORGANIZATION',
@@ -85,8 +92,14 @@ const PERMISSION_CATALOG = Object.freeze([
   ['users.manage', 'users', 'manage', 'Create and update users'],
   ['roles.manage', 'roles', 'manage', 'Manage role permission assignments'],
   ['permissions.read', 'permissions', 'read', 'View permissions and policy matrix'],
+  ['organizations.create', 'organizations', 'create', 'Register a new organization'],
   ['organizations.read', 'organizations', 'read', 'View organizations'],
   ['organizations.manage', 'organizations', 'manage', 'Manage organizations'],
+  ['organizations.verify', 'organizations', 'verify', 'Verify organization identities'],
+  ['members.read', 'members', 'read', 'View organization members'],
+  ['members.manage', 'members', 'manage', 'Invite and remove organization members'],
+  ['invitations.manage', 'invitations', 'manage', 'Manage organization invitations'],
+  ['documents.manage', 'documents', 'manage', 'Manage organization documents'],
   ['sessions.read', 'sessions', 'read', 'View sessions'],
   ['sessions.manage', 'sessions', 'manage', 'Revoke sessions'],
   ['audit.read', 'audit', 'read', 'View audit logs'],
@@ -125,6 +138,11 @@ const PERMISSION_CODES = Object.freeze(PERMISSION_CATALOG.map(([code]) => code))
 
 const PROFILE_PERMISSIONS = ['profile.read', 'profile.manage', 'notifications.read'];
 
+// Every authenticated user category may register an organization they will
+// administer. Management of an existing tenant still requires an explicit
+// organization-scoped grant.
+const SELF_SERVICE_PERMISSIONS = [...PROFILE_PERMISSIONS, 'organizations.create'];
+
 const MARKETPLACE_READ_PERMISSIONS = [
   'products.read',
   'listings.read',
@@ -135,7 +153,7 @@ const MARKETPLACE_READ_PERMISSIONS = [
 
 const ROLE_PERMISSIONS = Object.freeze({
   FARMER: [
-    ...PROFILE_PERMISSIONS,
+    ...SELF_SERVICE_PERMISSIONS,
     'farms.read',
     'farms.manage',
     'cultivations.read',
@@ -150,17 +168,17 @@ const ROLE_PERMISSIONS = Object.freeze({
     'ai.read',
     'ai.feedback',
   ],
-  BUYER: [...PROFILE_PERMISSIONS, ...MARKETPLACE_READ_PERMISSIONS, 'orders.manage', 'ai.read'],
+  BUYER: [...SELF_SERVICE_PERMISSIONS, ...MARKETPLACE_READ_PERMISSIONS, 'orders.manage', 'ai.read'],
   WHOLESALER: [
-    ...PROFILE_PERMISSIONS,
+    ...SELF_SERVICE_PERMISSIONS,
     ...MARKETPLACE_READ_PERMISSIONS,
     'orders.manage',
     'traceability.read',
     'ai.read',
   ],
-  RETAILER: [...PROFILE_PERMISSIONS, ...MARKETPLACE_READ_PERMISSIONS, 'orders.manage'],
+  RETAILER: [...SELF_SERVICE_PERMISSIONS, ...MARKETPLACE_READ_PERMISSIONS, 'orders.manage'],
   AGRICULTURAL_INPUT_SUPPLIER: [
-    ...PROFILE_PERMISSIONS,
+    ...SELF_SERVICE_PERMISSIONS,
     'products.read',
     'products.manage',
     'listings.read',
@@ -168,9 +186,14 @@ const ROLE_PERMISSIONS = Object.freeze({
     'orders.read',
     'ai.read',
   ],
-  LOGISTICS_PROVIDER: [...PROFILE_PERMISSIONS, 'orders.read', 'shipments.read', 'shipments.manage'],
+  LOGISTICS_PROVIDER: [
+    ...SELF_SERVICE_PERMISSIONS,
+    'orders.read',
+    'shipments.read',
+    'shipments.manage',
+  ],
   WAREHOUSE_OPERATOR: [
-    ...PROFILE_PERMISSIONS,
+    ...SELF_SERVICE_PERMISSIONS,
     'warehouses.read',
     'warehouses.manage',
     'products.read',
@@ -179,7 +202,7 @@ const ROLE_PERMISSIONS = Object.freeze({
     'shipments.read',
   ],
   AGRICULTURAL_EXPERT: [
-    ...PROFILE_PERMISSIONS,
+    ...SELF_SERVICE_PERMISSIONS,
     'farms.read',
     'cultivations.read',
     'harvests.read',
@@ -188,21 +211,38 @@ const ROLE_PERMISSIONS = Object.freeze({
     'ai.feedback',
   ],
   QUALITY_INSPECTOR: [
-    ...PROFILE_PERMISSIONS,
+    ...SELF_SERVICE_PERMISSIONS,
     'quality.read',
     'quality.manage',
     'traceability.read',
     'shipments.read',
     'farms.read',
   ],
+  ORGANIZATION_MEMBER: [
+    ...SELF_SERVICE_PERMISSIONS,
+    'organizations.read',
+    'members.read',
+    'products.read',
+    'listings.read',
+    'orders.read',
+    'payments.read',
+    'shipments.read',
+    'quality.read',
+    'traceability.read',
+    'ai.read',
+  ],
   ORGANIZATION_ADMIN: [
-    ...PROFILE_PERMISSIONS,
+    ...SELF_SERVICE_PERMISSIONS,
     'users.read',
     'users.manage',
     'roles.manage',
     'permissions.read',
     'organizations.read',
     'organizations.manage',
+    'members.read',
+    'members.manage',
+    'invitations.manage',
+    'documents.manage',
     'sessions.read',
     'audit.read',
     'farms.read',
