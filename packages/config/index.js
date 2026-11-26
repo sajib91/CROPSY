@@ -19,6 +19,16 @@ const sharedSchema = z.object({
   LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent']).default('info'),
 });
 
+function parseJsonArray(raw) {
+  if (typeof raw !== 'string' || raw.trim().length === 0) return { valid: true, value: [] };
+  try {
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? { valid: true, value: parsed } : { valid: false, value: [] };
+  } catch {
+    return { valid: false, value: [] };
+  }
+}
+
 const apiSchema = sharedSchema
   .extend({
     HOST: z.string().trim().min(1).default('0.0.0.0'),
@@ -39,6 +49,14 @@ const apiSchema = sharedSchema
     CATALOG_STORE: z.enum(['memory', 'prisma']).default('memory'),
     MARKETPLACE_STORE: z.enum(['memory', 'prisma']).default('memory'),
     WAREHOUSE_STORE: z.enum(['memory', 'prisma']).default('memory'),
+    ORDERS_STORE: z.enum(['memory', 'prisma']).default('memory'),
+    PAYMENTS_STORE: z.enum(['memory', 'prisma']).default('memory'),
+    LEDGER_STORE: z.enum(['memory', 'prisma']).default('memory'),
+    // Provider metadata is environment-supplied. The mock adapter is enabled
+    // only by automated tests and is rejected in production configuration.
+    PAYMENT_PROVIDER_MODE: z.enum(['configured', 'mock']).default('configured'),
+    PAYMENT_PROVIDERS_JSON: z.string().trim().default('[]'),
+    LEDGER_ACCOUNTS_JSON: z.string().trim().default(''),
     AUTH_JWT_SECRET: z.string().trim().min(1).default('dev-only-cropsy-access-token-secret'),
     AUTH_ACCESS_TOKEN_TTL_SECONDS: z.coerce.number().int().positive().default(900),
     AUTH_REFRESH_TOKEN_TTL_SECONDS: z.coerce.number().int().positive().default(2592000),
@@ -122,6 +140,56 @@ const apiSchema = sharedSchema
           code: z.ZodIssueCode.custom,
           path: ['WAREHOUSE_STORE'],
           message: 'Production must use the Prisma warehouse store',
+        });
+      }
+      if (value.ORDERS_STORE !== 'prisma') {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['ORDERS_STORE'],
+          message: 'Production must use the Prisma orders store',
+        });
+      }
+      if (value.PAYMENTS_STORE !== 'prisma') {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['PAYMENTS_STORE'],
+          message: 'Production must use the Prisma payments store',
+        });
+      }
+      if (value.LEDGER_STORE !== 'prisma') {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['LEDGER_STORE'],
+          message: 'Production must use the Prisma ledger store',
+        });
+      }
+      if (value.PAYMENT_PROVIDER_MODE !== 'configured') {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['PAYMENT_PROVIDER_MODE'],
+          message: 'Production must use configured payment adapters, not the mock adapter',
+        });
+      }
+      const productionProviders = parseJsonArray(value.PAYMENT_PROVIDERS_JSON);
+      if (
+        !productionProviders.valid ||
+        productionProviders.value.length === 0 ||
+        productionProviders.value.some(
+          (provider) =>
+            !provider ||
+            typeof provider.code !== 'string' ||
+            provider.code.trim().length === 0 ||
+            !Array.isArray(provider.methods) ||
+            provider.methods.length === 0 ||
+            typeof provider.webhookSecret !== 'string' ||
+            provider.webhookSecret.length === 0,
+        )
+      ) {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['PAYMENT_PROVIDERS_JSON'],
+          message:
+            'Production requires configured providers with codes, methods, and webhook secrets',
         });
       }
       if (value.AUTH_OTP_PROVIDER_MODE !== 'http') {

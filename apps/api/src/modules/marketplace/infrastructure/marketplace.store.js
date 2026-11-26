@@ -1,6 +1,7 @@
 const { randomUUID } = require('node:crypto');
 
 const { assertRepository } = require('../../../shared/domain/repository');
+const { ConflictError, NotFoundError } = require('../../../shared/kernel/errors');
 const {
   MARKETPLACE_STORE_METHODS,
   MarketplaceStoreToken,
@@ -98,6 +99,29 @@ class MarketplaceInMemoryStore {
 
   updateListing(id, patch) {
     return Promise.resolve(this._update('listings', id, patch));
+  }
+
+  decrementAvailability(id, quantity) {
+    const listing = this.listings.get(id);
+    if (!listing) {
+      return Promise.reject(new NotFoundError({ message: 'Listing was not found.' }));
+    }
+    if (Number(listing.quantity_available) < quantity) {
+      return Promise.reject(new ConflictError({ message: 'Insufficient listing availability.' }));
+    }
+    listing.quantity_available = Number(listing.quantity_available) - quantity;
+    listing.updated_at = new Date();
+    return Promise.resolve(copy(listing));
+  }
+
+  restoreAvailability(id, quantity) {
+    const listing = this.listings.get(id);
+    if (!listing) {
+      return Promise.reject(new NotFoundError({ message: 'Listing was not found.' }));
+    }
+    listing.quantity_available = Number(listing.quantity_available) + quantity;
+    listing.updated_at = new Date();
+    return Promise.resolve(copy(listing));
   }
 
   listLocations(filters) {

@@ -7,8 +7,10 @@ is declared in `apps/api/src/modules/registry.js` and implemented through the sh
 event bus or narrow read-only DI ports, never through another module's service class.
 
 The scaffolding establishes boundaries and service seams; IAM authentication/RBAC and the
-organization/user profile workflows are implemented inside those boundaries. It does not
-implement commission rules, payment providers, prices, or settlement policies.
+organization/user profile, catalog, marketplace, cart/order, provider-adapter payment, and
+immutable double-entry ledger workflows are implemented inside those boundaries. Commission
+rates, refund policies, settlement periods, and payment provider credentials remain
+caller-supplied or deployment configuration rather than seeded policy.
 
 ## Layer rules
 
@@ -40,9 +42,9 @@ boundary.
 | `agriculture` | `/agriculture` | Agriculture and Crop Management | `organizations`, `farmers` | `agriculture.initialized`, `agriculture.season.created`, `agriculture.crop.created`, `agriculture.crop.updated`, `agriculture.variety.created`, `agriculture.variety.updated`, `agriculture.calendar.created`, `agriculture.calendar.updated`, `agriculture.recommendation.created`, `agriculture.recommendation.updated`, `agriculture.cultivation.created`, `agriculture.cultivation.updated`, `agriculture.activity.recorded`, `agriculture.harvest.recorded`, `agriculture.expense.recorded`, `agriculture.expense.updated`, `agriculture.expense.estimated` | — |
 | `catalog` | `/catalog` | Product Catalog | `organizations`, `farmers` | `catalog.initialized`, `catalog.category.created`, `catalog.category.updated`, `catalog.unit.created`, `catalog.unit.updated`, `catalog.quality-grade.created`, `catalog.quality-grade.updated`, `catalog.attribute.created`, `catalog.attribute.updated`, `catalog.product.created`, `catalog.product.updated`, `catalog.product.published`, `catalog.variety.created`, `catalog.variety.updated`, `catalog.attribute-values.updated`, `catalog.image.added`, `catalog.image.removed` | — |
 | `marketplace` | `/marketplace` | Marketplace | `catalog`, `organizations`, `buyers` | `marketplace.initialized`, `marketplace.listing.created`, `marketplace.listing.updated`, `marketplace.listing.published`, `marketplace.listing.deactivated`, `marketplace.listing.location-added`, `marketplace.listing.location-removed`, `marketplace.listing.image-added`, `marketplace.listing.image-removed`, `marketplace.favorite.added`, `marketplace.favorite.removed`, `marketplace.report.created`, `marketplace.report.reviewed`, `marketplace.message.sent`, `marketplace.message.read` | — |
-| `orders` | `/orders` | Orders | `marketplace`, `buyers`, `catalog` | `orders.initialized`, `orders.order.placed` | — |
-| `payments` | `/payments` | Payments | `orders`, `organizations` | `payments.initialized`, `payments.payment.recorded` | — |
-| `ledger` | `/ledger` | Financial Ledger | `payments`, `orders`, `organizations` | `ledger.initialized`, `ledger.entry.posted` | — |
+| `orders` | `/orders` | Orders | `marketplace`, `buyers`, `catalog` | `orders.initialized`, `orders.cart.item-added`, `orders.cart.item-updated`, `orders.cart.item-removed`, `orders.checkout.created`, `orders.order.placed`, `orders.order.status-changed`, `orders.order.cancelled`, `orders.receipt.generated` | — |
+| `payments` | `/payments` | Payments | `orders`, `organizations`, `ledger` | `payments.initialized`, `payments.payment.initiated`, `payments.payment.failed`, `payments.payment.captured`, `payments.webhook.received`, `payments.refund.processed` | — |
+| `ledger` | `/ledger` | Financial Ledger | `orders`, `organizations` | `ledger.initialized`, `ledger.journal.posted`, `ledger.reconciliation.expected`, `ledger.settlement.recorded`, `ledger.adjustment.posted` | — |
 | `logistics` | `/logistics` | Logistics | `orders`, `organizations`, `warehouse` | `logistics.initialized`, `logistics.shipment.created` | — |
 | `warehouse` | `/warehouse` | Warehouse | `organizations`, `catalog`, `iam` | `warehouse.initialized`, `warehouse.warehouse.created`, `warehouse.warehouse.updated`, `warehouse.stock.registered`, `warehouse.stock.updated`, `warehouse.stock.adjusted`, `warehouse.stock.damaged`, `warehouse.stock.expired`, `warehouse.stock.deducted`, `warehouse.stock.reserved`, `warehouse.reservation.released`, `warehouse.reservation.deducted`, `warehouse.alert.acknowledged`, `warehouse.alert.resolved` | — |
 | `quality` | `/quality` | Quality Inspection | `organizations`, `catalog`, `farmers` | `quality.initialized`, `quality.inspection.completed` | — |
@@ -65,7 +67,10 @@ iam ──> users ──> organizations ──> farmers ──> agriculture ─�
   │                   │                └─────────────> warehouse (read-only inventory port)
   └──> notifications <┘                └──> quality ──> warehouse ──> logistics ──> traceability
                                                                │                 │
-                          payments ──> ledger ──> billing       └──────────────────┴──> intelligence ──> knowledge
+                          ledger ──> billing                   └──────────────────┴──> intelligence ──> knowledge
+                             ^
+                             │ (narrow posting port)
+                          payments
 ```
 
 Administration observes the whole event stream for audit visibility. The arrows describe declared
@@ -104,9 +109,27 @@ category, unit, and quality-grade references and to build public listing DTOs. T
 copies of available catalog records only, so marketplace cannot mutate catalog data through it.
 The `warehouse` module publishes a read-only `WarehouseAccessPortToken`; farmers consumes it only
 to validate cooperative stock references, and it exposes no reservation or mutation methods.
-The shared `ConfigToken` supplies `FARM_STORE`, `AGRICULTURE_STORE`, `CATALOG_STORE`,
-`MARKETPLACE_STORE`, and `WAREHOUSE_STORE`; each module registers its own store token and defaults
-to `memory` for development/tests while production requires `prisma`. All farm CRUD, parcel, soil, irrigation,
+The `marketplace` module publishes a read-only `MarketplaceAccessPortToken` for current listing
+price, seller, and availability reads, plus a narrow `MarketplaceListingStockToken` that only
+decrements and restores listing availability. Orders consumes both through DI, so it cannot
+create, edit, or deactivate listings. The `ledger` module publishes `LedgerPostingPortToken`,
+which exposes only expectation recording, journal posting, balance reads, and account-code
+lookups; payments consumes it to record financial effects without importing ledger source,
+changing accounts, or editing posted entries. The `payments` module publishes
+`PaymentProviderRegistryToken`, whose provider adapters are supplied by deployment
+configuration or DI; no provider SDK is imported from another module. The shared `ConfigToken`
+supplies `FARM_STORE`, `AGRICULTURE_STORE`, `CATALOG_STORE`, `MARKETPLACE_STORE`,
+`WAREHOUSE_STORE`, `ORDERS_STORE`, `PAYMENTS_STORE`, and `LEDGER_STORE`; each module registers its
+own store token and defaults to `memory` for development/tests while production requires
+`prisma`. Provider metadata comes from `PAYMENT_PROVIDER_MODE` and `PAYMENT_PROVIDERS_JSON`, and
+chart-of-account structure can be overridden with `LEDGER_ACCOUNTS_JSON`. Cart items, one parent checkout (`purchase_groups`), and
+seller-specific fulfillment orders are methods and stores inside the existing `orders` module;
+status transitions use a domain state machine, history is append-only, and a JSON receipt is
+generated from stored snapshots. Provider initiation/verification, webhook authenticity and
+deduplication, refunds, and status history stay inside `payments`; journals, bucket balances,
+reconciliation expectations, settlements, adjustments, and ledger audits stay inside `ledger`.
+Both modules keep the 20-module boundary and use the narrow posting port for financial effects.
+All farm CRUD, parcel, soil, irrigation,
 map, spatial, and Bangladesh geo workflows stay inside the existing 20-module `farmers`
 boundary. Crop catalog, calendars, cultivations, activities, harvests, expenses, and reports stay
 inside the existing `agriculture` boundary. Product taxonomy, flexible attributes, varieties, and
@@ -134,14 +157,18 @@ All routes are mounted under `API_PREFIX` (default `/api/v1`).
 
 All non-public routes are default-deny. The `info` endpoints are the only module routes in the
 public allowlist; authenticated organization, user, farm, cooperative, agriculture, catalog,
-marketplace, and warehouse routes are documented in [`../api/README.md`](../api/README.md). Farm
+marketplace, orders, warehouse, payment, and ledger routes are documented in
+[`../api/README.md`](../api/README.md). Provider callbacks remain authenticated and signature-verified;
+they are never added to the public allowlist. Farm
 coordinate reads enforce an additional private-data policy beyond the `farms.read` permission.
 Agriculture separates catalog/calendar, cultivation, harvest, and expense permissions, and keeps
 recorded costs distinct from AI estimates. Catalog management reuses `products.read`/
 `products.manage`; marketplace discovery and seller workflows reuse `listings.read`/
 `listings.manage`; warehouse operations reuse `warehouses.read`/`warehouses.manage`; and
 cooperative reads/mutations reuse `farms.read`/`farms.manage` plus `orders.read`/`orders.manage`
-for group purchase requests. No permissions were added. Marketplace and cooperative public DTOs
+for group purchase requests, and cart/checkout/order routes reuse `orders.read`/`orders.manage`.
+Payment routes reuse `payments.read`/`payments.manage` and ledger routes reuse `ledger.read`/
+`ledger.manage`, including provider callbacks. No permissions were added. Marketplace and cooperative public DTOs
 redact exact coordinates, seller/user contact details, password hashes, and private addresses.
 
 Requests may send `x-request-id`; it is echoed on the response and included in structured logs.

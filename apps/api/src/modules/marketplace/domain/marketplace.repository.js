@@ -21,6 +21,8 @@ const MarketplaceStoreToken = defineRepositoryToken('marketplace.store');
  * @property {(id: string) => Promise<object|null>} findListing
  * @property {(input: object) => Promise<object>} createListing
  * @property {(id: string, patch: object) => Promise<object>} updateListing
+ * @property {(id: string, quantity: number) => Promise<object>} decrementAvailability
+ * @property {(id: string, quantity: number) => Promise<object>} restoreAvailability
  * @property {(filters?: object) => Promise<object[]>} listLocations
  * @property {(id: string) => Promise<object|null>} findLocation
  * @property {(input: object) => Promise<object>} createLocation
@@ -49,6 +51,8 @@ const MARKETPLACE_STORE_METHODS = Object.freeze([
   'findListing',
   'createListing',
   'updateListing',
+  'decrementAvailability',
+  'restoreAvailability',
   'listLocations',
   'findLocation',
   'createLocation',

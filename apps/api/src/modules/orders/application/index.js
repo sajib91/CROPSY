@@ -1,9 +1,9 @@
-const { OrdersService, OrdersServiceToken } = require('./orders.service');
-const { moduleInfoSchema, toModuleInfoDto } = require('./orders.dto');
+const dto = require('./orders.dto');
+const { EVENTS, OrdersService, OrdersServiceToken } = require('./orders.service');
 
 module.exports = {
+  EVENTS,
   OrdersService,
   OrdersServiceToken,
-  moduleInfoSchema,
-  toModuleInfoDto,
+  ...dto,
 };

@@ -52,9 +52,9 @@ Service responses use the standard envelope where practical:
 
 Shared health response contracts live in `packages/api-contracts`. The `/info`
 endpoints expose validated architecture DTOs. The IAM, organization, user, farm,
-agriculture, catalog, marketplace, warehouse, and cooperative workflows described
-below are implemented; product-specific commercial policies remain outside this
-scaffold.
+agriculture, catalog, marketplace, orders, warehouse, and cooperative workflows
+described below are implemented; product-specific commercial policies remain
+outside this scaffold.
 
 ## Organization routes
 
@@ -367,8 +367,183 @@ coordinates, email addresses, phone numbers, password hashes, and private
 addresses are never returned. Messages are restricted to the listing's buyer
 and seller, and send/read events are audited. No listings are seeded: sellers
 create them from catalog products, and price, quantity, grade, harvest date,
-and location are caller-supplied. Commission, payment, and settlement rules
-remain unimplemented policy.
+and location are caller-supplied. Commission rules remain caller-supplied
+snapshots; payment attempts and callbacks are handled by the `payments` module
+and financial effects are posted through the `ledger` posting port.
+
+## Orders routes
+
+All routes below are under `/api/v1/orders`. Only `/info` and `/info/:moduleId`
+are public; every other route requires a valid access token and is default-deny.
+Reads reuse `orders.read`; cart, checkout, cancellation, and lifecycle mutations
+reuse `orders.manage`. No permission was added. Tenant-scoped records require the
+active tenant to match the selected organization unless the caller is a super
+admin. Seller-fulfillment order routes are nested under the module path, so their
+full paths begin `/api/v1/orders/orders`.
+
+| Endpoint | Required permission | Purpose |
+| --- | --- | --- |
+| `GET /orders/cart` | `orders.read` | Read the caller's active cart with current listing summaries |
+| `POST /orders/cart/items` | `orders.manage` | Add a listing and quantity to the cart |
+| `PATCH /orders/cart/items/:listingId` | `orders.manage` | Change a cart item's quantity |
+| `DELETE /orders/cart/items/:listingId` | `orders.manage` | Remove a cart item |
+| `POST /orders/checkout` | `orders.manage` | Convert the cart into a parent checkout and seller fulfillments |
+| `GET /orders/checkouts` | `orders.read` | List checkouts visible to the caller |
+| `GET /orders/checkouts/:checkoutId` | `orders.read` | Read one parent checkout with its seller orders |
+| `GET /orders/orders` | `orders.read` | List seller orders visible to the caller |
+| `GET /orders/orders/:orderId` | `orders.read` | Read one seller fulfillment |
+| `POST /orders/orders/:orderId/cancel` | `orders.manage` | Cancel an eligible order and restore listing availability |
+| `POST /orders/orders/:orderId/transitions` | `orders.manage` | Apply an allowed lifecycle transition |
+| `GET /orders/orders/:orderId/history` | `orders.read` | Read append-only order status history |
+| `GET /orders/orders/:orderId/receipt` | `orders.read` | Generate a JSON receipt for one seller order |
+
+Cart mutations require an `ACTIVE` listing whose seller account is `ACTIVE`, a
+current listing/product tenant match, a quantity at or above the listing minimum
+and at or below available stock, and a read-through catalog product reference.
+Checkout revalidates all of those conditions and reads current listing prices
+again; client-supplied `subtotalAmount`, `discountAmount`, `deliveryFeeAmount`,
+`taxAmount`, `totalAmount`, and `currency` fields are ignored and never stored as
+authoritative values.
+
+A caller may pass `Idempotency-Key` or body `referenceKey`; if both are present
+they must match. A repeated key returns the original checkout instead of creating
+a second one. One checkout creates a `purchase_groups` parent and exactly one
+seller-specific `orders` row per distinct seller; the whole write and listing
+availability decrement are transactional. At most one `DELIVERY` and one
+`DISCOUNT` rule may apply to a seller. A rule may be seller-specific or general
+and uses `FLAT` `amount` or `PERCENTAGE` `percentage` (0–1) against the
+server-calculated seller subtotal. Rules and computed amounts are snapshotted on
+both the checkout and each seller order. There is no seeded fee, discount, tax,
+or commission; when no rule is supplied, fee and discount are zero. `taxAmount`
+remains zero until a tax policy is supplied.
+
+Seller orders can transition `PENDING → PAYMENT_PENDING → PAYMENT_FAILED →
+CONFIRMED → PROCESSING → SHIPPED → DELIVERED → COMPLETED` according to the domain
+state machine; invalid or skipped transitions return `409`. Cancellation is
+allowed from `PENDING`, `PAYMENT_PENDING`, `PAYMENT_FAILED`, `CONFIRMED`, and
+`PROCESSING`, is guarded by the order's current status, and restores listing
+availability. Every transition writes an append-only history row and an audit
+event. A seller may view their own seller fulfillment; parent checkout details
+and JSON receipts are limited to the buyer, a same-tenant `orders.manage` holder
+or super admin. Order checkout does not call a payment provider or post money;
+those effects belong to the payment and ledger flows below.
+
+## Payment routes
+
+All routes below are under `/api/v1/payments`. Only `/info` and
+`/info/:moduleId` are public; every other route requires a valid access token
+and is default-deny. Reads require `payments.read`; initiation, verification,
+refunds, and provider callbacks require `payments.manage`. No permission was
+added. Tenant-scoped records require the active tenant to match unless the
+caller is a super admin; buyers may view their own payments.
+
+| Endpoint | Required permission | Purpose |
+| --- | --- | --- |
+| `GET /payments/providers` | `payments.read` | List configured provider codes, methods, and capabilities |
+| `POST /payments` | `payments.manage` | Initiate a payment through a configured provider adapter |
+| `GET /payments` | `payments.read` | List payments visible to the caller |
+| `GET /payments/:paymentId` | `payments.read` | Read one payment |
+| `GET /payments/:paymentId/history` | `payments.read` | Read append-only payment status history |
+| `POST /payments/:paymentId/verify` | `payments.manage` | Verify a payment with its provider adapter |
+| `POST /refunds` | `payments.manage` | Request/process a refund through the provider adapter |
+| `GET /refunds` | `payments.read` | List refunds visible to the caller |
+| `POST /webhooks/:providerCode` | `payments.manage` | Receive and authenticate a provider callback |
+
+Initiation accepts `orderId`, optional `purchaseGroupId`, `providerCode`,
+`method`, `amount`, optional `currency`/`idempotencyKey`, `allocation`, optional
+`commissionRule`, and `providerOptions`. `allocation` must contain
+`sellerUserId`, `sellerNetAmount`, and `commissionAmount` whose sum equals the
+payment amount. That allocation and the commission rule are validated and
+snapshotted; no fee or commission rate is seeded or calculated by the API.
+`Idempotency-Key` (header) or `idempotencyKey` (body) is required, and if both
+are present they must match. A repeated key returns the original payment. A
+provider failure is persisted as `FAILED` with a failure code instead of
+throwing away the attempt.
+
+Verification calls the configured adapter and applies the payment state machine:
+`INITIATED → AUTHORIZED → CAPTURED`, `AUTHORIZED → FAILED/CANCELLED`, and no
+transitions out of terminal states. A first capture writes one
+`PAYMENT_CAPTURE` journal through the ledger posting port: buyer clearing is
+debited `PENDING`, seller payable is credited `PENDING` for the seller owner,
+and platform revenue is credited `AVAILABLE` when a commission snapshot is
+non-zero. The journal idempotency key is derived from the payment id, so
+repeated verification, a duplicate callback, or a concurrent retry cannot post
+a second capture. Status history is append-only.
+
+Refunds require `paymentId`, `amount`, `reason`, an idempotency key, and an
+`allocation` with `sellerUserId`, `sellerNetAmount`, and
+`commissionReversalAmount` summing to the refund amount. The refund cannot
+exceed the payment's refundable balance. The provider adapter processes it,
+and a processed refund posts one `REFUND` journal that debits seller payable
+(and platform revenue for a commission reversal) and credits buyer clearing.
+Failed refunds do not post a journal.
+
+Provider configuration is deployment-owned. `PAYMENT_PROVIDER_MODE=configured`
+is required in production, along with `PAYMENTS_STORE=prisma`,
+`LEDGER_STORE=prisma`, and a non-empty `PAYMENT_PROVIDERS_JSON` array whose
+entries contain `code`, `methods`, and `webhookSecret`. The built-in
+`HttpPaymentProvider` also accepts configured initiate/verify/refund URLs and
+an auth token; no credentials, endpoints, or provider certifications are
+committed. `PaymentProviderRegistryToken` may be overridden with a custom
+adapter contract. `PAYMENT_PROVIDER_MODE=mock` is accepted only when
+`NODE_ENV=test` and is used solely by automated tests. `GET /providers` exposes
+safe metadata only, never secrets.
+
+Webhook requests are not publicly allowlisted: the deployment ingress must map
+a provider callback to an authenticated `payments.manage` principal. The
+provider's adapter must first verify authenticity. Built-in adapters expect
+`x-webhook-signature: sha256=<hex>`, an HMAC-SHA256 of
+`${eventId}.${JSON.stringify(payload)}` using the configured provider
+`webhookSecret`; custom adapters may override `verifyWebhook`. Accepted event
+payloads contain `eventId`, `paymentReference`, `status`, optional `amount`,
+`currency`, and `failureCode`. Events are deduplicated by
+`(provider_code, provider_event_id)` before any state or ledger change; a
+duplicate returns the stored event with `duplicate: true` and posts nothing.
+Mismatched amounts, unknown references, and terminal-state callbacks are
+recorded without a second posting.
+
+## Ledger routes
+
+All routes below are under `/api/v1/ledger`. Only `/info` and
+`/info/:moduleId` are public; every other route requires a valid access token
+and is default-deny. Reads require `ledger.read`; postings, expectations, and
+settlements require `ledger.manage`. No permission was added. Ledger records
+are tenant-scoped unless platform-scoped, and super admins bypass tenant scope
+but are audited.
+
+| Endpoint | Required permission | Purpose |
+| --- | --- | --- |
+| `GET /ledger/accounts` | `ledger.read` | List structural chart-of-accounts accounts |
+| `GET /ledger/balances` | `ledger.read` | List balances by account, owner, bucket, and currency |
+| `POST /ledger/journals` | `ledger.manage` | Post a balanced double-entry journal |
+| `GET /ledger/journals` | `ledger.read` | List posted journals |
+| `GET /ledger/journals/:journalId` | `ledger.read` | Read one journal with its lines |
+| `POST /ledger/expectations` | `ledger.manage` | Record an expected financial amount for reconciliation |
+| `POST /ledger/settlements` | `ledger.manage` | Record a seller settlement with its journal |
+| `GET /ledger/settlements` | `ledger.read` | List settlements |
+| `GET /ledger/audit` | `ledger.read` | Read the append-only ledger audit trail |
+| `GET /ledger/reconciliation` | `ledger.read` | Compare expectations with matched journals |
+
+A journal body contains `idempotencyKey`, `referenceType`, optional
+`referenceId`/`description`/`currency`/`expectationKey`, and at least two
+`lines`. Each line has `accountCode`, `direction` (`DEBIT` or `CREDIT`),
+`bucket` (`PENDING`, `AVAILABLE`, or `SETTLED`), `amount`, and optional
+`ownerUserId`/`description`. Every amount is positive, debits must equal
+credits, and the response includes the persisted `lines`. A repeated
+idempotency key returns the original journal without a second posting, audit
+event, or domain event. Adjustment journals use `referenceType: "ADJUSTMENT"`.
+
+Balances are signed and keyed by account, owner key/user, bucket, and currency,
+so a temporarily credit-heavy asset account may be negative until funded. The
+structural chart of accounts is seeded (or overridden with
+`LEDGER_ACCOUNTS_JSON`) with account codes/roles only; commission rates, refund
+policies, and settlement periods are never stored as defaults. Reconciliation
+expectations are created explicitly, linked by `expectationKey`, and reported
+as `matched`, `missing`, and `balanced`. Settlement requests carry a caller's
+`ruleKey`, period, gross/deductions/net amounts, allocation snapshot, and a
+balanced journal; they do not apply a seeded payout rule. Posted journals,
+lines, status history, and audit events are append-only in the database, while
+the payment module reaches the ledger only through a narrow posting port.
 
 ## Warehouse and inventory routes
 

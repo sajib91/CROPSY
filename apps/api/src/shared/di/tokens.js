@@ -24,6 +24,24 @@ const CatalogAccessPortToken = Symbol.for('cropsy.platform.catalogAccess');
 // another module or gaining mutation capabilities.
 const WarehouseAccessPortToken = Symbol.for('cropsy.platform.warehouseAccess');
 
+// Read-only listing lookup port published by the marketplace module so orders
+// can validate current price, seller, and availability at checkout.
+const MarketplaceAccessPortToken = Symbol.for('cropsy.platform.marketplaceAccess');
+
+// Narrow fulfillment capability used by the orders infrastructure adapter to
+// atomically decrement/restore listing availability. It exposes no listing
+// management operations.
+const MarketplaceListingStockToken = Symbol.for('cropsy.platform.marketplaceListingStock');
+
+// Payment provider registry. The registry exposes only configured adapter
+// capabilities; business modules never import a concrete provider SDK.
+const PaymentProviderRegistryToken = Symbol.for('cropsy.platform.paymentProviderRegistry');
+
+// Narrow ledger posting port used by payments to record financial effects
+// without importing the ledger module. It exposes posting and reconciliation
+// expectations only, not account or balance mutation capabilities.
+const LedgerPostingPortToken = Symbol.for('cropsy.platform.ledgerPosting');
+
 module.exports = {
   ConfigToken,
   LoggerToken,
@@ -35,4 +53,8 @@ module.exports = {
   FarmAccessPortToken,
   CatalogAccessPortToken,
   WarehouseAccessPortToken,
+  MarketplaceAccessPortToken,
+  MarketplaceListingStockToken,
+  PaymentProviderRegistryToken,
+  LedgerPostingPortToken,
 };

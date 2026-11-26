@@ -75,16 +75,18 @@ recorded. The database model already supports configurable settings and rule key
 
 ## ADR-010: Read-only composition ports for same-process module reads
 
-**Decision.** A module may publish a narrow, read-only port from `shared/di/tokens.js` when another
-module needs validated reference data. `FarmAccessPortToken`, `CatalogAccessPortToken`, and
-`WarehouseAccessPortToken` are the current examples; the consumer resolves the port through DI and
-receives copies, never the publisher's service or store.
+**Decision.** A module may publish a narrow port from `shared/di/tokens.js` when another module
+needs validated reference data or one tightly scoped capability. `FarmAccessPortToken`,
+`CatalogAccessPortToken`, `WarehouseAccessPortToken`, and `MarketplaceAccessPortToken` are
+read-only; `MarketplaceListingStockToken` only decrements/restores listing availability. The
+consumer resolves the port through DI and receives copies or the declared capability, never the
+publisher's service or full store.
 
 **Reason.** This keeps the 20-module boundary and the no-direct-cross-module-import rule intact
 while avoiding duplicated persistence logic or event-carried entity snapshots. Ports expose only
-the fields a consumer needs; marketplace therefore cannot mutate catalog data or read private
-catalog state through `CatalogAccessPortToken`, and farmers cannot reserve or mutate warehouse
-stock through `WarehouseAccessPortToken`.
+the fields or operations a consumer needs; marketplace cannot mutate catalog data through
+`CatalogAccessPortToken`, farmers cannot reserve warehouse stock through
+`WarehouseAccessPortToken`, and orders cannot create or edit listings through marketplace ports.
 
 ## ADR-011: Expand warehouse for transactional inventory
 
@@ -111,3 +113,65 @@ service. Allocation uses the campaign's caller-supplied policy: `PROPORTIONAL` o
 warehouse, and authorization seams. Keeping one service token avoids a parallel service while
 configuration prevents inventing commission rates, payment providers, payout rules, taxes, fees,
 or settlement policies.
+
+## ADR-013: Expand orders for cart, checkout, and seller fulfillments
+
+**Decision.** Cart mutations, checkout, order lifecycle tracking, cancellation, history, and JSON
+receipts are methods of the existing `orders` module. A `purchase_groups` row is the parent
+checkout; each distinct seller in one checkout gets its own `orders` row as a seller fulfillment.
+No 21st module was added, and all cross-module reads use DI ports.
+
+**Reason.** Checkout and fulfillment are order-domain concerns that must remain behind one service
+boundary. A parent aggregate preserves the buyer's single checkout while allowing seller-specific
+status, totals, snapshots, and receipts. Transactional creation, unique `reference_key`
+idempotency, append-only `order_status_changes`, and current-status guards keep concurrent retries
+and transitions consistent.
+
+## ADR-014: Server-calculated checkout with caller-supplied pricing rules
+
+**Decision.** Checkout ignores client-supplied totals and recomputes line amounts from current
+listing prices. Delivery and discount rules are supplied per request, may be general or
+seller-specific, and support `FLAT` amounts or `PERCENTAGE` fractions of the server-calculated
+seller subtotal. Rules and computed amounts are snapshotted on the checkout and seller orders;
+no fee, discount, tax, or commission default is seeded.
+
+**Reason.** Prices and money must come from trusted current data, while business policy remains
+application/platform configuration. Snapshots make receipts reproducible without inventing rates
+or providers. `tax_amount` persists as zero until a tax rule is explicitly supplied.
+
+## ADR-015: Provider-adapter payments without invented credentials
+
+**Decision.** Payment initiation, verification, webhooks, and refunds remain in the existing
+`payments` module behind a domain provider contract and a DI-resolved
+`PaymentProviderRegistryToken`. Providers and methods come from `PAYMENT_PROVIDERS_JSON`; the
+built-in HTTP adapter uses only deployment-supplied URLs/tokens, and production requires
+`PAYMENT_PROVIDER_MODE=configured`, `PAYMENTS_STORE=prisma`, and provider webhook secrets. The
+mock adapter is accepted only when `NODE_ENV=test`. Provider callbacks stay default-deny with
+`payments.manage`, and adapters independently verify `x-webhook-signature` as an HMAC-SHA256
+digest of `${eventId}.${JSON.stringify(payload)}` unless an injected adapter overrides that
+check. Idempotency keys are required for initiation/refunds, header and body values must match
+when both are present, and callbacks are deduplicated by provider event id.
+
+**Reason.** No provider credential, endpoint, or certification claim belongs in source control,
+and no 21st module is needed for provider orchestration. A narrow adapter contract supports
+Bangladesh-relevant methods such as mobile banking/card/bank transfer through configuration while
+keeping signature verification, duplicate handling, failure persistence, and state transitions
+testable without real provider access.
+
+## ADR-016: Immutable double-entry ledger with database-enforced invariants
+
+**Decision.** The existing `ledger` module owns journal headers/lines, signed balances in
+`PENDING`/`AVAILABLE`/`SETTLED` buckets, reconciliation expectations, settlements, adjustments,
+and a separate audit trail. Every journal must have positive lines with equal debit and credit
+totals; posting writes journal, lines, and balance updates in one transaction and returns the
+full journal. Idempotency keys make repeated posts return the original journal without new events.
+Posted journals, lines, status history, and audit rows are append-only at the database boundary;
+a deferred constraint trigger rejects any unbalanced journal at commit. `payments` reaches the
+ledger only through `LedgerPostingPortToken`, which exposes expectation recording, journal
+posting, balance reads, and account codes, never account mutation.
+
+**Reason.** Financial correctness cannot rely only on application discipline. Database checks,
+unique keys, tenant-match triggers, and append-only triggers survive direct SQL or bypassed
+services, while signed balances allow legitimate negative interim states without breaking the
+balanced-journal rule. Commission rates, refund policies, and settlement periods remain
+caller-supplied snapshots or external rule keys, not seeded policy.

@@ -101,8 +101,8 @@ function cookieHeader(setCookie) {
     .join('; ');
 }
 
-async function createTenantFixture(t) {
-  const fixture = await createApp(t);
+async function createTenantFixture(t, envOverrides = {}) {
+  const fixture = await createApp(t, envOverrides);
   const { app, store } = fixture;
 
   const admin = await register(app, { email: 'admin@example.com', roles: ['FARMER'] });

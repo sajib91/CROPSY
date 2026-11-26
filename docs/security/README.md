@@ -26,9 +26,11 @@ detail live in the API docs.
 - Web clients receive HttpOnly `cropsy_access` and `cropsy_refresh` cookies with `SameSite=Lax` and
   `Secure` in production/HTTPS. Cookie-authenticated mutations require a matching `x-csrf-token`;
   mobile clients use bearer tokens returned in the JSON body.
-- Production requires `AUTH_STORE=prisma`, `FARM_STORE=prisma`, `AGRICULTURE_STORE=prisma`, `CATALOG_STORE=prisma`, `MARKETPLACE_STORE=prisma`, `WAREHOUSE_STORE=prisma`, a strong `AUTH_JWT_SECRET`, and HTTP OTP provider URLs.
-  The preview provider exists only for local/test use; it is disabled by production config and
-  never accepts a client-supplied code as proof of verification.
+- Production requires `AUTH_STORE=prisma`, `FARM_STORE=prisma`, `AGRICULTURE_STORE=prisma`, `CATALOG_STORE=prisma`, `MARKETPLACE_STORE=prisma`, `WAREHOUSE_STORE=prisma`, `ORDERS_STORE=prisma`, `PAYMENTS_STORE=prisma`, `LEDGER_STORE=prisma`, a strong `AUTH_JWT_SECRET`, and HTTP OTP provider URLs.
+  It also requires `PAYMENT_PROVIDER_MODE=configured` and a non-empty `PAYMENT_PROVIDERS_JSON`
+  whose entries define a code, supported methods, and a webhook secret. The preview OTP provider
+  and mock payment adapter exist only for local/test use and are disabled by production config;
+  no provider credentials or endpoints are committed.
 
 ## Authorization
 
@@ -55,6 +57,15 @@ detail live in the API docs.
   and marketplace listing writes require seller ownership, super admin, or same-tenant
   `listings.manage`. Buyer DTOs expose only public seller/location summaries; exact coordinates,
   email, phone, password hashes, and private addresses are redacted.
+- Cart, checkout, and order routes are default-deny and reuse the existing `orders.read`/
+  `orders.manage` permissions; no permission was added. Listing, product, seller-account, tenant,
+  price, stock, and availability-window checks are revalidated at cart mutation and checkout.
+  Client-supplied totals and currency are ignored; checkout totals are recomputed from current
+  listing prices and caller-supplied pricing rules are snapshotted rather than seeded as policy.
+  Unique `reference_key` values prevent duplicate submissions, status transitions follow a domain
+  state machine with current-status guards, cancellation restores availability, and history is
+  append-only. Seller users may view their own fulfillments; parent checkout details and receipts
+  are limited to the buyer, a same-tenant `orders.manage` holder, or a super admin.
 - Warehouse routes are default-deny and reuse `warehouses.read`/`warehouses.manage`. Warehouses,
   inventory batches, reservations, movements, and alerts require the active tenant to match or a
   super admin. Product and unit references are validated through read-only catalog data, stock
@@ -70,6 +81,23 @@ detail live in the API docs.
   hashes. Allocation policies and weights are caller-configurable; earnings require caller-supplied
   sales amount/currency and retain allocation/policy traceability rather than applying invented
   commission or settlement rules.
+- Payment routes are default-deny and reuse `payments.read`/`payments.manage`; no permission was
+  added. Provider codes/methods are checked against deployment configuration, buyers can view only
+  their own payments, and initiation/refund idempotency keys plus payment state transitions guard
+  duplicate financial effects. Provider callbacks are never publicly allowlisted: the ingress must
+  map the request to a `payments.manage` principal, and the adapter verifies
+  `x-webhook-signature` as `sha256=<hex>` HMAC-SHA256 over
+  `${eventId}.${JSON.stringify(payload)}` using the configured webhook secret. Duplicate provider
+  event ids are stored, flagged, and skipped without a second status or ledger posting; secret
+  material is never returned by `GET /payments/providers`.
+- Ledger routes are default-deny and reuse `ledger.read`/`ledger.manage`; no permission was added.
+  Journals require positive balanced lines and a unique idempotency key, posted journals/lines/
+  audits are append-only by database trigger, and duplicate keys return the original journal
+  without another audit or event. Balances are signed by account/owner/bucket/currency; ledger
+  reads are tenant-filtered, and payments reach posting only through the narrow
+  `LedgerPostingPortToken` (expectations, postings, balance reads, account codes), not by editing
+  accounts or balances directly. Commission rates, refund policies, and settlement periods stay
+  caller-supplied snapshots or external rule keys.
 - `AI_ESTIMATED` expenses and recommendations require a rule key plus `ai.feedback` (or super
   admin). Reports keep these estimates separate from `RECORDED` production costs; profitability
   uses a caller-supplied `pricePerKg` and never invents market prices.
@@ -92,10 +120,23 @@ cover catalog/calendar configuration, tenant and farm isolation, cultivation
 history, harvests, recorded-vs-AI expenses, and cost/profitability reports. Catalog
 suites cover bilingual taxonomy, typed attributes, tenant isolation, and default-deny;
 marketplace suites cover seller/buyer flows, filters, proximity, ownership, favorite/report rules,
-and DTO privacy. Warehouse suites cover registration, reservation idempotency/oversell prevention,
+and DTO privacy. Orders suites cover default-deny, cart availability and tenant checks, seller
+splitting, server-calculated totals, idempotency, pricing rules, visibility, cancellation/restock,
+status transitions, history, JSON receipts, and stale price/stock rejection. Warehouse suites cover registration, reservation idempotency/oversell prevention,
 adjustments, damaged/expired stock, alerts, movement history, and default-deny/tenant checks;
 cooperative suites cover group ownership, membership, contribution ownership, configurable
 allocation policies, earnings, tenant isolation, and authorization. Database suites check
 crop/expense and catalog/marketplace constraints, PostGIS proximity, Prisma adapter normalization,
 warehouse reservation/settlement concurrency, duplicate reference keys, append-only movements, and
-final stock consistency.
+final stock consistency. Order database suites check checkout total equations, unique reference
+keys, append-only status history, tenant guards, and atomic listing availability decrement/restore.
+Payment API suites cover default-deny, provider metadata redaction, header/body idempotency matching,
+initiation idempotency, allocation validation, verification/capture posting once, webhook signature
+rejection, duplicate callbacks, amount mismatch, failure handling, and refund reversals. Ledger API
+suites cover default-deny, balanced posting with full journal lines, duplicate posting, bucket
+balances, expectations/reconciliation, settlements, adjustments, and audit events. Payment database
+suites check amount bounds, unique references/idempotency keys, append-only status history, and
+unique/tenant-safe webhook events. Ledger database suites check deferred balance enforcement,
+unique journal keys, append-only journals/lines/audits, tenant consistency, settlement invariants,
+and expectation uniqueness. Database verification runs all ten migrations, checks drift, and runs
+the seed twice with stable 22/50/479/13 counts.

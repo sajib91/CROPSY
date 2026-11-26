@@ -949,9 +949,27 @@ erDiagram
     decimal unit_price_snapshot
     char currency
   }
+  purchase_groups {
+    uuid id PK
+    uuid organization_id FK
+    uuid buyer_user_id FK
+    uuid cart_id FK
+    varchar reference_key UK
+    CheckoutStatus status
+    char currency
+    decimal subtotal_amount
+    decimal discount_amount
+    decimal delivery_fee_amount
+    decimal tax_amount
+    decimal total_amount
+    json pricing_snapshot
+    timestamp placed_at
+    timestamp cancelled_at
+  }
   orders {
     uuid id PK
     uuid organization_id FK
+    uuid purchase_group_id FK
     uuid cart_id FK
     uuid buyer_user_id FK
     uuid seller_user_id FK
@@ -962,6 +980,7 @@ erDiagram
     decimal tax_amount
     decimal total_amount
     char currency
+    json pricing_snapshot
   }
   order_items {
     uuid id PK
@@ -973,18 +992,57 @@ erDiagram
     decimal line_total
     char currency
   }
+  order_status_changes {
+    uuid id PK
+    uuid organization_id FK
+    uuid purchase_group_id FK
+    uuid order_id FK
+    OrderStatus from_status
+    OrderStatus to_status
+    text reason
+    uuid actor_user_id FK
+    timestamp created_at
+  }
   payments {
     uuid id PK
     uuid organization_id FK
     uuid order_id FK
+    uuid purchase_group_id FK
     uuid user_id FK
     varchar provider_code
+    varchar provider_reference
     varchar idempotency_key UK
     PaymentMethod method
     PaymentStatus status
     decimal amount
     decimal captured_amount
     decimal refunded_amount
+    char currency
+    json metadata
+    json allocation_snapshot
+    json commission_rule_snapshot
+  }
+  payment_status_changes {
+    uuid id PK
+    uuid organization_id FK
+    uuid payment_id FK
+    PaymentStatus from_status
+    PaymentStatus to_status
+    varchar reason
+    uuid actor_user_id FK
+    varchar provider_event_id
+    timestamp created_at
+  }
+  payment_webhook_events {
+    uuid id PK
+    uuid organization_id FK
+    varchar provider_code
+    varchar provider_event_id UK
+    uuid payment_id FK
+    json payload
+    varchar signature
+    varchar status
+    timestamp processed_at
   }
   refunds {
     uuid id PK
@@ -994,6 +1052,8 @@ erDiagram
     decimal amount
     RefundReason reason
     RefundStatus status
+    varchar idempotency_key UK
+    json allocation_snapshot
   }
   transactions {
     uuid id PK
@@ -1025,6 +1085,61 @@ erDiagram
     decimal amount
     timestamp posted_at
   }
+  ledger_journals {
+    uuid id PK
+    uuid organization_id FK
+    varchar idempotency_key UK
+    varchar reference_type
+    uuid reference_id
+    char currency
+    varchar status
+    uuid actor_user_id FK
+    varchar request_id
+    timestamp posted_at
+  }
+  ledger_journal_lines {
+    uuid id PK
+    uuid journal_id FK
+    uuid organization_id FK
+    uuid account_id FK
+    TransactionDirection direction
+    LedgerBucket bucket
+    decimal amount
+    char currency
+    uuid owner_user_id FK
+  }
+  ledger_balances {
+    uuid id PK
+    uuid organization_id FK
+    uuid account_id FK
+    varchar owner_key
+    uuid owner_user_id FK
+    LedgerBucket bucket
+    char currency
+    decimal balance
+  }
+  ledger_audit_events {
+    uuid id PK
+    uuid organization_id FK
+    varchar action
+    uuid actor_user_id FK
+    varchar entity_type
+    uuid entity_id
+    json metadata
+    varchar request_id
+  }
+  reconciliation_expectations {
+    uuid id PK
+    uuid organization_id FK
+    varchar expectation_key UK
+    varchar reference_type
+    uuid reference_id
+    decimal amount
+    char currency
+    varchar status
+    uuid journal_id FK
+    timestamp matched_at
+  }
   commissions {
     uuid id PK
     uuid organization_id FK
@@ -1041,6 +1156,11 @@ erDiagram
     uuid organization_id FK
     uuid seller_user_id FK
     varchar rule_key
+    varchar idempotency_key UK
+    json allocation_snapshot
+    uuid journal_id FK
+    timestamp period_start
+    timestamp period_end
     decimal gross_amount
     decimal deductions_amount
     decimal net_amount
@@ -1051,16 +1171,30 @@ erDiagram
   users ||--o{ carts : user
   carts ||--o{ cart_items : cart
   product_listings ||--o{ cart_items : listing
+  organizations |o--o{ purchase_groups : organization
+  users ||--o{ purchase_groups : buyer
+  carts |o--o{ purchase_groups : cart
   organizations |o--o{ orders : organization
+  purchase_groups |o--o{ orders : checkout
   carts |o--o{ orders : cart
   users ||--o{ orders : buyer
   users ||--o{ orders : seller
   orders ||--o{ order_items : order
   products ||--o{ order_items : product
   product_listings |o--o{ order_items : listing
+  organizations |o--o{ order_status_changes : organization
+  purchase_groups |o--o{ order_status_changes : checkout
+  orders ||--o{ order_status_changes : status_history
+  users |o--o{ order_status_changes : actor
   organizations |o--o{ payments : organization
   orders ||--o{ payments : order
+  purchase_groups |o--o{ payments : checkout
   users ||--o{ payments : user
+  organizations |o--o{ payment_status_changes : organization
+  payments ||--o{ payment_status_changes : status_history
+  users |o--o{ payment_status_changes : actor
+  organizations |o--o{ payment_webhook_events : organization
+  payments |o--o{ payment_webhook_events : callbacks
   organizations |o--o{ refunds : organization
   payments ||--o{ refunds : payment
   orders ||--o{ refunds : order
@@ -1075,15 +1209,40 @@ erDiagram
   orders |o--o{ ledger_entries : order
   settlements |o--o{ ledger_entries : settlement
   ledger_entries |o--o{ ledger_entries : reversal_of
+  organizations |o--o{ ledger_journals : organization
+  users |o--o{ ledger_journals : actor
+  ledger_journals ||--o{ ledger_journal_lines : lines
+  organizations |o--o{ ledger_journal_lines : organization
+  ledger_accounts ||--o{ ledger_journal_lines : account
+  users |o--o{ ledger_journal_lines : owner
+  organizations |o--o{ ledger_balances : organization
+  ledger_accounts ||--o{ ledger_balances : account
+  organizations |o--o{ ledger_audit_events : organization
+  users |o--o{ ledger_audit_events : actor
+  organizations |o--o{ reconciliation_expectations : organization
+  ledger_journals |o--o{ reconciliation_expectations : expectations
   organizations |o--o{ commissions : organization
   orders |o--o{ commissions : order
   users ||--o{ commissions : seller
   settlements |o--o{ commissions : settlement
   organizations |o--o{ settlements : organization
   users ||--o{ settlements : seller
+  ledger_journals |o--o{ settlements : journal
 ```
 
 `ledger_entries.reversal_of_id` is the self-FK; Prisma exposes the inverse side as `reversals`.
+`purchase_groups` is the parent checkout for one cart submission; each distinct seller receives one
+`orders` fulfillment row, so totals, status, and receipts remain seller-specific. The unique
+`reference_key` is the checkout idempotency key, and caller-supplied pricing rules plus computed
+amounts are snapshotted on both levels. `order_status_changes` is append-only; the application
+state machine and current-status guard control transitions, while database triggers prevent
+history mutation. Payment status changes and webhook callbacks are append-only/deduplicated by
+database constraints. `ledger_journals` and `ledger_journal_lines` are immutable: journals are
+unique by idempotency key and must balance at commit, while lines carry a lifecycle bucket.
+`ledger_balances` is unique per account/owner/bucket/currency and stores signed values;
+`reconciliation_expectations` links an expected amount to a matched journal. `settlements`
+reference an optional journal and keep caller-supplied rule/allocation snapshots. No delivery fee,
+discount, tax, commission rate, provider credential, refund policy, or settlement period is seeded.
 
 ## Logistics
 

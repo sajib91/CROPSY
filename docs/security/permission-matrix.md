@@ -18,8 +18,11 @@ Catalog and marketplace reuse the existing `products.read`, `products.manage`,
 permission or changed the 50-permission / 479-assignment seed totals. Warehouse
 routes reuse `warehouses.read`/`warehouses.manage`, and cooperative routes reuse
 `farms.read`/`farms.manage` plus `orders.read`/`orders.manage` for group purchase
-requests. These additions also introduce no permissions and keep the stable
-22-role / 50-permission / 479-assignment seed state.
+requests. Cart, checkout, order lifecycle, cancellation, history, and receipt
+routes also reuse `orders.read`/`orders.manage`. Payment routes reuse
+`payments.read`/`payments.manage` (including provider callbacks), and ledger
+routes reuse `ledger.read`/`ledger.manage`. These additions introduce no
+permissions and keep the stable 22-role / 50-permission / 479-assignment seed state.
 
 ## Canonical role metadata
 
@@ -142,7 +145,13 @@ calendar configuration, tenant/farm isolation, cultivation activity, harvests,
 expense sources, and cost/profitability reports. `apps/api/test/catalog.test.js`
 and `apps/api/test/marketplace.test.js` cover taxonomy/attribute validation,
 listing CRUD and discovery, proximity, ownership, favorites, reports, messages,
-and private-data redaction. `apps/api/test/warehouse.test.js` covers stock
+and private-data redaction. `apps/api/test/orders.test.js` covers cart validation,
+seller splitting, ignored client totals, pricing rules, idempotency, visibility,
+cancellation/restock, transitions, history, and receipts. `apps/api/test/payments.test.js`
+covers provider metadata redaction, idempotency, webhook authenticity/deduplication, capture
+posting, failure handling, and refund reversals; `apps/api/test/ledger.test.js` covers balanced
+journals, duplicate posting, bucket balances, expectations, settlements, and audit events.
+`apps/api/test/warehouse.test.js` covers stock
 registration, idempotent reservations, oversell prevention, adjustments, damaged
 and expired stock, low-stock alerts, history, and authorization;
 `apps/api/test/cooperative.test.js` covers group ownership, membership,
@@ -154,7 +163,9 @@ live in `apps/api/test/database/farms.test.js`; crop/expense guard tests live in
 tenant triggers, constraints, proximity, and adapter normalization live in
 `apps/api/test/database/catalog-marketplace.test.js`, and warehouse concurrency, settlement,
 idempotency, append-only movement, and final-consistency checks live in
-`apps/api/test/database/integrity.test.js`.
+`apps/api/test/database/integrity.test.js`; checkout totals, unique reference keys,
+append-only order status history, tenant guards, and listing availability helpers
+live in `apps/api/test/database/orders.test.js`.
 
 The generated matrix contains 50 permissions and 12 canonical roles; the seed
 creates 22 role rows (12 canonical plus 10 legacy aliases) and 479

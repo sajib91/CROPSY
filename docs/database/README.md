@@ -16,6 +16,8 @@ Source of truth:
 - [`apps/api/prisma/migrations/20261125160000_crop_cultivation_expense_management/migration.sql`](../../apps/api/prisma/migrations/20261125160000_crop_cultivation_expense_management/migration.sql) — calendars, cultivations, activities, recommendations, and expenses
 - [`apps/api/prisma/migrations/20261125170000_catalog_marketplace/migration.sql`](../../apps/api/prisma/migrations/20261125170000_catalog_marketplace/migration.sql) — catalog taxonomy/attributes and marketplace listings, favorites, reports, and messages
 - [`apps/api/prisma/migrations/20261125180000_inventory_cooperative/migration.sql`](../../apps/api/prisma/migrations/20261125180000_inventory_cooperative/migration.sql) — warehouse inventory movements/reservations/alerts and cooperative groups/campaigns/contributions/allocations/earnings
+- [`apps/api/prisma/migrations/20261126000000_cart_order_management/migration.sql`](../../apps/api/prisma/migrations/20261126000000_cart_order_management/migration.sql) — parent checkout, seller fulfillments, append-only status history, and atomic listing availability helpers
+- [`apps/api/prisma/migrations/20261126010000_payment_ledger_infrastructure/migration.sql`](../../apps/api/prisma/migrations/20261126010000_payment_ledger_infrastructure/migration.sql) — payment status/history/callback records, immutable double-entry journals, bucket balances, reconciliation expectations, and database financial invariants
 - [`apps/api/prisma/seed.js`](../../apps/api/prisma/seed.js)
 
 ## Quick commands

@@ -124,6 +124,28 @@ class MarketplacePrismaStore {
     return this._update(this.prisma.productListing, id, patch);
   }
 
+  async decrementAvailability(id, quantity) {
+    try {
+      await this.prisma.$executeRaw`
+        SELECT "cropsy_decrement_listing_availability"(${id}::uuid, ${quantity}::numeric)
+      `;
+      return this.findListing(id);
+    } catch (error) {
+      throw translateError(error);
+    }
+  }
+
+  async restoreAvailability(id, quantity) {
+    try {
+      await this.prisma.$executeRaw`
+        SELECT "cropsy_restore_listing_availability"(${id}::uuid, ${quantity}::numeric)
+      `;
+      return this.findListing(id);
+    } catch (error) {
+      throw translateError(error);
+    }
+  }
+
   async listLocations(filters = {}) {
     const rows = await this.prisma.$queryRaw`
       SELECT

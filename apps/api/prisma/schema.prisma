@@ -333,6 +333,13 @@ enum CartStatus {
   ABANDONED
 }
 
+enum CheckoutStatus {
+  PENDING
+  CONFIRMED
+  CANCELLED
+  COMPLETED
+}
+
 enum OrderStatus {
   PENDING
   PAYMENT_PENDING
@@ -362,6 +369,12 @@ enum PaymentStatus {
   CANCELLED
   REFUNDED
   PARTIALLY_REFUNDED
+}
+
+enum LedgerBucket {
+  PENDING
+  AVAILABLE
+  SETTLED
 }
 
 enum RefundStatus {
@@ -810,9 +823,14 @@ model User {
   group_allocations         GroupAllocation[]
   group_earnings            GroupEarning[]
   carts                     Cart[]
+  purchase_groups           PurchaseGroup[]          @relation("PurchaseGroupBuyer")
   orders_as_buyer           Order[]                  @relation("OrderBuyer")
   orders_as_seller          Order[]                  @relation("OrderSeller")
+  order_status_changes      OrderStatusChange[]      @relation("OrderStatusChangeActor")
   payments                  Payment[]
+  payment_status_changes    PaymentStatusChange[]    @relation("PaymentStatusChangeActor")
+  ledger_journals           LedgerJournal[]          @relation("LedgerJournalActor")
+  ledger_audit_events       LedgerAuditEvent[]       @relation("LedgerAuditActor")
   commissions               Commission[]             @relation("CommissionSeller")
   settlements               Settlement[]             @relation("SettlementSeller")
   conversations             Conversation[]
@@ -1046,7 +1064,9 @@ model Organization {
   product_listings          ProductListing[]
   price_history             PriceHistory[]
   carts                     Cart[]
+  purchase_groups           PurchaseGroup[]
   orders                    Order[]
+  order_status_changes      OrderStatusChange[]
   payments                  Payment[]
   refunds                   Refund[]
   transactions              Transaction[]
@@ -1054,6 +1074,13 @@ model Organization {
   ledger_entries            LedgerEntry[]
   commissions               Commission[]
   settlements               Settlement[]
+  payment_status_changes    PaymentStatusChange[]
+  payment_webhook_events    PaymentWebhookEvent[]
+  ledger_journals           LedgerJournal[]
+  ledger_journal_lines      LedgerJournalLine[]
+  ledger_balances           LedgerBalance[]
+  ledger_audit_events       LedgerAuditEvent[]
+  reconciliation_expectations ReconciliationExpectation[]
   shipments                 Shipment[]
   warehouses                Warehouse[]
   quality_inspections       QualityInspection[]
@@ -2119,8 +2146,9 @@ model Cart {
   organization Organization? @relation(fields: [organization_id], references: [id], onDelete: SetNull)
   user         User          @relation(fields: [user_id], references: [id], onDelete: Cascade)
 
-  items  CartItem[]
-  orders Order[]
+  items           CartItem[]
+  purchase_groups PurchaseGroup[]
+  orders          Order[]
 
   @@index([organization_id, status])
   @@index([user_id, status])
@@ -2145,9 +2173,48 @@ model CartItem {
   @@map("cart_items")
 }
 
+/// Parent checkout record. A cart with listings from several sellers is split
+/// into one Order (seller fulfillment) per seller under this aggregate.
+model PurchaseGroup {
+  id                  String         @id @default(uuid()) @db.Uuid
+  organization_id     String?        @db.Uuid
+  buyer_user_id       String         @db.Uuid
+  cart_id             String?        @db.Uuid
+  // Supplied by the caller (or Idempotency-Key); unique prevents duplicate submissions.
+  reference_key       String         @unique @db.VarChar(255)
+  status              CheckoutStatus @default(PENDING)
+  currency            String         @default("BDT") @db.Char(3)
+  subtotal_amount     Decimal        @db.Decimal(14, 2)
+  discount_amount     Decimal        @default(0) @db.Decimal(14, 2)
+  delivery_fee_amount Decimal        @default(0) @db.Decimal(14, 2)
+  tax_amount          Decimal        @default(0) @db.Decimal(14, 2)
+  total_amount        Decimal        @db.Decimal(14, 2)
+  // Caller-supplied rule definitions and the server-computed amounts applied.
+  // No fee, discount, tax, or commission policy is seeded or hardcoded.
+  pricing_snapshot    Json           @default("{}")
+  placed_at           DateTime       @default(now()) @db.Timestamp(6)
+  cancelled_at        DateTime?      @db.Timestamp(6)
+  created_at          DateTime       @default(now()) @db.Timestamp(6)
+  updated_at          DateTime       @updatedAt @db.Timestamp(6)
+
+  organization Organization? @relation(fields: [organization_id], references: [id], onDelete: SetNull)
+  buyer        User          @relation("PurchaseGroupBuyer", fields: [buyer_user_id], references: [id], onDelete: Restrict)
+  cart         Cart?         @relation(fields: [cart_id], references: [id], onDelete: SetNull)
+
+  orders         Order[]
+  status_changes OrderStatusChange[]
+  payments       Payment[]
+
+  @@index([organization_id, status])
+  @@index([buyer_user_id, placed_at])
+  @@index([cart_id])
+  @@map("purchase_groups")
+}
+
 model Order {
   id                  String      @id @default(uuid()) @db.Uuid
   organization_id     String?     @db.Uuid
+  purchase_group_id   String?     @db.Uuid
   cart_id             String?     @db.Uuid
   buyer_user_id       String      @db.Uuid
   seller_user_id      String      @db.Uuid
@@ -2158,6 +2225,8 @@ model Order {
   delivery_fee_amount Decimal     @default(0) @db.Decimal(14, 2)
   tax_amount          Decimal     @default(0) @db.Decimal(14, 2)
   total_amount        Decimal     @db.Decimal(14, 2)
+  // Per-fulfillment copy of the pricing rules applied to this seller order.
+  pricing_snapshot    Json        @default("{}")
   placed_at           DateTime    @default(now()) @db.Timestamp(6)
   confirmed_at        DateTime?   @db.Timestamp(6)
   completed_at        DateTime?   @db.Timestamp(6)
@@ -2165,12 +2234,14 @@ model Order {
   created_at          DateTime    @default(now()) @db.Timestamp(6)
   updated_at          DateTime    @updatedAt @db.Timestamp(6)
 
-  organization Organization? @relation(fields: [organization_id], references: [id], onDelete: SetNull)
-  cart         Cart?         @relation(fields: [cart_id], references: [id], onDelete: SetNull)
-  buyer        User          @relation("OrderBuyer", fields: [buyer_user_id], references: [id], onDelete: Restrict)
-  seller       User          @relation("OrderSeller", fields: [seller_user_id], references: [id], onDelete: Restrict)
+  organization   Organization?  @relation(fields: [organization_id], references: [id], onDelete: SetNull)
+  purchase_group PurchaseGroup? @relation(fields: [purchase_group_id], references: [id], onDelete: SetNull)
+  cart           Cart?          @relation(fields: [cart_id], references: [id], onDelete: SetNull)
+  buyer          User           @relation("OrderBuyer", fields: [buyer_user_id], references: [id], onDelete: Restrict)
+  seller         User           @relation("OrderSeller", fields: [seller_user_id], references: [id], onDelete: Restrict)
 
   items          OrderItem[]
+  status_changes OrderStatusChange[]
   payments       Payment[]
   refunds        Refund[]
   transactions   Transaction[]
@@ -2182,6 +2253,7 @@ model Order {
   @@index([buyer_user_id, placed_at])
   @@index([seller_user_id, placed_at])
   @@index([cart_id])
+  @@index([purchase_group_id])
   @@map("orders")
 }
 
@@ -2207,10 +2279,35 @@ model OrderItem {
   @@map("order_items")
 }
 
+/// Append-only audit of seller-order status transitions. Parent checkout
+/// status is derived from the seller orders rather than stored transitions.
+model OrderStatusChange {
+  id                String       @id @default(uuid()) @db.Uuid
+  organization_id   String?      @db.Uuid
+  purchase_group_id String?      @db.Uuid
+  order_id          String       @db.Uuid
+  from_status       OrderStatus?
+  to_status         OrderStatus
+  reason            String?      @db.Text
+  actor_user_id     String?      @db.Uuid
+  created_at        DateTime     @default(now()) @db.Timestamp(6)
+
+  organization   Organization?  @relation(fields: [organization_id], references: [id], onDelete: SetNull)
+  purchase_group PurchaseGroup? @relation(fields: [purchase_group_id], references: [id], onDelete: SetNull)
+  order          Order          @relation(fields: [order_id], references: [id], onDelete: Restrict)
+  actor          User?          @relation("OrderStatusChangeActor", fields: [actor_user_id], references: [id], onDelete: SetNull)
+
+  @@index([organization_id, created_at])
+  @@index([purchase_group_id, created_at])
+  @@index([order_id, created_at])
+  @@map("order_status_changes")
+}
+
 model Payment {
   id                 String        @id @default(uuid()) @db.Uuid
   organization_id    String?       @db.Uuid
   order_id           String        @db.Uuid
+  purchase_group_id  String?       @db.Uuid
   user_id            String        @db.Uuid
   // Provider is supplied by configuration; no providers are seeded.
   provider_code      String?       @db.VarChar(80)
@@ -2222,24 +2319,80 @@ model Payment {
   captured_amount    Decimal       @default(0) @db.Decimal(14, 2)
   refunded_amount    Decimal       @default(0) @db.Decimal(14, 2)
   currency           String        @default("BDT") @db.Char(3)
+  // Provider output and caller-supplied allocation snapshots are metadata;
+  // commission rates and settlement periods are never stored as policies.
+  metadata               Json      @default("{}")
+  allocation_snapshot    Json      @default("{}")
+  commission_rule_snapshot Json    @default("{}")
   initiated_at       DateTime      @default(now()) @db.Timestamp(6)
   captured_at        DateTime?     @db.Timestamp(6)
   failed_at          DateTime?     @db.Timestamp(6)
   created_at         DateTime      @default(now()) @db.Timestamp(6)
   updated_at         DateTime      @updatedAt @db.Timestamp(6)
 
-  organization Organization? @relation(fields: [organization_id], references: [id], onDelete: SetNull)
-  order        Order         @relation(fields: [order_id], references: [id], onDelete: Restrict)
-  user         User          @relation(fields: [user_id], references: [id], onDelete: Restrict)
+  organization   Organization?    @relation(fields: [organization_id], references: [id], onDelete: SetNull)
+  order          Order            @relation(fields: [order_id], references: [id], onDelete: Restrict)
+  purchase_group PurchaseGroup?   @relation(fields: [purchase_group_id], references: [id], onDelete: SetNull)
+  user           User             @relation(fields: [user_id], references: [id], onDelete: Restrict)
 
-  transactions Transaction[]
-  refunds      Refund[]
+  transactions        Transaction[]
+  refunds             Refund[]
+  statusChanges       PaymentStatusChange[]
+  webhookEvents       PaymentWebhookEvent[]
 
   @@unique([provider_code, provider_reference])
   @@index([organization_id, status])
   @@index([order_id])
+  @@index([purchase_group_id])
   @@index([user_id, status])
   @@map("payments")
+}
+
+/// Append-only payment state transitions.
+model PaymentStatusChange {
+  id                String        @id @default(uuid()) @db.Uuid
+  organization_id   String?       @db.Uuid
+  payment_id        String        @db.Uuid
+  from_status       PaymentStatus?
+  to_status         PaymentStatus
+  reason            String?       @db.VarChar(255)
+  actor_user_id     String?       @db.Uuid
+  provider_event_id String?       @db.VarChar(255)
+  metadata          Json          @default("{}")
+  created_at        DateTime      @default(now()) @db.Timestamp(6)
+
+  organization Organization? @relation(fields: [organization_id], references: [id], onDelete: SetNull)
+  payment      Payment       @relation(fields: [payment_id], references: [id], onDelete: Restrict)
+  actor        User?         @relation("PaymentStatusChangeActor", fields: [actor_user_id], references: [id], onDelete: SetNull)
+
+  @@index([organization_id, created_at])
+  @@index([payment_id, created_at])
+  @@map("payment_status_changes")
+}
+
+/// Raw provider callback envelope with authenticity and processing state.
+model PaymentWebhookEvent {
+  id                String    @id @default(uuid()) @db.Uuid
+  organization_id   String?   @db.Uuid
+  provider_code     String    @db.VarChar(80)
+  provider_event_id String    @db.VarChar(255)
+  payment_id        String?   @db.Uuid
+  payload           Json
+  signature         String?   @db.VarChar(512)
+  status            String    @default("RECEIVED") @db.VarChar(40)
+  error             String?   @db.Text
+  received_at       DateTime  @default(now()) @db.Timestamp(6)
+  processed_at      DateTime? @db.Timestamp(6)
+  created_at        DateTime  @default(now()) @db.Timestamp(6)
+  updated_at        DateTime  @updatedAt @db.Timestamp(6)
+
+  organization Organization? @relation(fields: [organization_id], references: [id], onDelete: SetNull)
+  payment      Payment?      @relation(fields: [payment_id], references: [id], onDelete: SetNull)
+
+  @@unique([provider_code, provider_event_id])
+  @@index([organization_id, status])
+  @@index([payment_id, received_at])
+  @@map("payment_webhook_events")
 }
 
 model Refund {
@@ -2252,6 +2405,9 @@ model Refund {
   reason             RefundReason @default(OTHER)
   status             RefundStatus @default(REQUESTED)
   provider_reference String?      @db.VarChar(255)
+  // Idempotency prevents duplicate financial effects for the same refund.
+  idempotency_key    String?      @unique @db.VarChar(255)
+  allocation_snapshot Json        @default("{}")
   processed_at       DateTime?    @db.Timestamp(6)
   created_at         DateTime     @default(now()) @db.Timestamp(6)
   updated_at         DateTime     @updatedAt @db.Timestamp(6)
@@ -2312,6 +2468,8 @@ model LedgerAccount {
 
   organization Organization? @relation(fields: [organization_id], references: [id], onDelete: SetNull)
   entries      LedgerEntry[]
+  journal_lines LedgerJournalLine[]
+  balances      LedgerBalance[]
 
   @@index([organization_id, account_type])
   @@map("ledger_accounts")
@@ -2351,6 +2509,116 @@ model LedgerEntry {
   @@map("ledger_entries")
 }
 
+/// Immutable, balanced journal header. Posted rows are never updated or deleted.
+model LedgerJournal {
+  id                String    @id @default(uuid()) @db.Uuid
+  organization_id   String?   @db.Uuid
+  idempotency_key   String    @unique @db.VarChar(255)
+  reference_type    String    @db.VarChar(80)
+  reference_id      String?   @db.Uuid
+  description       String?   @db.VarChar(500)
+  currency          String    @default("BDT") @db.Char(3)
+  status            String    @default("POSTED") @db.VarChar(20)
+  actor_user_id     String?   @db.Uuid
+  request_id        String?   @db.VarChar(255)
+  posted_at         DateTime  @default(now()) @db.Timestamp(6)
+  created_at        DateTime  @default(now()) @db.Timestamp(6)
+
+  organization      Organization?             @relation(fields: [organization_id], references: [id], onDelete: SetNull)
+  actor             User?                     @relation("LedgerJournalActor", fields: [actor_user_id], references: [id], onDelete: SetNull)
+  lines             LedgerJournalLine[]
+  expectations      ReconciliationExpectation[]
+  settlements       Settlement[]
+
+  @@index([organization_id, posted_at])
+  @@index([reference_type, reference_id])
+  @@map("ledger_journals")
+}
+
+model LedgerJournalLine {
+  id              String             @id @default(uuid()) @db.Uuid
+  journal_id      String             @db.Uuid
+  organization_id String?            @db.Uuid
+  account_id      String             @db.Uuid
+  direction       TransactionDirection
+  bucket          LedgerBucket
+  amount          Decimal            @db.Decimal(14, 2)
+  currency        String             @default("BDT") @db.Char(3)
+  owner_user_id   String?            @db.Uuid
+  description     String?            @db.VarChar(500)
+  created_at      DateTime           @default(now()) @db.Timestamp(6)
+
+  organization Organization?  @relation(fields: [organization_id], references: [id], onDelete: SetNull)
+  journal      LedgerJournal  @relation(fields: [journal_id], references: [id], onDelete: Restrict)
+  account      LedgerAccount  @relation(fields: [account_id], references: [id], onDelete: Restrict)
+
+  @@index([journal_id])
+  @@index([account_id, bucket])
+  @@index([owner_user_id, bucket])
+  @@map("ledger_journal_lines")
+}
+
+/// Signed balance by account, owner, and lifecycle bucket.
+model LedgerBalance {
+  id              String       @id @default(uuid()) @db.Uuid
+  organization_id String?      @db.Uuid
+  account_id      String       @db.Uuid
+  owner_key       String       @default("PLATFORM") @db.VarChar(80)
+  owner_user_id   String?      @db.Uuid
+  bucket          LedgerBucket
+  currency        String       @default("BDT") @db.Char(3)
+  balance         Decimal      @default(0) @db.Decimal(14, 2)
+  updated_at      DateTime     @updatedAt @db.Timestamp(6)
+
+  organization Organization? @relation(fields: [organization_id], references: [id], onDelete: SetNull)
+  account      LedgerAccount  @relation(fields: [account_id], references: [id], onDelete: Restrict)
+
+  @@unique([account_id, owner_key, bucket, currency])
+  @@index([organization_id, bucket])
+  @@map("ledger_balances")
+}
+
+/// Append-only financial audit trail.
+model LedgerAuditEvent {
+  id              String    @id @default(uuid()) @db.Uuid
+  organization_id String?   @db.Uuid
+  action          String    @db.VarChar(120)
+  actor_user_id   String?   @db.Uuid
+  entity_type     String?   @db.VarChar(80)
+  entity_id       String?   @db.Uuid
+  metadata        Json      @default("{}")
+  request_id      String?   @db.VarChar(255)
+  created_at      DateTime  @default(now()) @db.Timestamp(6)
+
+  organization Organization? @relation(fields: [organization_id], references: [id], onDelete: SetNull)
+  actor        User?         @relation("LedgerAuditActor", fields: [actor_user_id], references: [id], onDelete: SetNull)
+
+  @@index([organization_id, created_at])
+  @@index([entity_type, entity_id])
+  @@map("ledger_audit_events")
+}
+
+/// Expected financial effects used by reconciliation.
+model ReconciliationExpectation {
+  id                String    @id @default(uuid()) @db.Uuid
+  organization_id   String?   @db.Uuid
+  expectation_key   String    @unique @db.VarChar(255)
+  reference_type    String    @db.VarChar(80)
+  reference_id      String?   @db.Uuid
+  amount            Decimal   @db.Decimal(14, 2)
+  currency          String    @default("BDT") @db.Char(3)
+  status            String    @default("EXPECTED") @db.VarChar(40)
+  journal_id        String?   @db.Uuid
+  created_at        DateTime  @default(now()) @db.Timestamp(6)
+  matched_at        DateTime? @db.Timestamp(6)
+
+  organization Organization?  @relation(fields: [organization_id], references: [id], onDelete: SetNull)
+  journal      LedgerJournal?  @relation(fields: [journal_id], references: [id], onDelete: SetNull)
+
+  @@index([organization_id, status])
+  @@map("reconciliation_expectations")
+}
+
 model Commission {
   id              String           @id @default(uuid()) @db.Uuid
   organization_id String?          @db.Uuid
@@ -2385,6 +2653,9 @@ model Settlement {
   seller_user_id    String           @db.Uuid
   // Pay timing and calculation rules are external policy references only.
   rule_key          String?          @db.VarChar(120)
+  idempotency_key   String           @unique @db.VarChar(255)
+  allocation_snapshot Json           @default("{}")
+  journal_id        String?          @db.Uuid
   period_start      DateTime         @db.Timestamp(6)
   period_end        DateTime         @db.Timestamp(6)
   gross_amount      Decimal          @db.Decimal(14, 2)
@@ -2396,8 +2667,9 @@ model Settlement {
   created_at        DateTime         @default(now()) @db.Timestamp(6)
   updated_at        DateTime         @updatedAt @db.Timestamp(6)
 
-  organization   Organization? @relation(fields: [organization_id], references: [id], onDelete: SetNull)
-  seller         User          @relation("SettlementSeller", fields: [seller_user_id], references: [id], onDelete: Restrict)
+  organization   Organization?  @relation(fields: [organization_id], references: [id], onDelete: SetNull)
+  seller         User           @relation("SettlementSeller", fields: [seller_user_id], references: [id], onDelete: Restrict)
+  journal        LedgerJournal? @relation(fields: [journal_id], references: [id], onDelete: SetNull)
   commissions    Commission[]
   ledger_entries LedgerEntry[]
 
