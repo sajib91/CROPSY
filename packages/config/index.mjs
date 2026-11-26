@@ -39,6 +39,12 @@ const apiSchema = sharedSchema
     API_PREFIX: z.string().startsWith('/').default('/api/v1'),
     CORS_ORIGIN: z.string().trim().min(1).default('http://localhost:3000'),
     SERVICE_NAME: z.string().trim().min(1).default('cropsy-business-api'),
+
+    // Authenticated internal bridge to the separate AI service.
+    AI_SERVICE_URL: z.string().trim().url().default('http://127.0.0.1:4100'),
+    AI_SERVICE_ID: z.string().trim().min(1).default('cropsy-business-api'),
+    AI_SERVICE_SECRET: z.string().trim().default(''),
+    AI_SERVICE_TIMEOUT_MS: z.coerce.number().int().min(500).max(60000).default(10000),
     AUTH_STORE: z.enum(['memory', 'prisma']).default('memory'),
     FARM_STORE: z.enum(['memory', 'prisma']).default('memory'),
     AGRICULTURE_STORE: z.enum(['memory', 'prisma']).default('memory'),
@@ -97,6 +103,13 @@ const apiSchema = sharedSchema
           code: z.ZodIssueCode.custom,
           path: ['AUTH_JWT_SECRET'],
           message: 'A strong production AUTH_JWT_SECRET is required',
+        });
+      }
+      if (value.AI_SERVICE_SECRET.length < 32 || value.AI_SERVICE_SECRET.startsWith('dev-only-')) {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['AI_SERVICE_SECRET'],
+          message: 'A strong production AI_SERVICE_SECRET is required',
         });
       }
       if (value.AUTH_STORE !== 'prisma') {

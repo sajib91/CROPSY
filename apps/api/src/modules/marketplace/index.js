@@ -2,6 +2,7 @@ const {
   CatalogAccessPortToken,
   ConfigToken,
   IdentityStoreToken,
+  MarketObservationPortToken,
   MarketplaceAccessPortToken,
   MarketplaceListingStockToken,
   PlatformAuthorizationToken,
@@ -48,6 +49,19 @@ function registerMarketplaceStore({ container }) {
       return Object.freeze({
         findListing: async (id) => copy(await store.findListing(id)),
         listListings: async (filters) => (await store.listListings(filters)).map(copy),
+      });
+    });
+  }
+
+  // Read-only observation port for market intelligence. Prices and demand
+  // signals originate from collected marketplace records; this port exposes no
+  // listing mutations and invents no live quotes.
+  if (!container.has(MarketObservationPortToken)) {
+    container.register(MarketObservationPortToken, (resolver) => {
+      const store = resolver.resolve(MarketplaceStoreToken);
+      return Object.freeze({
+        listPriceObservations: async (filters) =>
+          (await store.listPriceObservations(filters)).map(copy),
       });
     });
   }

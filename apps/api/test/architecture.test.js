@@ -23,8 +23,8 @@ async function createApp(t) {
 }
 
 test('module registry exposes twenty independent module boundaries', async () => {
-  assert.equal(modules.length, 20);
-  assert.equal(new Set(moduleIds).size, 20);
+  assert.equal(modules.length, 21);
+  assert.equal(new Set(moduleIds).size, 21);
   assert.ok(modules.every((module) => module.metadata.id === module.id));
   assert.ok(modules.every((module) => module.register && module.routes && module.service));
 });
@@ -61,7 +61,7 @@ test('GET /api/v1/modules lists every module with declared dependencies', async 
   const response = await app.inject({ method: 'GET', url: '/api/v1/modules' });
 
   assert.equal(response.statusCode, 200);
-  assert.equal(response.json().data.length, 20);
+  assert.equal(response.json().data.length, 21);
   assert.ok(
     response
       .json()

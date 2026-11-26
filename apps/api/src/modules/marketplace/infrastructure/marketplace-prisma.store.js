@@ -1,9 +1,14 @@
 const { ConflictError, NotFoundError } = require('../../../shared/kernel/errors');
 const { assertRepository } = require('../../../shared/domain/repository');
+const { filterAndLimitObservations } = require('./marketplace.store');
 const {
   MARKETPLACE_STORE_METHODS,
   MarketplaceStoreToken,
 } = require('../domain/marketplace.repository');
+
+function copy(value) {
+  return value === null || value === undefined ? value : structuredClone(value);
+}
 
 function translateError(error) {
   if (error instanceof ConflictError || error instanceof NotFoundError) return error;
@@ -114,6 +119,87 @@ class MarketplacePrismaStore {
 
   findListing(id) {
     return this._find(this.prisma.productListing, id);
+  }
+
+  /** Collected platform/farmer/market/external price records, never synthesized. */
+  async listPriceObservations(filters = {}) {
+    const where = {};
+    if (filters.productId !== undefined) where.product_id = filters.productId;
+    if (filters.listingId !== undefined) where.listing_id = filters.listingId;
+    if (filters.from !== undefined || filters.to !== undefined) {
+      where.observed_at = {};
+      if (filters.from !== undefined) where.observed_at.gte = new Date(filters.from);
+      if (filters.to !== undefined) where.observed_at.lte = new Date(filters.to);
+    }
+
+    const rows = await this.prisma.priceHistory.findMany({
+      where,
+      orderBy: { observed_at: 'desc' },
+      take: 2000,
+    });
+    if (rows.length === 0) return [];
+
+    const listingIds = [...new Set(rows.map((row) => row.listing_id).filter(Boolean))];
+    const [listings, locations, favorites] = await Promise.all([
+      listingIds.length
+        ? this.prisma.productListing.findMany({ where: { id: { in: listingIds } } })
+        : [],
+      listingIds.length
+        ? this.prisma.listingLocation.findMany({ where: { listing_id: { in: listingIds } } })
+        : [],
+      listingIds.length
+        ? this.prisma.favoriteListing.findMany({ where: { listing_id: { in: listingIds } } })
+        : [],
+    ]);
+    const listingById = new Map(listings.map((item) => [item.id, normalize(item)]));
+    const locationsByListing = new Map();
+    for (const raw of locations) {
+      const location = normalizeLocationRow(raw);
+      const current = locationsByListing.get(location.listing_id) || [];
+      current.push(location);
+      locationsByListing.set(location.listing_id, current);
+    }
+    const favoriteCountByListing = new Map();
+    for (const favorite of favorites) {
+      favoriteCountByListing.set(
+        favorite.listing_id,
+        (favoriteCountByListing.get(favorite.listing_id) || 0) + 1,
+      );
+    }
+
+    const observations = rows.map((row) => {
+      const listing = listingById.get(row.listing_id) || null;
+      const region =
+        listing?.available_location ||
+        (locationsByListing.get(row.listing_id) || [])
+          .map((item) => item.location_label)
+          .find(Boolean) ||
+        '';
+      const observedAt = new Date(row.observed_at).toISOString();
+      return {
+        observationId: `price-history:${row.id}`,
+        listingId: row.listing_id || null,
+        productId: row.product_id,
+        price: Number(row.price),
+        currency: row.currency,
+        observedAt,
+        region,
+        status: listing?.status || null,
+        quantityAvailable: listing ? Number(listing.quantity_available) : null,
+        harvestDate: listing?.harvest_date
+          ? new Date(listing.harvest_date).toISOString().slice(0, 10)
+          : null,
+        favoriteCount: favoriteCountByListing.get(row.listing_id) || 0,
+        demandSignal: listing?.status === 'RESERVED' ? 'RESERVED' : null,
+        source: `CROPSY price history (${String(row.source).toLowerCase()})`,
+        sourceReference: `price-history:${row.id}`,
+        sourceUrl: '',
+        collectionMethod: `collected_${String(row.source).toLowerCase()}_price`,
+        evidenceClass: 'historical_observation',
+      };
+    });
+
+    return filterAndLimitObservations(observations, filters).map((item) => copy(item));
   }
 
   createListing(input) {

@@ -5,6 +5,7 @@ from typing import Literal
 from fastapi import APIRouter
 
 from app.config import get_settings
+from app.container import get_container
 from app.schemas.health import HealthResponse
 
 router = APIRouter(tags=["health"])
@@ -34,4 +35,4 @@ def health() -> HealthResponse:
 
 @router.get("/health/ready", response_model=HealthResponse)
 def ready() -> HealthResponse:
-    return _response("ready", {"process": "ok"})
+    return _response("ready", get_container().readiness_checks())

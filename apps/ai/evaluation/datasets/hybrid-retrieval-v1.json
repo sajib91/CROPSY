@@ -1,0 +1,62 @@
+{
+  "datasetId": "cropsy-hybrid-retrieval",
+  "version": "1.0.0",
+  "queries": [
+    {
+      "queryId": "q-rice-sowing",
+      "query": "How should upland rice be sown?",
+      "language": "en",
+      "relevantDocumentIds": ["eval-rice-cultivation"],
+      "notes": "Cultivation guidance from a verified guideline."
+    },
+    {
+      "queryId": "q-rice-irrigation-bn",
+      "query": "ধান সেচের নির্দেশিকা কী?",
+      "language": "bn",
+      "relevantDocumentIds": ["eval-rice-irrigation-bn"],
+      "notes": "Bengali irrigation guidance."
+    },
+    {
+      "queryId": "q-fertilizer-dose",
+      "query": "Soil test based fertilizer dose for rice",
+      "language": "en",
+      "relevantDocumentIds": ["eval-fertilizer-guidance", "eval-soil-management"],
+      "notes": "Nutrient guidance must prioritize soil testing and local rules."
+    },
+    {
+      "queryId": "q-pesticide-safety",
+      "query": "Registered pesticide label and safety for rice stem borer",
+      "language": "en",
+      "relevantDocumentIds": ["eval-pest-safety"],
+      "notes": "Safety and registration guidance for chemical use."
+    },
+    {
+      "queryId": "q-rice-disease-bn",
+      "query": "ধানের ব্লাস্ট রোগ কীভাবে চিনব?",
+      "language": "bn",
+      "relevantDocumentIds": ["eval-disease-bn"],
+      "notes": "Bengali disease identification guidance."
+    },
+    {
+      "queryId": "q-market-outlook",
+      "query": "Paddy market price outlook",
+      "language": "en",
+      "relevantDocumentIds": ["eval-market-intelligence"],
+      "notes": "Market information document; outlook remains uncertain."
+    },
+    {
+      "queryId": "q-soil-health",
+      "query": "Soil pH and organic matter management",
+      "language": "en",
+      "relevantDocumentIds": ["eval-soil-management", "eval-fertilizer-guidance"],
+      "notes": "Soil management guidance."
+    },
+    {
+      "queryId": "q-harvest-timing",
+      "query": "When should paddy be harvested?",
+      "language": "en",
+      "relevantDocumentIds": ["eval-harvest-guide"],
+      "notes": "Harvest planning guidance."
+    }
+  ]
+}

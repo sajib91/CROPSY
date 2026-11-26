@@ -51,6 +51,7 @@ boundary.
 | `quality` | `/quality` | Quality Inspection | `organizations`, `catalog`, `farmers` | `quality.initialized`, `quality.inspection.created`, `quality.inspection.updated`, `quality.inspection.graded`, `quality.inspection.verified`, `quality.inspection.rejected`, `quality.evidence.added`, `quality.evidence.image_attached` | — |
 | `traceability` | `/traceability` | Traceability | `agriculture`, `quality`, `logistics`, `warehouse` | `traceability.initialized`, `traceability.batch.created`, `traceability.batch.updated`, `traceability.event.created`, `traceability.batch.verified`, `traceability.batch.rejected`, `traceability.batch.qr_generated` | — |
 | `intelligence` | `/intelligence` | Agricultural Intelligence | `agriculture`, `traceability`, `orders` | `intelligence.initialized`, `intelligence.forecast.generated` | — |
+| `market-intelligence` | `/market-intelligence` | Agricultural Market Intelligence | `catalog`, `marketplace`, `intelligence` | `market-intelligence.initialized`, `market-intelligence.analysis.requested`, `market-intelligence.forecast.requested` | — |
 | `knowledge` | `/knowledge` | Knowledge Management | `agriculture`, `intelligence`, `organizations` | `knowledge.initialized`, `knowledge.article.published` | — |
 | `notifications` | `/notifications` | Notifications | `users`, `iam` | `notifications.initialized`, `notifications.queued` | `*` |
 | `billing` | `/billing` | Subscription and SaaS Billing | `organizations`, `payments`, `ledger` | `billing.initialized`, `billing.subscription.changed` | — |
@@ -58,6 +59,37 @@ boundary.
 
 `notifications` and `administration` subscribe to the wildcard topic for cross-cutting
 observability only. Their handlers log events; they do not emit new events or mutate other modules.
+
+The `intelligence` module owns the narrow, authenticated gateway to the Python AI service.
+Frontend clients call `/api/v1/intelligence/ai/*` with existing `ai.read` or `ai.feedback`
+permissions; the business API signs internal requests with HMAC-SHA256 over
+`METHOD\nPATH\nTIMESTAMP\nSHA256(body)` and forwards only advisory results. Provider
+credentials remain server-side and never cross this boundary.
+
+The AI service side implements a hybrid RAG pipeline: query understanding and bounded
+Bengali/English expansion, parallel Qdrant dense and OpenSearch keyword retrieval, weighted
+or RRF fusion, HTTP BGE reranking, deduplication and source-aware selection, generation,
+citation validation, and structured facts/predictions. Conversations are tenant/user-scoped
+with bounded history for follow-up questions. Retrieval quality is measured offline with
+Recall@K, Precision@K, MRR, and nDCG@K; results are not represented as a production accuracy
+claim without a representative, independently judged dataset.
+
+The 21st module, `market-intelligence`, is read-only. It consumes actual collected price
+observations through the shared `MarketObservationPortToken` published by `marketplace`; it
+never invents a live quote. Market responses separate `historicalObservations`,
+`statisticalEstimates`, `mlPredictions`, and `llm_generated_explanation`. Forecasts run a
+configurable local deterministic pipeline and are evaluated with a strictly later time-based
+holdout, reporting MAE, RMSE, and MAPE only where MAPE is mathematically defined. Optional
+external evidence comes from the provenance-gated retrieval path and is marked unavailable
+rather than fabricated when the AI service cannot supply it.
+
+Weather intelligence is exposed through the authenticated `intelligence` AI gateway and the
+shared `FarmAccessPortToken`/`AgricultureAccessPortToken`. The business API resolves the farm,
+enforces owner/same-tenant policy, and supplies farm coordinates or region to the AI service
+only after authorization; a farm without a usable location is rejected explicitly. The Python
+service has a configurable `none`/`http` weather provider, no mock adapter, and returns separate
+`weather_observation`, `weather_forecast`, `weather_alert`, and `ai_generated_recommendation`
+fields. Advisory thresholds are deployment configuration, not verified crop requirements.
 
 ## Dependency direction summary
 
@@ -73,6 +105,9 @@ iam ──> users ──> organizations ──> farmers ──> agriculture ─�
                              │ (narrow posting port)
                           payments
 ```
+
+`market-intelligence` consumes the marketplace observation port and the shared AI gateway, so it
+depends on both `marketplace` and `intelligence` without importing either module's source.
 
 Administration observes the whole event stream for audit visibility. The arrows describe declared
 knowledge/integration dependencies, not runtime method calls.
@@ -120,7 +155,13 @@ batch facts. All of these ports are read-only and carry no mutation capability.
 The `marketplace` module publishes a read-only `MarketplaceAccessPortToken` for current listing
 price, seller, and availability reads, plus a narrow `MarketplaceListingStockToken` that only
 decrements and restores listing availability. Orders consumes both through DI, so it cannot
-create, edit, or deactivate listings. The `ledger` module publishes `LedgerPostingPortToken`,
+create, edit, or deactivate listings. It also publishes `MarketObservationPortToken`, which
+exposes only collected price observations with source, reference, collection method, and
+evidence class; `market-intelligence` consumes it through DI and cannot mutate listings or
+create prices. The `agriculture` module publishes `AgricultureAccessPortToken` for read-only
+cultivation facts used to enrich crop-stage context. The authenticated bridge to the Python AI
+service is owned by the shared kernel as `AiGatewayToken` so both `intelligence` and
+`market-intelligence` can call it without importing each other. The `ledger` module publishes `LedgerPostingPortToken`,
 which exposes only expectation recording, journal posting, balance reads, and account-code
 lookups; payments consumes it to record financial effects without importing ledger source,
 changing accounts, or editing posted entries. The `payments` module publishes
@@ -138,9 +179,9 @@ status transitions use a domain state machine, history is append-only, and a JSO
 generated from stored snapshots. Provider initiation/verification, webhook authenticity and
 deduplication, refunds, and status history stay inside `payments`; journals, bucket balances,
 reconciliation expectations, settlements, adjustments, and ledger audits stay inside `ledger`.
-Both modules keep the 20-module boundary and use the narrow posting port for financial effects.
+Both modules keep their module boundary and use the narrow posting port for financial effects.
 All farm CRUD, parcel, soil, irrigation,
-map, spatial, and Bangladesh geo workflows stay inside the existing 20-module `farmers`
+map, spatial, and Bangladesh geo workflows stay inside the existing `farmers`
 boundary. Crop catalog, calendars, cultivations, activities, harvests, expenses, and reports stay
 inside the existing `agriculture` boundary. Product taxonomy, flexible attributes, varieties, and
 images stay inside `catalog`; listings, discovery, favorites, reports, and platform messages stay
@@ -154,8 +195,8 @@ Traceability batches, events, timelines, verification tokens, QR output, public 
 and audits stay inside `traceability`; public verification exposes only verified public facts
 and never presents unverified claims as certified. Cooperative groups, memberships, campaigns,
 contributions, purchase requests, allocations, and earnings stay inside `farmers`; their
-methods are composed into `FarmersService` so the module keeps one service token. No 21st
-module or direct cross-module source import was added.
+methods are composed into `FarmersService` so the module keeps one service token. Market
+analytics live in their own 21st module and never use direct cross-module source imports.
 
 ## HTTP surface
 

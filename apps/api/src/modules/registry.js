@@ -14,6 +14,7 @@ const { definition: warehouse } = require('./warehouse');
 const { definition: quality } = require('./quality');
 const { definition: traceability } = require('./traceability');
 const { definition: intelligence } = require('./intelligence');
+const { definition: marketIntelligence } = require('./market-intelligence');
 const { definition: knowledge } = require('./knowledge');
 const { definition: notifications } = require('./notifications');
 const { definition: billing } = require('./billing');
@@ -36,6 +37,7 @@ const modules = Object.freeze([
   quality,
   traceability,
   intelligence,
+  marketIntelligence,
   knowledge,
   notifications,
   billing,
@@ -68,6 +70,7 @@ module.exports = {
     'quality',
     'traceability',
     'intelligence',
+    'market-intelligence',
     'knowledge',
     'notifications',
     'billing',

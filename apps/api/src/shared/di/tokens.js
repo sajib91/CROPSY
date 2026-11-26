@@ -46,6 +46,19 @@ const LedgerPostingPortToken = Symbol.for('cropsy.platform.ledgerPosting');
 // delivery-relevant fulfillment facts and never order mutation capabilities.
 const OrderAccessPortToken = Symbol.for('cropsy.platform.orderAccess');
 
+// Read-only authenticated bridge to the Python AI service. It lives in the
+// shared kernel so advisory consumers such as market intelligence can use it
+// without importing the intelligence module.
+const AiGatewayToken = Symbol.for('cropsy.intelligence.aiGateway');
+
+// Read-only marketplace price observations and demand signals. The market
+// intelligence module consumes actual seller/platform observations through
+// this port; it never invents live prices.
+const MarketObservationPortToken = Symbol.for('cropsy.platform.marketObservation');
+
+// Read-only cultivation facts for crop-stage-aware context composition.
+const AgricultureAccessPortToken = Symbol.for('cropsy.platform.agricultureAccess');
+
 // Read-only composition ports for linking quality, warehouse, and logistics
 // facts into auditable traceability timelines. They deliberately expose no
 // mutation operations.
@@ -70,6 +83,9 @@ module.exports = {
   PaymentProviderRegistryToken,
   LedgerPostingPortToken,
   OrderAccessPortToken,
+  AiGatewayToken,
+  MarketObservationPortToken,
+  AgricultureAccessPortToken,
   QualityAccessPortToken,
   WarehouseOperationPortToken,
   LogisticsAccessPortToken,

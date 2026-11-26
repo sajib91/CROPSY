@@ -24,4 +24,8 @@ def test_ready_reports_process_check() -> None:
     body = response.json()
     assert body["success"] is True
     assert body["data"]["status"] == "ready"
-    assert body["data"]["checks"] == {"process": "ok"}
+    checks = body["data"]["checks"]
+    assert checks["process"] == "ok"
+    assert checks["credentialsExposed"] == "false"
+    assert checks["vectorIndex"] in {"memory", "qdrant"}
+    assert checks["keywordIndex"] in {"memory", "opensearch"}

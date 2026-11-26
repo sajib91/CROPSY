@@ -14,6 +14,7 @@ const {
   PlatformTokenManagerToken,
 } = require('./shared/di/tokens');
 const { AuthStoreToken } = require('./modules/iam/domain/auth.repository');
+const { AiGatewayToken } = require('./modules/intelligence/domain/ai-gateway.entity');
 const {
   AuthorizationServiceToken,
   OtpProvidersToken,
@@ -38,6 +39,7 @@ async function buildServer(options = {}) {
   if (options.authStore) overrides.set(AuthStoreToken, () => options.authStore);
   if (options.otpProviders) overrides.set(OtpProvidersToken, () => options.otpProviders);
   if (options.rateLimiter) overrides.set(RateLimiterToken, () => options.rateLimiter);
+  if (options.aiGateway) overrides.set(AiGatewayToken, () => options.aiGateway);
   const container = createContainer({
     env,
     logger: app.log,

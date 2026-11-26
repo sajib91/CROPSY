@@ -4,3 +4,11 @@ pydantic>=2.9,<3
 pydantic-settings>=2.7,<3
 httpx>=0.28,<1
 pytest>=8.3,<10
+
+# Optional integrations. Install only the adapters your deployment needs;
+# missing adapters fail explicitly and never fabricate results.
+# docling>=2.0
+# qdrant-client>=1.9
+# opensearch-py>=2.7
+# pytesseract>=0.3
+# Pillow>=10.0

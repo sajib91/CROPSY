@@ -36,6 +36,23 @@ function haversineMeters(left, right) {
   return 2 * EARTH_RADIUS_METERS * Math.asin(Math.min(1, Math.sqrt(a)));
 }
 
+function filterAndLimitObservations(observations, filters) {
+  let rows = [...observations];
+  if (filters.region !== undefined) {
+    const needle = String(filters.region).trim().toLowerCase();
+    rows = rows.filter((item) => item.region.toLowerCase().includes(needle));
+  }
+  if (filters.from !== undefined) {
+    rows = rows.filter((item) => Date.parse(item.observedAt) >= Date.parse(filters.from));
+  }
+  if (filters.to !== undefined) {
+    rows = rows.filter((item) => Date.parse(item.observedAt) <= Date.parse(filters.to));
+  }
+  rows.sort((left, right) => Date.parse(right.observedAt) - Date.parse(left.observedAt));
+  const limit = Number.isInteger(filters.limit) ? Math.max(1, filters.limit) : 500;
+  return rows.slice(0, Math.min(limit, 2000));
+}
+
 /**
  * In-process marketplace store. Records use snake_case columns and Date
  * values, matching the Prisma adapter.
@@ -91,6 +108,62 @@ class MarketplaceInMemoryStore {
 
   findListing(id) {
     return Promise.resolve(this._find('listings', id));
+  }
+
+  /**
+   * Actual collected price observations derived from seller-submitted listing
+   * snapshots. These are observations, not live quotes or forecasts.
+   */
+  listPriceObservations(filters = {}) {
+    let rows = [...this.listings.values()];
+    if (filters.productId !== undefined) {
+      rows = rows.filter((row) => row.product_id === filters.productId);
+    }
+    if (filters.listingId !== undefined) {
+      rows = rows.filter((row) => row.id === filters.listingId);
+    }
+    if (filters.status !== undefined) {
+      rows = rows.filter((row) => row.status === filters.status);
+    }
+
+    const observations = rows.map((listing) => {
+      const locations = [...this.locations.values()].filter(
+        (location) => location.listing_id === listing.id,
+      );
+      const region =
+        listing.available_location ||
+        locations.map((item) => item.location_label).find(Boolean) ||
+        '';
+      const observedAt = new Date(listing.updated_at || listing.created_at).toISOString();
+      const favoriteCount = [...this.favorites.values()].filter(
+        (favorite) => favorite.listing_id === listing.id,
+      ).length;
+      return {
+        observationId: `listing-observation:${listing.id}:${observedAt}`,
+        listingId: listing.id,
+        productId: listing.product_id,
+        price: Number(listing.unit_price),
+        currency: listing.currency,
+        observedAt,
+        region,
+        status: listing.status,
+        quantityAvailable: Number(listing.quantity_available),
+        harvestDate: listing.harvest_date
+          ? new Date(listing.harvest_date).toISOString().slice(0, 10)
+          : null,
+        favoriteCount,
+        demandSignal: listing.status === 'RESERVED' ? 'RESERVED' : null,
+        source: 'CROPSY marketplace listing',
+        sourceReference: `listing:${listing.id}`,
+        sourceUrl: '',
+        collectionMethod: 'seller_submitted_listing',
+        evidenceClass: 'historical_observation',
+      };
+    });
+
+    return Promise.resolve(
+      filterAndLimitObservations(observations, filters).map((item) => copy(item)),
+    );
   }
 
   createListing(input) {
@@ -239,4 +312,4 @@ class MarketplaceInMemoryStore {
   }
 }
 
-module.exports = { MarketplaceInMemoryStore, haversineMeters };
+module.exports = { MarketplaceInMemoryStore, filterAndLimitObservations, haversineMeters };

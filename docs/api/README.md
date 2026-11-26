@@ -32,7 +32,7 @@ Auth endpoints are under `/api/v1/iam/auth`. All routes outside the explicit
 public allowlist require a valid access token; cookie clients must also send a
 matching `x-csrf-token` for mutations.
 
-All 20 module paths and their dependency direction are documented in
+All 21 module paths and their dependency direction are documented in
 [`../architecture/modules.md`](../architecture/modules.md). Failures return
 `{ "success": false, "error": "<code>", "meta": { ... } }` with a request id.
 
@@ -55,6 +55,82 @@ endpoints expose validated architecture DTOs. The IAM, organization, user, farm,
 agriculture, catalog, marketplace, orders, warehouse, logistics, quality,
 traceability, and cooperative workflows described below are implemented;
 product-specific commercial policies remain outside this scaffold.
+
+## AI gateway routes
+
+All routes below are under `/api/v1/intelligence`. They require normal user authentication and
+the existing `ai.read` or `ai.feedback` permission. The business API signs each internal call
+to the FastAPI AI service with HMAC-SHA256; frontend applications never receive provider
+credentials and cannot call the Python service directly.
+
+| Endpoint | Required permission | Purpose |
+| --- | --- | --- |
+| `GET /intelligence/ai/capabilities` | `ai.read` | AI module and policy metadata |
+| `POST /intelligence/ai/ask` | `ai.read` | Evidence-grounded advisory answer |
+| `POST /intelligence/ai/retrieve` | `ai.read` | Hybrid verified evidence with fusion/filter overrides |
+| `POST /intelligence/ai/recommendations` | `ai.read` | Evidence-grounded recommendation |
+| `POST /intelligence/ai/chat` | `ai.read` | Conversational assistant answer with citations and claims |
+| `POST /intelligence/ai/conversations` | `ai.read` | Create a conversation for follow-up questions |
+| `GET /intelligence/ai/conversations/:conversationId` | `ai.read` | Read conversation history |
+| `POST /intelligence/ai/evaluation/retrieval` | `ai.read` | Offline retrieval metrics |
+| `POST /intelligence/ai/feedback` | `ai.feedback` | Record advisory feedback |
+
+AI output is advisory only. Citations are limited to documents ingested with complete,
+verified provenance and licensing metadata. The service returns
+`status: "insufficient_evidence"` with an empty citation list when no eligible source
+evidence exists. Assistant answers separate `established_fact` from `prediction`, mark every
+prediction `uncertain`, and attach mandatory safety notes for pesticide, fertilizer, chemical,
+and diagnosis questions. Retrieval evaluation reports Recall@K, Precision@K, MRR, and nDCG@K
+with `accuracyClaimed: false` for the small offline fixture dataset. See
+[`apps/ai/README.md`](../../apps/ai/README.md) for the internal pipeline and configuration.
+
+### Market intelligence gateway routes
+
+These routes are also under `/api/v1/intelligence` and require `ai.read`. They forward only
+caller-supplied observations to the AI service and keep evidence classes separate.
+
+| Endpoint | Required permission | Purpose |
+| --- | --- | --- |
+| `POST /intelligence/ai/market/forecast` | `ai.read` | Time-validated price forecast with MAE/RMSE/MAPE where applicable |
+| `POST /intelligence/ai/market/explain` | `ai.read` | Isolated LLM explanation of supplied market facts |
+
+### Weather intelligence gateway routes
+
+Farm context is resolved from stored farm and cultivation records before any provider call.
+The caller must be the farm owner, a super admin, or an active member of the farm's organization
+with `farms.read`. A farm without usable coordinates or region is rejected explicitly.
+
+| Endpoint | Required permission | Purpose |
+| --- | --- | --- |
+| `POST /intelligence/ai/weather/observations` | `ai.read` | Provider-observed weather history |
+| `POST /intelligence/ai/weather/forecasts` | `ai.read` | Provider forecasts, always `uncertain` |
+| `POST /intelligence/ai/weather/alerts` | `ai.read` | Provider-issued alerts, including severe alerts |
+| `POST /intelligence/ai/weather/advisory` | `ai.read` | Crop-stage-aware advisory with separated evidence |
+
+No mock weather provider exists. When weather is unconfigured or unavailable, these routes
+return an explicit error instead of inventing conditions. AI recommendations are advisory and
+carry their evidence references; advisory thresholds are deployment configuration, not verified
+crop requirements.
+
+### Agricultural market intelligence module
+
+Read-only routes under `/api/v1/market-intelligence` require `ai.read` or `listings.read`
+(except the public `/info` endpoints). All figures come from collected marketplace observations
+carrying a source, source reference, collection method, and `historical_observation` evidence
+class; no live quote is claimed.
+
+| Endpoint | Purpose |
+| --- | --- |
+| `GET /market-intelligence/observations` | Collected price observations and provenance |
+| `GET /market-intelligence/prices/history` | Price history summary |
+| `GET /market-intelligence/prices/regions` | Regional comparison of observed prices |
+| `GET /market-intelligence/supply-demand` | Listing-based supply and demand signals |
+| `GET /market-intelligence/trends` | Observation-based trend series |
+| `GET /market-intelligence/seasonality` | Observed monthly patterns |
+| `GET /market-intelligence/availability` | Observed listing availability |
+| `GET /market-intelligence/opportunities` | Observed price dispersion signals |
+| `GET /market-intelligence/selling-insights` | Observed price context for selling decisions |
+| `POST /market-intelligence/forecast` | Forward collected observations to the AI forecast pipeline |
 
 ## Organization routes
 

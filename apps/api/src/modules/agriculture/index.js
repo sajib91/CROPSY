@@ -1,4 +1,5 @@
 const {
+  AgricultureAccessPortToken,
   ConfigToken,
   FarmAccessPortToken,
   IdentityStoreToken,
@@ -23,16 +24,26 @@ const {
 const agricultureRoutes = require('./presentation/agriculture.routes');
 
 function registerAgricultureStore({ container }) {
-  if (container.has(AgricultureStoreToken)) return;
+  if (!container.has(AgricultureStoreToken)) {
+    container.register(AgricultureStoreToken, (resolver) => {
+      const env = resolver.resolve(ConfigToken);
+      if (env.AGRICULTURE_STORE === 'prisma') {
+        const { PrismaClient } = require('@prisma/client');
+        return new AgriculturePrismaStore({ prisma: new PrismaClient() });
+      }
+      return new AgricultureInMemoryStore();
+    });
+  }
 
-  container.register(AgricultureStoreToken, (resolver) => {
-    const env = resolver.resolve(ConfigToken);
-    if (env.AGRICULTURE_STORE === 'prisma') {
-      const { PrismaClient } = require('@prisma/client');
-      return new AgriculturePrismaStore({ prisma: new PrismaClient() });
-    }
-    return new AgricultureInMemoryStore();
-  });
+  if (!container.has(AgricultureAccessPortToken)) {
+    container.register(AgricultureAccessPortToken, (resolver) => {
+      const store = resolver.resolve(AgricultureStoreToken);
+      return Object.freeze({
+        findCultivation: (id) => store.findCultivation(id),
+        listCultivations: (filters) => store.listCultivations(filters),
+      });
+    });
+  }
 }
 
 const definition = defineModule({

@@ -1,0 +1,210 @@
+[
+  {
+    "documentId": "eval-rice-cultivation",
+    "title": "Upland rice cultivation note",
+    "documentType": "crop_cultivation_guideline",
+    "language": "en",
+    "version": "v1",
+    "status": "VERIFIED",
+    "source": {
+      "name": "Department of Agriculture Extension Test Publication",
+      "url": "https://example.test/extension/rice-cultivation",
+      "publisher": "Department of Agricultural Extension",
+      "publishedAt": "2026-01-10",
+      "authors": ["Extension Officer"],
+      "authority": "Government extension publication",
+      "jurisdiction": "Bangladesh"
+    },
+    "license": {
+      "code": "CC-BY-4.0",
+      "url": "https://creativecommons.org/licenses/by/4.0/",
+      "attributionRequired": true,
+      "verified": true
+    },
+    "text": "Upland rice cultivation: sow certified seed after the first steady rain. Maintain twenty centimeters between rows. Soil testing should guide nutrient application.",
+    "mimeType": "text/plain",
+    "filename": "upland-rice.txt"
+  },
+  {
+    "documentId": "eval-rice-irrigation-bn",
+    "title": "ধান সেচ নির্দেশিকা",
+    "documentType": "crop_cultivation_guideline",
+    "language": "bn",
+    "version": "v1",
+    "status": "VERIFIED",
+    "source": {
+      "name": "কৃষি সম্প্রসারণ টেস্ট প্রকাশনা",
+      "url": "https://example.test/extension/irrigation-bn",
+      "publisher": "কৃষি বিভাগ",
+      "publishedAt": "2026-01-11",
+      "authors": ["কৃষি কর্মকর্তা"],
+      "authority": "সরকারি প্রকাশনা",
+      "jurisdiction": "Bangladesh"
+    },
+    "license": {
+      "code": "CC-BY-4.0",
+      "url": "https://creativecommons.org/licenses/by/4.0/",
+      "attributionRequired": true,
+      "verified": true
+    },
+    "text": "ধান সেচের নির্দেশিকা। প্রথম বৃষ্টির পর জমিতে সমানভাবে পানি দিন। মাটির আর্দ্রতা দেখে সেচের সময় নির্ধারণ করুন।",
+    "mimeType": "text/plain",
+    "filename": "irrigation-bn.txt"
+  },
+  {
+    "documentId": "eval-fertilizer-guidance",
+    "title": "Soil-test based nutrient guidance",
+    "documentType": "fertilizer_recommendation",
+    "language": "en",
+    "version": "v1",
+    "status": "VERIFIED",
+    "source": {
+      "name": "National Soil Research Test Institute",
+      "url": "https://example.test/soil/fertilizer-guidance",
+      "publisher": "National Soil Research Institute",
+      "publishedAt": "2026-02-01",
+      "authors": ["Soil Scientist"],
+      "authority": "Government research publication",
+      "jurisdiction": "Bangladesh"
+    },
+    "license": {
+      "code": "CC-BY-4.0",
+      "url": "https://creativecommons.org/licenses/by/4.0/",
+      "attributionRequired": true,
+      "verified": true
+    },
+    "text": "Use a recent soil test before applying fertilizer. Follow locally registered product labels and current regulations. Do not apply an unverified dosage.",
+    "mimeType": "text/plain",
+    "filename": "fertilizer.txt"
+  },
+  {
+    "documentId": "eval-pest-safety",
+    "title": "Rice stem borer inspection and pesticide safety",
+    "documentType": "pest_management",
+    "language": "en",
+    "version": "v1",
+    "status": "VERIFIED",
+    "source": {
+      "name": "Ministry of Agriculture Test Guidelines",
+      "url": "https://example.test/agriculture/pest-safety",
+      "publisher": "Ministry of Agriculture",
+      "publishedAt": "2026-02-15",
+      "authors": ["Entomology Unit"],
+      "authority": "Government publication",
+      "jurisdiction": "Bangladesh"
+    },
+    "license": {
+      "code": "CC-BY-4.0",
+      "url": "https://creativecommons.org/licenses/by/4.0/",
+      "attributionRequired": true,
+      "verified": true
+    },
+    "text": "Inspect rice fields for stem borer damage and confirm identification locally. Use only registered pesticides. Read the approved label, wear protective equipment, and follow applicable safety regulations.",
+    "mimeType": "text/plain",
+    "filename": "pest-safety.txt"
+  },
+  {
+    "documentId": "eval-disease-bn",
+    "title": "ধানের ব্লাস্ট রোগ সনাক্তকরণ",
+    "documentType": "disease_management",
+    "language": "bn",
+    "version": "v1",
+    "status": "VERIFIED",
+    "source": {
+      "name": "কৃষি গবেষণা টেস্ট সংস্থা",
+      "url": "https://example.test/research/rice-blast-bn",
+      "publisher": "কৃষি গবেষণা সংস্থা",
+      "publishedAt": "2026-03-01",
+      "authors": ["রোগবিদ্যা বিভাগ"],
+      "authority": "সরকারি গবেষণা প্রকাশনা",
+      "jurisdiction": "Bangladesh"
+    },
+    "license": {
+      "code": "CC-BY-4.0",
+      "url": "https://creativecommons.org/licenses/by/4.0/",
+      "attributionRequired": true,
+      "verified": true
+    },
+    "text": "ধানের ব্লাস্ট রোগের লক্ষণ হলো পাতায় ধূসর দাগ। রোগ নিশ্চিত করতে স্থানীয় কৃষি বিশেষজ্ঞের সাথে যোগাযোগ করুন। নিবন্ধিত উপাদান এবং লেবেলের নির্দেশনা মানুন।",
+    "mimeType": "text/plain",
+    "filename": "disease-bn.txt"
+  },
+  {
+    "documentId": "eval-market-intelligence",
+    "title": "Monthly paddy market intelligence",
+    "documentType": "market_intelligence",
+    "language": "en",
+    "version": "v1",
+    "status": "VERIFIED",
+    "source": {
+      "name": "Agricultural Market Information Test Service",
+      "url": "https://example.test/market/paddy-monthly",
+      "publisher": "Market Information Service",
+      "publishedAt": "2026-03-15",
+      "authors": ["Market Analyst"],
+      "authority": "Government market publication",
+      "jurisdiction": "Bangladesh"
+    },
+    "license": {
+      "code": "CC-BY-4.0",
+      "url": "https://creativecommons.org/licenses/by/4.0/",
+      "attributionRequired": true,
+      "verified": true
+    },
+    "text": "Monthly paddy price observations for Dhaka markets. Observed prices are historical records; any future price outlook is uncertain and depends on weather, supply, and demand.",
+    "mimeType": "text/plain",
+    "filename": "market.txt"
+  },
+  {
+    "documentId": "eval-soil-management",
+    "title": "Soil pH and organic matter management",
+    "documentType": "soil_management",
+    "language": "en",
+    "version": "v1",
+    "status": "VERIFIED",
+    "source": {
+      "name": "National Soil Research Test Institute",
+      "url": "https://example.test/soil/ph-organic-matter",
+      "publisher": "National Soil Research Institute",
+      "publishedAt": "2026-04-01",
+      "authors": ["Soil Scientist"],
+      "authority": "Government research publication",
+      "jurisdiction": "Bangladesh"
+    },
+    "license": {
+      "code": "CC-BY-4.0",
+      "url": "https://creativecommons.org/licenses/by/4.0/",
+      "attributionRequired": true,
+      "verified": true
+    },
+    "text": "Test soil pH before changing nutrient management. Maintain organic matter with compost and residue incorporation according to locally verified guidance.",
+    "mimeType": "text/plain",
+    "filename": "soil.txt"
+  },
+  {
+    "documentId": "eval-harvest-guide",
+    "title": "Paddy harvest planning",
+    "documentType": "agricultural_manual",
+    "language": "en",
+    "version": "v1",
+    "status": "VERIFIED",
+    "source": {
+      "name": "Farm Operations Test Manual",
+      "url": "https://example.test/manual/harvest",
+      "publisher": "Agricultural Extension Manual Series",
+      "publishedAt": "2026-04-10",
+      "authors": ["Farm Operations Unit"],
+      "authority": "Government manual",
+      "jurisdiction": "Bangladesh"
+    },
+    "license": {
+      "code": "CC-BY-4.0",
+      "url": "https://creativecommons.org/licenses/by/4.0/",
+      "attributionRequired": true,
+      "verified": true
+    },
+    "text": "Harvest paddy when most grains have turned yellow and grain moisture is suitable for storage. Avoid harvesting immediately after heavy rain.",
+    "mimeType": "text/plain",
+    "filename": "harvest.txt"
+  }
+]
