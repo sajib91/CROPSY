@@ -52,9 +52,9 @@ Service responses use the standard envelope where practical:
 
 Shared health response contracts live in `packages/api-contracts`. The `/info`
 endpoints expose validated architecture DTOs. The IAM, organization, user, farm,
-agriculture, catalog, marketplace, orders, warehouse, and cooperative workflows
-described below are implemented; product-specific commercial policies remain
-outside this scaffold.
+agriculture, catalog, marketplace, orders, warehouse, logistics, quality,
+traceability, and cooperative workflows described below are implemented;
+product-specific commercial policies remain outside this scaffold.
 
 ## Organization routes
 
@@ -591,6 +591,149 @@ Reservation `referenceKey` values are idempotent for concurrent order attempts;
 partial release/deduction updates `settledQuantity` and finalizes status when
 the reservation is exhausted. Movement history is append-only, and every stock
 or alert mutation is audited. No price, commission, or settlement rule is added.
+
+## Logistics routes
+
+All routes below are under `/api/v1/logistics`. Only `/info` and
+`/info/:moduleId` are public; every other route requires a valid access token
+and is default-deny. Reads require `shipments.read`; provider/service/shipment/
+delivery mutations require `shipments.manage`. Buyer confirmation uses
+`shipments.read` because it is an action by the buyer named on the delivery.
+Shipments, providers, services, deliveries, proofs, and audits are tenant-scoped
+and require the active tenant to match unless the caller is a super admin.
+
+| Endpoint | Required permission | Purpose |
+| --- | --- | --- |
+| `GET /logistics/providers/nearby` | `shipments.read` | Discover active providers with PostGIS `ST_DWithin` using supplied `longitude`, `latitude`, and `radiusKm` |
+| `GET /logistics/providers` | `shipments.read` | List providers by tenant/status/search |
+| `POST /logistics/providers` | `shipments.manage` | Register a logistics provider with point coordinates |
+| `GET /logistics/providers/:providerId` | `shipments.read` | Read one provider |
+| `PATCH /logistics/providers/:providerId` | `shipments.manage` | Update a provider |
+| `GET /logistics/services` | `shipments.read` | List delivery services |
+| `POST /logistics/services` | `shipments.manage` | Add a delivery service |
+| `PATCH /logistics/services/:serviceId` | `shipments.manage` | Update a delivery service |
+| `GET /logistics/shipments` | `shipments.read` | List shipments by tenant/status/provider |
+| `POST /logistics/shipments` | `shipments.manage` | Create a shipment from a tracked order reference |
+| `GET /logistics/shipments/:shipmentId` | `shipments.read` | Read one shipment |
+| `POST /logistics/shipments/:shipmentId/pickup` | `shipments.manage` | Record pickup time and evidence metadata |
+| `POST /logistics/shipments/:shipmentId/assignment` | `shipments.manage` | Assign or reassign a provider/service |
+| `POST /logistics/shipments/:shipmentId/status` | `shipments.manage` | Apply an explicit shipment status transition |
+| `GET /logistics/shipments/:shipmentId/tracking` | `shipments.read` | Read recorded tracking events; `liveLocation` is always `null` |
+| `GET /logistics/shipments/:shipmentId/history` | `shipments.read` | Read append-only shipment status history |
+| `GET /logistics/deliveries` | `shipments.read` | List deliveries by tenant/status |
+| `GET /logistics/deliveries/:deliveryId` | `shipments.read` | Read one delivery |
+| `POST /logistics/deliveries/:deliveryId/proof` | `shipments.manage` | Attach proof metadata without uploading a file |
+| `POST /logistics/deliveries/:deliveryId/failure` | `shipments.manage` | Record a failed attempt and reason |
+| `POST /logistics/deliveries/:deliveryId/confirm` | `shipments.read` | Confirm delivery as the named buyer |
+| `GET /logistics/audits` | `shipments.read` | Query logistics audit records |
+| `GET /logistics/dashboard/buyer` | `shipments.read` | Buyer-facing shipment summary |
+| `GET /logistics/dashboard/seller` | `shipments.read` | Seller-facing shipment summary |
+| `GET /logistics/dashboard/provider` | `shipments.read` | Provider-facing shipment summary |
+
+Nearby-provider discovery casts provider points and the caller's supplied point
+to `geography`, orders by `ST_Distance` in meters, and filters by
+`ST_DWithin`. Partial or non-numeric coordinate pairs are rejected. The API
+never invents or simulates a live GPS feed: tracking returns only recorded
+events and an explicit `liveLocation: null` with a no-simulated-GPS policy.
+Proofs, confirmations, failures, and status changes are audited; no delivery
+fee, insurance rate, or refund policy is seeded.
+
+## Expanded warehouse operations
+
+The following routes are additional `/api/v1/warehouse` endpoints. They reuse
+`warehouses.read` for reads and `warehouses.manage` for mutations; `/info`
+remains the only public warehouse surface.
+
+| Endpoint | Required permission | Purpose |
+| --- | --- | --- |
+| `GET /warehouse/warehouses/:warehouseId/capacity` | `warehouses.read` | Report used capacity, recorded capacity, utilization, and locations |
+| `GET /warehouse/locations` | `warehouses.read` | List storage locations |
+| `POST /warehouse/locations` | `warehouses.manage` | Create a storage location |
+| `PATCH /warehouse/locations/:locationId` | `warehouses.manage` | Update a storage location |
+| `POST /warehouse/receipts` | `warehouses.manage` | Post an idempotent `RECEIPT` movement |
+| `POST /warehouse/allocations` | `warehouses.manage` | Record a stock allocation reference |
+| `POST /warehouse/transfers` | `warehouses.manage` | Post paired `TRANSFER_OUT`/`TRANSFER_IN` movements |
+| `POST /warehouse/dispatches` | `warehouses.manage` | Post an idempotent `DISPATCH` deduction |
+| `GET /warehouse/conditions` | `warehouses.read` | List storage-condition readings |
+| `POST /warehouse/conditions` | `warehouses.manage` | Record temperature, humidity, and condition status |
+| `GET /warehouse/reconciliations` | `warehouses.read` | List inventory reconciliations |
+| `POST /warehouse/reconciliations` | `warehouses.manage` | Create a reconciliation with counted/system difference |
+| `POST /warehouse/reconciliations/:reconciliationId/approve` | `warehouses.manage` | Approve and post the balancing adjustment once |
+| `GET /warehouse/staff` | `warehouses.read` | List warehouse staff assignments |
+| `POST /warehouse/staff` | `warehouses.manage` | Assign a user to a warehouse role |
+| `PATCH /warehouse/staff/:staffId` | `warehouses.manage` | Update or deactivate a staff assignment |
+| `GET /warehouse/report` | `warehouses.read` | Aggregate warehouses, stock, movements, alerts, and conditions |
+
+Receipts, transfers, dispatches, and reconciliation approvals run through the
+inventory service's movement path, carry caller-supplied `referenceKey` values,
+and replay idempotently. Capacity utilization is computed from recorded
+capacity and on-hand totals; no location-level quantity is invented where the
+schema has no inventory/location link. A read-only
+`WarehouseOperationPortToken` publishes warehouse, inventory, movement,
+condition, reconciliation, and location facts to traceability; it exposes no
+mutations and performs no cross-module authorization.
+
+## Quality inspection routes
+
+All routes below are under `/api/v1/quality`. Only `/info` and
+`/info/:moduleId` are public; every other route requires a valid access token
+and is default-deny. Reads require `quality.read`; mutations require
+`quality.manage`. Inspections, evidence, images, grades, verification decisions,
+and audits are tenant-scoped.
+
+| Endpoint | Required permission | Purpose |
+| --- | --- | --- |
+| `GET /quality/inspections` | `quality.read` | List inspections by tenant/product/batch/result/verification |
+| `POST /quality/inspections` | `quality.manage` | Create an inspection; verification starts `UNVERIFIED` |
+| `GET /quality/inspections/:inspectionId` | `quality.read` | Read one inspection |
+| `PATCH /quality/inspections/:inspectionId` | `quality.manage` | Update inspection fields; changing `result` resets verification |
+| `GET /quality/inspections/:inspectionId/evidence` | `quality.read` | List evidence, optionally filtered by public disclosure |
+| `POST /quality/inspections/:inspectionId/evidence` | `quality.manage` | Attach document evidence with explicit disclosure |
+| `POST /quality/inspections/:inspectionId/images` | `quality.manage` | Attach image evidence with MIME type and disclosure |
+| `POST /quality/inspections/:inspectionId/grade` | `quality.manage` | Record caller-supplied grade code and source |
+| `POST /quality/inspections/:inspectionId/verify` | `quality.manage` | Explicitly verify an inspected, graded result |
+| `POST /quality/inspections/:inspectionId/reject` | `quality.manage` | Reject with a required note |
+| `GET /quality/audits` | `quality.read` | Query inspection and evidence audits |
+
+Verification is explicit: creating or grading an inspection never certifies it,
+and re-verifying or rejecting a resolved inspection conflicts. The narrow
+`QualityAccessPortToken` publishes inspection facts to traceability and filters
+out private evidence unless the inspection is verified and the evidence is
+explicitly disclosed. Grade codes, grade sources, and evidence URIs are
+caller-supplied; no grade or certificate is invented.
+
+## Traceability routes and public verification
+
+Private routes below are under `/api/v1/traceability`. `/info` and
+`/info/:moduleId` are public, and `GET /traceability/verify/:token` is the only
+other public route. Private reads require `traceability.read`; batch mutations
+require any one of `farms.manage`, `harvests.manage`, `quality.manage`,
+`warehouses.manage`, `shipments.manage`, or `organizations.manage`. Batches,
+events, and audits are tenant-scoped.
+
+| Endpoint | Required permission | Purpose |
+| --- | --- | --- |
+| `GET /traceability/batches` | `traceability.read` | List batches by tenant/product/status/verification |
+| `POST /traceability/batches` | Any listed manage permission | Create a batch with a private verification token |
+| `GET /traceability/batches/:batchId` | `traceability.read` | Read one batch |
+| `PATCH /traceability/batches/:batchId` | Any listed manage permission | Update disclosure, participants, shipment, or notes |
+| `GET /traceability/batches/:batchId/timeline` | `traceability.read` | Private timeline with best-effort quality/warehouse/logistics enrichment |
+| `POST /traceability/batches/:batchId/events` | Any listed manage permission | Append a chain-of-custody event |
+| `POST /traceability/batches/:batchId/verify` | Any listed manage permission | Verify only after a verified, publicly disclosed event exists |
+| `POST /traceability/batches/:batchId/reject` | Any listed manage permission | Reject with a required note |
+| `POST /traceability/batches/:batchId/qr` | Any listed manage permission | Generate a verification URL and terminal QR payload |
+| `GET /traceability/audits` | `traceability.read` | Query batch/event/verification/QR audits |
+| `GET /traceability/verify/:token` | Public | Return verified public facts only |
+
+Public verification is deliberately conservative. If the token is unknown, the
+batch is not `VERIFIED`, the batch is not publicly disclosed, or no event is
+both `VERIFIED` and publicly disclosed, the response contains no batch code,
+product id, verified timestamp, or facts and returns a notice that no verified
+public facts are available. Even when facts are returned, actor ids, internal
+record ids, coordinates, private notes, and enrichment metadata are omitted and
+the disclaimer states that unverified claims are not represented as certified.
+QR URLs use `WEB_PUBLIC_URL` (default `http://localhost:3000`) plus
+`/verify/<token>`; no external QR service is called.
 
 ## User and profile routes
 

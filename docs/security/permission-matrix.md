@@ -21,8 +21,14 @@ routes reuse `warehouses.read`/`warehouses.manage`, and cooperative routes reuse
 requests. Cart, checkout, order lifecycle, cancellation, history, and receipt
 routes also reuse `orders.read`/`orders.manage`. Payment routes reuse
 `payments.read`/`payments.manage` (including provider callbacks), and ledger
-routes reuse `ledger.read`/`ledger.manage`. These additions introduce no
-permissions and keep the stable 22-role / 50-permission / 479-assignment seed state.
+routes reuse `ledger.read`/`ledger.manage`. Logistics reuses `shipments.read`/
+`shipments.manage`; quality reuses `quality.read`/`quality.manage`; traceability
+private reads reuse `traceability.read`, while its mutations accept any of the
+existing manage permissions `farms.manage`, `harvests.manage`, `quality.manage`,
+`warehouses.manage`, `shipments.manage`, or `organizations.manage`. The expanded
+warehouse operations continue to reuse `warehouses.read`/`warehouses.manage`.
+These additions introduce no permissions and keep the stable 22-role /
+50-permission / 479-assignment seed state.
 
 ## Canonical role metadata
 
@@ -151,6 +157,13 @@ cancellation/restock, transitions, history, and receipts. `apps/api/test/payment
 covers provider metadata redaction, idempotency, webhook authenticity/deduplication, capture
 posting, failure handling, and refund reversals; `apps/api/test/ledger.test.js` covers balanced
 journals, duplicate posting, bucket balances, expectations, settlements, and audit events.
+`apps/api/test/logistics.test.js` covers nearby-provider coordinate validation, shipment
+lifecycle/audits/dashboards, proof, buyer confirmation, and failed attempts;
+`apps/api/test/warehouse-operations.test.js` covers locations, receipts, transfers, dispatch,
+conditions, reconciliation, staff, and capacity; `apps/api/test/quality.test.js` covers
+tenant scoping, evidence disclosure, grading, explicit verification, and audit records;
+`apps/api/test/traceability.test.js` covers default-deny, conservative public verification, QR
+output, audits, enriched private timelines, and verified-only public facts.
 `apps/api/test/warehouse.test.js` covers stock
 registration, idempotent reservations, oversell prevention, adjustments, damaged
 and expired stock, low-stock alerts, history, and authorization;

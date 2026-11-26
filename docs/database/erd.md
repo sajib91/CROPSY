@@ -1246,61 +1246,291 @@ discount, tax, commission rate, provider credential, refund policy, or settlemen
 
 ## Logistics
 
+`shipments.reference_key` is a mandatory unique idempotency key. Other unique keys cover provider
+`code`, `(provider_id, code)` for delivery services, and one route per shipment. Provider,
+delivery-service, route, event, proof, confirmation, and audit fields record supplied or observed
+facts; tracking exposes no simulated live GPS location.
+
 ```mermaid
 erDiagram
+  logistics_providers {
+    uuid id PK
+    uuid organization_id FK
+    uuid owner_user_id FK
+    varchar code UK
+    varchar name
+    decimal longitude
+    decimal latitude
+    decimal service_radius_km
+    jsonb service_types
+    boolean is_active
+  }
+  delivery_services {
+    uuid id PK
+    uuid provider_id FK
+    varchar code
+    varchar name
+    DeliveryServiceType service_type
+    decimal estimated_hours
+    boolean is_active
+  }
   shipments {
     uuid id PK
     uuid organization_id FK
     uuid order_id FK
     uuid provider_id FK
+    uuid delivery_service_id FK
+    uuid assigned_user_id FK
     uuid pickup_address_id FK
     uuid destination_address_id FK
+    varchar reference_key UK
     varchar tracking_number
     ShipmentStatus status
+    decimal pickup_longitude
+    decimal pickup_latitude
+    decimal destination_longitude
+    decimal destination_latitude
+    decimal planned_distance_km
   }
   deliveries {
     uuid id PK
     uuid shipment_id FK
     int attempt_number
+    DeliveryPhase phase
     DeliveryStatus status
+    decimal longitude
+    decimal latitude
+    varchar proof_url
+    varchar proof_hash
+    varchar reason_code
+    timestamp next_attempt_at
+    uuid confirmed_by_user_id FK
+    timestamp confirmed_at
   }
-  logistics_providers {
+  shipment_routes {
     uuid id PK
-    varchar code UK
-    varchar name
-    boolean is_active
+    uuid shipment_id FK
+    decimal origin_longitude
+    decimal origin_latitude
+    decimal destination_longitude
+    decimal destination_latitude
+    decimal distance_km
+    jsonb path_geojson
+    varchar source
   }
+  shipment_events {
+    uuid id PK
+    uuid shipment_id FK
+    varchar status
+    ShipmentEventSource source
+    timestamp occurred_at
+    decimal longitude
+    decimal latitude
+    uuid actor_user_id FK
+  }
+  delivery_audit_events {
+    uuid id PK
+    uuid shipment_id FK
+    uuid delivery_id FK
+    varchar action
+    uuid actor_user_id FK
+    uuid organization_id FK
+    jsonb before
+    jsonb after
+    varchar request_id
+    varchar ip_address
+  }
+
+  organizations |o--o{ logistics_providers : owner_tenant
+  users |o--o{ logistics_providers : owner
+  logistics_providers ||--o{ delivery_services : services
+  organizations |o--o{ shipments : organization
+  orders ||--o{ shipments : order
+  logistics_providers |o--o{ shipments : provider
+  delivery_services |o--o{ shipments : service
+  users |o--o{ shipments : assignee
+  organization_addresses |o--o{ shipments : pickup_address
+  organization_addresses |o--o{ shipments : destination_address
+  shipments ||--o{ deliveries : attempts
+  users |o--o{ deliveries : confirmed_by
+  shipments ||--o| shipment_routes : route
+  shipments ||--o{ shipment_events : events
+  users |o--o{ shipment_events : actor
+  shipments |o--o{ delivery_audit_events : shipment_audits
+  deliveries |o--o{ delivery_audit_events : delivery_audits
+  organizations |o--o{ delivery_audit_events : tenant
+  users |o--o{ delivery_audit_events : actor
+```
+
+## Expanded warehouse operations
+
+Locations, staff, condition readings, and reconciliations extend the core warehouse inventory model.
+Unique keys cover `(warehouse_id, code)`, `(warehouse_id, user_id, role_code)`, and reconciliation
+`reference_key`. Stock-affecting records flow into the pre-existing append-only
+`inventory_movements` history.
+
+```mermaid
+erDiagram
   warehouses {
     uuid id PK
     uuid organization_id FK
     varchar code UK
-    uuid manager_user_id FK
-    uuid address_id FK
-    uuid division_id FK
-    uuid district_id FK
-    uuid upazila_id FK
-    uuid union_id FK
     geometry location
+    decimal capacity_cubic_meters
     WarehouseStatus status
   }
   warehouse_inventories {
     uuid id PK
     uuid warehouse_id FK
+    uuid location_id FK
     uuid product_id FK
     varchar batch_code
     decimal quantity_on_hand
     decimal quantity_reserved
     decimal available_quantity
+    decimal low_stock_threshold
+    varchar unit_code
   }
+  warehouse_locations {
+    uuid id PK
+    uuid warehouse_id FK
+    varchar code
+    varchar name
+    varchar zone
+    varchar aisle
+    varchar rack
+    varchar shelf
+    decimal capacity_units
+    WarehouseLocationStatus status
+  }
+  warehouse_staff_assignments {
+    uuid id PK
+    uuid warehouse_id FK
+    uuid user_id FK
+    uuid assigned_by_user_id FK
+    varchar role_code
+    boolean is_active
+  }
+  storage_condition_records {
+    uuid id PK
+    uuid warehouse_id FK
+    uuid warehouse_inventory_id FK
+    timestamp recorded_at
+    decimal temperature_c
+    decimal humidity_percent
+    StorageConditionStatus condition_status
+    uuid recorded_by_user_id FK
+  }
+  inventory_reconciliations {
+    uuid id PK
+    uuid organization_id FK
+    uuid warehouse_id FK
+    uuid warehouse_inventory_id FK
+    uuid product_id FK
+    decimal counted_quantity
+    decimal system_quantity
+    decimal difference_quantity
+    ReconciliationStatus status
+    varchar reference_key UK
+    uuid counted_by_user_id FK
+    uuid approved_by_user_id FK
+    timestamp approved_at
+  }
+  inventory_movements {
+    uuid id PK
+    uuid organization_id FK
+    uuid warehouse_id FK
+    uuid warehouse_inventory_id FK
+    uuid product_id FK
+    InventoryMovementType movement_type
+    decimal quantity
+    decimal quantity_before
+    decimal quantity_after
+    varchar reference_key UK
+  }
+
+  organizations ||--o{ warehouses : organization
+  warehouses ||--o{ warehouse_inventories : stock
+  products ||--o{ warehouse_inventories : product
+  warehouses ||--o{ warehouse_locations : locations
+  warehouse_locations |o--o{ warehouse_inventories : location
+  warehouses ||--o{ warehouse_staff_assignments : staff
+  users ||--o{ warehouse_staff_assignments : assignment
+  warehouses ||--o{ storage_condition_records : conditions
+  warehouse_inventories |o--o{ storage_condition_records : inventory_conditions
+  warehouses ||--o{ inventory_reconciliations : reconciliations
+  warehouse_inventories ||--o{ inventory_reconciliations : inventory_reconciliations
+  warehouses ||--o{ inventory_movements : movements
+  warehouse_inventories |o--o{ inventory_movements : inventory_movements
+```
+
+## Quality inspection
+
+Inspection results and grades are caller-supplied. Verification is explicit, and evidence is
+disclosed only when both the inspection/evidence rules and verification state allow it.
+
+```mermaid
+erDiagram
   quality_inspections {
     uuid id PK
     uuid organization_id FK
     uuid shipment_id FK
     uuid warehouse_inventory_id FK
     uuid product_id FK
+    varchar batch_code
     uuid inspector_user_id FK
+    timestamp inspected_at
     InspectionResult result
+    varchar grade_code
+    varchar grade_source
+    VerificationStatus verification_status
+    uuid verified_by_user_id FK
+    timestamp verified_at
   }
+  inspection_evidence {
+    uuid id PK
+    uuid inspection_id FK
+    InspectionEvidenceType evidence_type
+    text uri
+    varchar checksum
+    varchar mime_type
+    boolean public_disclosure
+    uuid recorded_by_user_id FK
+  }
+  quality_audit_events {
+    uuid id PK
+    uuid inspection_id FK
+    uuid organization_id FK
+    varchar action
+    uuid actor_user_id FK
+    jsonb before
+    jsonb after
+    varchar request_id
+  }
+
+  organizations |o--o{ quality_inspections : organization
+  shipments |o--o{ quality_inspections : shipment
+  warehouse_inventories |o--o{ quality_inspections : warehouse_inventory
+  products |o--o{ quality_inspections : product
+  users ||--o{ quality_inspections : inspector
+  users |o--o{ quality_inspections : verified_by
+  quality_inspections ||--o{ inspection_evidence : evidence
+  users |o--o{ inspection_evidence : recorded_by
+  quality_inspections |o--o{ quality_audit_events : audits
+  organizations |o--o{ quality_audit_events : tenant
+  users |o--o{ quality_audit_events : actor
+```
+
+## Traceability
+
+`traceability_records` is the baseline spatial event log. `traceability_batches` plus
+`traceability_events` form the newer chain of custody; unique `verification_token` and
+`(organization_id, batch_code)` keys support lookup and tenant-scoped batch codes, while
+verification/disclosure flags control which facts may be returned. Participant and source UUID
+columns not marked `FK` are references, not database foreign keys.
+
+```mermaid
+erDiagram
   traceability_records {
     uuid id PK
     uuid organization_id FK
@@ -1310,35 +1540,71 @@ erDiagram
     uuid shipment_id FK
     varchar batch_code
     TraceabilityEventType event_type
+    timestamp occurred_at
     geometry location
     jsonb metadata
   }
+  traceability_batches {
+    uuid id PK
+    uuid organization_id FK
+    uuid product_id FK
+    varchar batch_code
+    uuid harvest_id FK
+    uuid cultivation_id FK
+    uuid farm_id
+    uuid farmer_user_id
+    uuid seller_user_id
+    uuid buyer_user_id
+    uuid shipment_id FK
+    uuid inspection_id FK
+    timestamp warehouse_entry_at
+    TraceabilityBatchStatus status
+    VerificationStatus verification_status
+    boolean public_disclosure
+    varchar verification_token UK
+    text qr_payload
+    timestamp verified_at
+  }
+  traceability_events {
+    uuid id PK
+    uuid batch_id FK
+    TraceabilityEventType event_type
+    timestamp occurred_at
+    varchar title
+    text description
+    varchar location_description
+    decimal longitude
+    decimal latitude
+    varchar source_module
+    uuid source_record_id
+    boolean public_disclosure
+    VerificationStatus verification_status
+    jsonb metadata
+  }
+  traceability_audit_events {
+    uuid id PK
+    uuid batch_id FK
+    uuid organization_id FK
+    varchar action
+    uuid actor_user_id
+    jsonb before
+    jsonb after
+  }
 
-  organizations |o--o{ shipments : organization
-  orders ||--o{ shipments : order
-  logistics_providers |o--o{ shipments : provider
-  organization_addresses |o--o{ shipments : pickup_address
-  organization_addresses |o--o{ shipments : destination_address
-  shipments ||--o{ deliveries : shipment
-  organizations ||--o{ warehouses : organization
-  users |o--o{ warehouses : manager
-  organization_addresses |o--o{ warehouses : address
-  divisions |o--o{ warehouses : division
-  districts |o--o{ warehouses : district
-  upazilas |o--o{ warehouses : upazila
-  unions |o--o{ warehouses : union
-  warehouses ||--o{ warehouse_inventories : warehouse
-  products ||--o{ warehouse_inventories : product
-  organizations |o--o{ quality_inspections : organization
-  shipments |o--o{ quality_inspections : shipment
-  warehouse_inventories |o--o{ quality_inspections : warehouse_inventory
-  products |o--o{ quality_inspections : product
-  users ||--o{ quality_inspections : inspector
   organizations |o--o{ traceability_records : organization
   products |o--o{ traceability_records : product
   harvests |o--o{ traceability_records : harvest
   cultivations |o--o{ traceability_records : cultivation
   shipments |o--o{ traceability_records : shipment
+  organizations |o--o{ traceability_batches : organization
+  products |o--o{ traceability_batches : product
+  harvests |o--o{ traceability_batches : harvest
+  cultivations |o--o{ traceability_batches : cultivation
+  shipments |o--o{ traceability_batches : shipment
+  quality_inspections |o--o{ traceability_batches : inspection
+  traceability_batches ||--o{ traceability_events : events
+  traceability_batches |o--o{ traceability_audit_events : audits
+  organizations |o--o{ traceability_audit_events : tenant
 ```
 
 ## AI

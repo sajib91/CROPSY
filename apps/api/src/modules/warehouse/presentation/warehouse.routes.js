@@ -309,4 +309,183 @@ module.exports = async function warehouseRoutes(fastify) {
       meta(request),
     );
   });
+
+  // ---------------------------------------------------------------------------
+  // Capacity, locations and warehouse operations
+  // ---------------------------------------------------------------------------
+
+  fastify.get('/warehouses/:warehouseId/capacity', { config: readWarehouses }, async (request) => {
+    const { warehouseId } = validate(dto.warehouseParamsSchema, request.params, 'warehouse id');
+    return ok(
+      await service.getWarehouseCapacity({ context: context(request), warehouseId }),
+      meta(request),
+    );
+  });
+
+  fastify.get('/locations', { config: readWarehouses }, async (request) =>
+    ok(
+      {
+        locations: await service.listLocations({ context: context(request), query: request.query }),
+      },
+      meta(request),
+    ),
+  );
+
+  fastify.post('/locations', { config: manageWarehouses }, async (request, reply) => {
+    const location = await service.createLocation({
+      context: context(request),
+      input: request.body,
+      request,
+    });
+    return reply.code(201).send(ok(location, meta(request)));
+  });
+
+  fastify.patch('/locations/:locationId', { config: manageWarehouses }, async (request) => {
+    const { locationId } = validate(dto.locationParamsSchema, request.params, 'location id');
+    return ok(
+      await service.updateLocation({
+        context: context(request),
+        locationId,
+        input: request.body,
+        request,
+      }),
+      meta(request),
+    );
+  });
+
+  fastify.post('/receipts', { config: manageWarehouses }, async (request, reply) => {
+    const receipt = await service.recordReceipt({
+      context: context(request),
+      input: request.body,
+      request,
+    });
+    return reply.code(201).send(ok(receipt, meta(request)));
+  });
+
+  fastify.post('/allocations', { config: manageWarehouses }, async (request, reply) => {
+    const allocation = await service.allocateStock({
+      context: context(request),
+      input: request.body,
+      request,
+    });
+    return reply.code(201).send(ok(allocation, meta(request)));
+  });
+
+  fastify.post('/transfers', { config: manageWarehouses }, async (request, reply) => {
+    const transfer = await service.transferStock({
+      context: context(request),
+      input: request.body,
+      request,
+    });
+    return reply.code(201).send(ok(transfer, meta(request)));
+  });
+
+  fastify.post('/dispatches', { config: manageWarehouses }, async (request, reply) => {
+    const dispatch = await service.dispatchStock({
+      context: context(request),
+      input: request.body,
+      request,
+    });
+    return reply.code(201).send(ok(dispatch, meta(request)));
+  });
+
+  // ---------------------------------------------------------------------------
+  // Conditions, reconciliation, staff and reporting
+  // ---------------------------------------------------------------------------
+
+  fastify.get('/conditions', { config: readWarehouses }, async (request) =>
+    ok(
+      {
+        conditions: await service.listConditions({
+          context: context(request),
+          query: request.query,
+        }),
+      },
+      meta(request),
+    ),
+  );
+
+  fastify.post('/conditions', { config: manageWarehouses }, async (request, reply) => {
+    const condition = await service.createCondition({
+      context: context(request),
+      input: request.body,
+      request,
+    });
+    return reply.code(201).send(ok(condition, meta(request)));
+  });
+
+  fastify.get('/reconciliations', { config: readWarehouses }, async (request) =>
+    ok(
+      {
+        reconciliations: await service.listReconciliations({
+          context: context(request),
+          query: request.query,
+        }),
+      },
+      meta(request),
+    ),
+  );
+
+  fastify.post('/reconciliations', { config: manageWarehouses }, async (request, reply) => {
+    const reconciliation = await service.createReconciliation({
+      context: context(request),
+      input: request.body,
+      request,
+    });
+    return reply.code(201).send(ok(reconciliation, meta(request)));
+  });
+
+  fastify.post(
+    '/reconciliations/:reconciliationId/approve',
+    { config: manageWarehouses },
+    async (request) => {
+      const { reconciliationId } = validate(
+        dto.reconciliationParamsSchema,
+        request.params,
+        'reconciliation id',
+      );
+      return ok(
+        await service.approveReconciliation({
+          context: context(request),
+          reconciliationId,
+          input: request.body,
+          request,
+        }),
+        meta(request),
+      );
+    },
+  );
+
+  fastify.get('/staff', { config: readWarehouses }, async (request) =>
+    ok(
+      { staff: await service.listStaff({ context: context(request), query: request.query }) },
+      meta(request),
+    ),
+  );
+
+  fastify.post('/staff', { config: manageWarehouses }, async (request, reply) => {
+    const staff = await service.createStaff({
+      context: context(request),
+      input: request.body,
+      request,
+    });
+    return reply.code(201).send(ok(staff, meta(request)));
+  });
+
+  fastify.patch('/staff/:staffId', { config: manageWarehouses }, async (request) => {
+    const { staffId } = validate(dto.staffParamsSchema, request.params, 'staff id');
+    return ok(
+      await service.updateStaff({
+        context: context(request),
+        staffId,
+        input: request.body,
+        request,
+      }),
+      meta(request),
+    );
+  });
+
+  fastify.get('/report', { config: readWarehouses }, async (request) =>
+    ok(await service.getReport({ context: context(request), query: request.query }), meta(request)),
+  );
 };

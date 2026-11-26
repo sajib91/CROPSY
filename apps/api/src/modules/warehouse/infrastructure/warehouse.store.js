@@ -33,6 +33,10 @@ class WarehouseInMemoryStore {
     this.movements = new Map();
     this.reservations = new Map();
     this.alerts = new Map();
+    this.locations = new Map();
+    this.conditions = new Map();
+    this.reconciliations = new Map();
+    this.staffAssignments = new Map();
     this.movementReferences = new Set();
     this.reservationReferences = new Set();
     assertRepository(this, WAREHOUSE_STORE_METHODS, WarehouseStoreToken);
@@ -117,17 +121,21 @@ class WarehouseInMemoryStore {
       quantity_reserved: 0,
       available_quantity: 0,
     });
-    this._applyMovement({
-      inventoryId: inventory.id,
-      movementType: 'REGISTER',
-      mode: 'ON_HAND_DELTA',
-      delta: Number(input.quantity_on_hand),
-      unitCode: input.unit_code,
-      reason: input.reason || null,
-      referenceKey: input.reference_key || `register:${inventory.id}:movement`,
-      actorUserId: input.actor_user_id || null,
-      organizationId: input.organization_id || null,
-    });
+    // A zero opening balance only creates the inventory record; the caller will
+    // post the actual stock movement (for example RECEIPT or TRANSFER_IN).
+    if (Number(input.quantity_on_hand) > 0) {
+      this._applyMovement({
+        inventoryId: inventory.id,
+        movementType: 'REGISTER',
+        mode: 'ON_HAND_DELTA',
+        delta: Number(input.quantity_on_hand),
+        unitCode: input.unit_code,
+        reason: input.reason || null,
+        referenceKey: input.reference_key || `register:${inventory.id}:movement`,
+        actorUserId: input.actor_user_id || null,
+        organizationId: input.organization_id || null,
+      });
+    }
     return clone(this.inventories.get(inventory.id));
   }
 
@@ -384,6 +392,135 @@ class WarehouseInMemoryStore {
 
   updateAlert(id, patch) {
     return Promise.resolve(this._update(this.alerts, id, patch));
+  }
+
+  // ---------------------------------------------------------------------------
+  // Locations, conditions, reconciliations and staff assignments
+  // ---------------------------------------------------------------------------
+
+  listLocations(filters) {
+    return Promise.resolve(
+      [...this.locations.values()]
+        .filter((record) => matches(record, filters))
+        .sort((a, b) => b.created_at.getTime() - a.created_at.getTime())
+        .map(clone),
+    );
+  }
+
+  findLocation(id) {
+    return Promise.resolve(clone(this.locations.get(id) || null));
+  }
+
+  createLocation(input) {
+    const duplicate = [...this.locations.values()].find(
+      (row) => row.warehouse_id === input.warehouse_id && row.code === input.code,
+    );
+    if (duplicate) {
+      throw new ConflictError({ message: 'Location code is already in use in this warehouse.' });
+    }
+    return Promise.resolve(this._insert(this.locations, input));
+  }
+
+  updateLocation(id, patch) {
+    const current = this.locations.get(id);
+    if (current) {
+      const warehouseId = patch.warehouse_id ?? current.warehouse_id;
+      const code = patch.code ?? current.code;
+      const duplicate = [...this.locations.values()].find(
+        (row) => row.id !== id && row.warehouse_id === warehouseId && row.code === code,
+      );
+      if (duplicate) {
+        throw new ConflictError({ message: 'Location code is already in use in this warehouse.' });
+      }
+    }
+    return Promise.resolve(this._update(this.locations, id, patch));
+  }
+
+  listConditions(filters) {
+    return Promise.resolve(
+      [...this.conditions.values()]
+        .filter((record) => matches(record, filters))
+        .sort((a, b) => b.created_at.getTime() - a.created_at.getTime())
+        .map(clone),
+    );
+  }
+
+  createCondition(input) {
+    return Promise.resolve(this._insert(this.conditions, input));
+  }
+
+  listReconciliations(filters) {
+    return Promise.resolve(
+      [...this.reconciliations.values()]
+        .filter((record) => matches(record, filters))
+        .sort((a, b) => b.created_at.getTime() - a.created_at.getTime())
+        .map(clone),
+    );
+  }
+
+  findReconciliation(id) {
+    return Promise.resolve(clone(this.reconciliations.get(id) || null));
+  }
+
+  createReconciliation(input) {
+    if (input.reference_key) {
+      const duplicate = [...this.reconciliations.values()].find(
+        (row) => row.reference_key === input.reference_key,
+      );
+      if (duplicate) {
+        throw new ConflictError({ message: 'Reconciliation reference key is already in use.' });
+      }
+    }
+    return Promise.resolve(this._insert(this.reconciliations, input));
+  }
+
+  updateReconciliation(id, patch) {
+    return Promise.resolve(this._update(this.reconciliations, id, patch));
+  }
+
+  listStaff(filters) {
+    return Promise.resolve(
+      [...this.staffAssignments.values()]
+        .filter((record) => matches(record, filters))
+        .sort((a, b) => b.created_at.getTime() - a.created_at.getTime())
+        .map(clone),
+    );
+  }
+
+  findStaff(id) {
+    return Promise.resolve(clone(this.staffAssignments.get(id) || null));
+  }
+
+  createStaff(input) {
+    const duplicate = [...this.staffAssignments.values()].find(
+      (row) =>
+        row.warehouse_id === input.warehouse_id &&
+        row.user_id === input.user_id &&
+        row.role_code === input.role_code,
+    );
+    if (duplicate) {
+      throw new ConflictError({ message: 'Staff assignment already exists for this warehouse.' });
+    }
+    return Promise.resolve(this._insert(this.staffAssignments, input));
+  }
+
+  updateStaff(id, patch) {
+    const current = this.staffAssignments.get(id);
+    if (current && patch.role_code !== undefined) {
+      const duplicate = [...this.staffAssignments.values()].find(
+        (row) =>
+          row.id !== id &&
+          row.warehouse_id === current.warehouse_id &&
+          row.user_id === current.user_id &&
+          row.role_code === patch.role_code,
+      );
+      if (duplicate) {
+        throw new ConflictError({
+          message: 'Staff assignment already exists for this warehouse.',
+        });
+      }
+    }
+    return Promise.resolve(this._update(this.staffAssignments, id, patch));
   }
 }
 

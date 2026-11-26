@@ -42,6 +42,18 @@ const PaymentProviderRegistryToken = Symbol.for('cropsy.platform.paymentProvider
 // expectations only, not account or balance mutation capabilities.
 const LedgerPostingPortToken = Symbol.for('cropsy.platform.ledgerPosting');
 
+// Read-only order lookup used by logistics and traceability. It exposes only
+// delivery-relevant fulfillment facts and never order mutation capabilities.
+const OrderAccessPortToken = Symbol.for('cropsy.platform.orderAccess');
+
+// Read-only composition ports for linking quality, warehouse, and logistics
+// facts into auditable traceability timelines. They deliberately expose no
+// mutation operations.
+const QualityAccessPortToken = Symbol.for('cropsy.platform.qualityAccess');
+const WarehouseOperationPortToken = Symbol.for('cropsy.platform.warehouseOperation');
+const LogisticsAccessPortToken = Symbol.for('cropsy.platform.logisticsAccess');
+const TraceabilityBatchPortToken = Symbol.for('cropsy.platform.traceabilityBatch');
+
 module.exports = {
   ConfigToken,
   LoggerToken,
@@ -57,4 +69,9 @@ module.exports = {
   MarketplaceListingStockToken,
   PaymentProviderRegistryToken,
   LedgerPostingPortToken,
+  OrderAccessPortToken,
+  QualityAccessPortToken,
+  WarehouseOperationPortToken,
+  LogisticsAccessPortToken,
+  TraceabilityBatchPortToken,
 };

@@ -7,8 +7,9 @@ is declared in `apps/api/src/modules/registry.js` and implemented through the sh
 event bus or narrow read-only DI ports, never through another module's service class.
 
 The scaffolding establishes boundaries and service seams; IAM authentication/RBAC and the
-organization/user profile, catalog, marketplace, cart/order, provider-adapter payment, and
-immutable double-entry ledger workflows are implemented inside those boundaries. Commission
+organization/user profile, catalog, marketplace, cart/order, provider-adapter payment,
+immutable double-entry ledger, logistics, expanded warehouse, quality inspection, and
+farm-to-buyer traceability workflows are implemented inside those boundaries. Commission
 rates, refund policies, settlement periods, and payment provider credentials remain
 caller-supplied or deployment configuration rather than seeded policy.
 
@@ -45,10 +46,10 @@ boundary.
 | `orders` | `/orders` | Orders | `marketplace`, `buyers`, `catalog` | `orders.initialized`, `orders.cart.item-added`, `orders.cart.item-updated`, `orders.cart.item-removed`, `orders.checkout.created`, `orders.order.placed`, `orders.order.status-changed`, `orders.order.cancelled`, `orders.receipt.generated` | — |
 | `payments` | `/payments` | Payments | `orders`, `organizations`, `ledger` | `payments.initialized`, `payments.payment.initiated`, `payments.payment.failed`, `payments.payment.captured`, `payments.webhook.received`, `payments.refund.processed` | — |
 | `ledger` | `/ledger` | Financial Ledger | `orders`, `organizations` | `ledger.initialized`, `ledger.journal.posted`, `ledger.reconciliation.expected`, `ledger.settlement.recorded`, `ledger.adjustment.posted` | — |
-| `logistics` | `/logistics` | Logistics | `orders`, `organizations`, `warehouse` | `logistics.initialized`, `logistics.shipment.created` | — |
-| `warehouse` | `/warehouse` | Warehouse | `organizations`, `catalog`, `iam` | `warehouse.initialized`, `warehouse.warehouse.created`, `warehouse.warehouse.updated`, `warehouse.stock.registered`, `warehouse.stock.updated`, `warehouse.stock.adjusted`, `warehouse.stock.damaged`, `warehouse.stock.expired`, `warehouse.stock.deducted`, `warehouse.stock.reserved`, `warehouse.reservation.released`, `warehouse.reservation.deducted`, `warehouse.alert.acknowledged`, `warehouse.alert.resolved` | — |
-| `quality` | `/quality` | Quality Inspection | `organizations`, `catalog`, `farmers` | `quality.initialized`, `quality.inspection.completed` | — |
-| `traceability` | `/traceability` | Traceability | `agriculture`, `quality`, `logistics`, `warehouse` | `traceability.initialized`, `traceability.record.updated` | — |
+| `logistics` | `/logistics` | Logistics | `orders`, `organizations`, `warehouse` | `logistics.initialized`, `logistics.provider.registered`, `logistics.delivery_service.created`, `logistics.shipment.created`, `logistics.pickup.scheduled`, `logistics.delivery.assigned`, `logistics.shipment.status_updated`, `logistics.delivery.proof_recorded`, `logistics.delivery.failed`, `logistics.delivery.confirmed` | — |
+| `warehouse` | `/warehouse` | Warehouse | `organizations`, `catalog`, `iam` | `warehouse.initialized`, `warehouse.warehouse.created`, `warehouse.warehouse.updated`, `warehouse.stock.registered`, `warehouse.stock.updated`, `warehouse.stock.adjusted`, `warehouse.stock.damaged`, `warehouse.stock.expired`, `warehouse.stock.deducted`, `warehouse.stock.reserved`, `warehouse.reservation.released`, `warehouse.reservation.deducted`, `warehouse.alert.acknowledged`, `warehouse.alert.resolved`, `warehouse.location.created`, `warehouse.location.updated`, `warehouse.receipt.recorded`, `warehouse.stock.allocated`, `warehouse.stock.transferred`, `warehouse.stock.dispatched`, `warehouse.condition.recorded`, `warehouse.reconciliation.created`, `warehouse.reconciliation.approved`, `warehouse.staff.assigned`, `warehouse.staff.updated` | — |
+| `quality` | `/quality` | Quality Inspection | `organizations`, `catalog`, `farmers` | `quality.initialized`, `quality.inspection.created`, `quality.inspection.updated`, `quality.inspection.graded`, `quality.inspection.verified`, `quality.inspection.rejected`, `quality.evidence.added`, `quality.evidence.image_attached` | — |
+| `traceability` | `/traceability` | Traceability | `agriculture`, `quality`, `logistics`, `warehouse` | `traceability.initialized`, `traceability.batch.created`, `traceability.batch.updated`, `traceability.event.created`, `traceability.batch.verified`, `traceability.batch.rejected`, `traceability.batch.qr_generated` | — |
 | `intelligence` | `/intelligence` | Agricultural Intelligence | `agriculture`, `traceability`, `orders` | `intelligence.initialized`, `intelligence.forecast.generated` | — |
 | `knowledge` | `/knowledge` | Knowledge Management | `agriculture`, `intelligence`, `organizations` | `knowledge.initialized`, `knowledge.article.published` | — |
 | `notifications` | `/notifications` | Notifications | `users`, `iam` | `notifications.initialized`, `notifications.queued` | `*` |
@@ -108,7 +109,14 @@ read-only `CatalogAccessPortToken`; marketplace consumes it through DI to valida
 category, unit, and quality-grade references and to build public listing DTOs. The port returns
 copies of available catalog records only, so marketplace cannot mutate catalog data through it.
 The `warehouse` module publishes a read-only `WarehouseAccessPortToken`; farmers consumes it only
-to validate cooperative stock references, and it exposes no reservation or mutation methods.
+to validate cooperative stock references, and it exposes no reservation or mutation methods. It
+also publishes `WarehouseOperationPortToken`, a read-only facts adapter with warehouse,
+inventory, movement, condition, reconciliation, and location data for auditable traceability
+timelines. The `orders` module publishes `OrderAccessPortToken` so logistics can validate an
+order reference; logistics publishes `LogisticsAccessPortToken` for read-only shipment facts;
+quality publishes `QualityAccessPortToken` for inspection facts with private evidence filtered;
+and traceability publishes `TraceabilityBatchPortToken` for verified public facts or private
+batch facts. All of these ports are read-only and carry no mutation capability.
 The `marketplace` module publishes a read-only `MarketplaceAccessPortToken` for current listing
 price, seller, and availability reads, plus a narrow `MarketplaceListingStockToken` that only
 decrements and restores listing availability. Orders consumes both through DI, so it cannot
@@ -119,9 +127,11 @@ changing accounts, or editing posted entries. The `payments` module publishes
 `PaymentProviderRegistryToken`, whose provider adapters are supplied by deployment
 configuration or DI; no provider SDK is imported from another module. The shared `ConfigToken`
 supplies `FARM_STORE`, `AGRICULTURE_STORE`, `CATALOG_STORE`, `MARKETPLACE_STORE`,
-`WAREHOUSE_STORE`, `ORDERS_STORE`, `PAYMENTS_STORE`, and `LEDGER_STORE`; each module registers its
-own store token and defaults to `memory` for development/tests while production requires
-`prisma`. Provider metadata comes from `PAYMENT_PROVIDER_MODE` and `PAYMENT_PROVIDERS_JSON`, and
+`WAREHOUSE_STORE`, `ORDERS_STORE`, `PAYMENTS_STORE`, `LEDGER_STORE`, `LOGISTICS_STORE`,
+`QUALITY_STORE`, and `TRACEABILITY_STORE`; each module registers its own store token and
+defaults to `memory` for development/tests while production requires `prisma`. Traceability QR
+URLs use `WEB_PUBLIC_URL` (default `http://localhost:3000`). Provider metadata comes from
+`PAYMENT_PROVIDER_MODE` and `PAYMENT_PROVIDERS_JSON`, and
 chart-of-account structure can be overridden with `LEDGER_ACCOUNTS_JSON`. Cart items, one parent checkout (`purchase_groups`), and
 seller-specific fulfillment orders are methods and stores inside the existing `orders` module;
 status transitions use a domain state machine, history is append-only, and a JSON receipt is
@@ -134,11 +144,18 @@ map, spatial, and Bangladesh geo workflows stay inside the existing 20-module `f
 boundary. Crop catalog, calendars, cultivations, activities, harvests, expenses, and reports stay
 inside the existing `agriculture` boundary. Product taxonomy, flexible attributes, varieties, and
 images stay inside `catalog`; listings, discovery, favorites, reports, and platform messages stay
-inside `marketplace`. Warehouse CRUD, stock, movements, reservations, alerts, and audit integration
-stay inside `warehouse`. Cooperative groups, memberships, campaigns, contributions, purchase
-requests, allocations, and earnings stay inside `farmers`; their methods are composed into
-`FarmersService` so the module keeps one service token. No 21st module or direct cross-module
-source import was added.
+inside `marketplace`. Warehouse CRUD, stock, movements, reservations, alerts, locations, capacity, receipts,
+allocations, transfers, dispatch, storage conditions, reconciliations, staff assignments,
+reports, and audit integration stay inside `warehouse`. Logistics providers, services,
+shipments, deliveries, proofs, tracking history, dashboards, and audits stay inside
+`logistics`; tracking uses recorded events and never simulates a live GPS feed. Inspections,
+evidence/images, grading, verification, rejection, and quality audits stay inside `quality`.
+Traceability batches, events, timelines, verification tokens, QR output, public verification,
+and audits stay inside `traceability`; public verification exposes only verified public facts
+and never presents unverified claims as certified. Cooperative groups, memberships, campaigns,
+contributions, purchase requests, allocations, and earnings stay inside `farmers`; their
+methods are composed into `FarmersService` so the module keeps one service token. No 21st
+module or direct cross-module source import was added.
 
 ## HTTP surface
 
@@ -155,9 +172,10 @@ All routes are mounted under `API_PREFIX` (default `/api/v1`).
 | `GET /<module-path>/info` | Validated module DTO from the DI-resolved service |
 | `GET /<module-path>/info/:moduleId` | Same DTO with validated module id matching |
 
-All non-public routes are default-deny. The `info` endpoints are the only module routes in the
-public allowlist; authenticated organization, user, farm, cooperative, agriculture, catalog,
-marketplace, orders, warehouse, payment, and ledger routes are documented in
+All non-public routes are default-deny. The `info` endpoints and the single narrow public
+`GET /traceability/verify/:token` route are the only module routes in the public allowlist;
+authenticated organization, user, farm, cooperative, agriculture, catalog, marketplace, orders,
+warehouse, logistics, quality, traceability, payment, and ledger routes are documented in
 [`../api/README.md`](../api/README.md). Provider callbacks remain authenticated and signature-verified;
 they are never added to the public allowlist. Farm
 coordinate reads enforce an additional private-data policy beyond the `farms.read` permission.

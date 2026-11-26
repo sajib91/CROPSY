@@ -155,16 +155,20 @@ class WarehousePrismaStore {
             },
           }),
         );
-        await this._applyMovementRow(tx, {
-          inventoryId: inventory.id,
-          movementType: 'REGISTER',
-          mode: 'ON_HAND_DELTA',
-          delta: Number(input.quantity_on_hand),
-          unitCode: input.unit_code,
-          reason: input.reason || null,
-          referenceKey: input.reference_key || `register:${inventory.id}:movement`,
-          actorUserId: input.actor_user_id || null,
-        });
+        // A zero opening balance only creates the inventory record; the caller
+        // posts the actual stock movement (for example RECEIPT or TRANSFER_IN).
+        if (Number(input.quantity_on_hand) > 0) {
+          await this._applyMovementRow(tx, {
+            inventoryId: inventory.id,
+            movementType: 'REGISTER',
+            mode: 'ON_HAND_DELTA',
+            delta: Number(input.quantity_on_hand),
+            unitCode: input.unit_code,
+            reason: input.reason || null,
+            referenceKey: input.reference_key || `register:${inventory.id}:movement`,
+            actorUserId: input.actor_user_id || null,
+          });
+        }
         return normalize(await tx.warehouseInventory.findUnique({ where: { id: inventory.id } }));
       });
     } catch (error) {
@@ -291,6 +295,82 @@ class WarehousePrismaStore {
 
   updateAlert(id, patch) {
     return this._update(this.prisma.inventoryAlert, id, patch);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Locations, conditions, reconciliations and staff assignments
+  // ---------------------------------------------------------------------------
+
+  listLocations(filters) {
+    return this._list(this.prisma.warehouseLocation, filters);
+  }
+
+  findLocation(id) {
+    return this._find(this.prisma.warehouseLocation, id);
+  }
+
+  async createLocation(input) {
+    try {
+      return normalize(await this.prisma.warehouseLocation.create({ data: input }));
+    } catch (error) {
+      throw translateError(error);
+    }
+  }
+
+  updateLocation(id, patch) {
+    return this._update(this.prisma.warehouseLocation, id, patch);
+  }
+
+  listConditions(filters) {
+    return this._list(this.prisma.storageConditionRecord, filters);
+  }
+
+  async createCondition(input) {
+    try {
+      return normalize(await this.prisma.storageConditionRecord.create({ data: input }));
+    } catch (error) {
+      throw translateError(error);
+    }
+  }
+
+  listReconciliations(filters) {
+    return this._list(this.prisma.inventoryReconciliation, filters);
+  }
+
+  findReconciliation(id) {
+    return this._find(this.prisma.inventoryReconciliation, id);
+  }
+
+  async createReconciliation(input) {
+    try {
+      return normalize(await this.prisma.inventoryReconciliation.create({ data: input }));
+    } catch (error) {
+      throw translateError(error);
+    }
+  }
+
+  updateReconciliation(id, patch) {
+    return this._update(this.prisma.inventoryReconciliation, id, patch);
+  }
+
+  listStaff(filters) {
+    return this._list(this.prisma.warehouseStaffAssignment, filters);
+  }
+
+  findStaff(id) {
+    return this._find(this.prisma.warehouseStaffAssignment, id);
+  }
+
+  async createStaff(input) {
+    try {
+      return normalize(await this.prisma.warehouseStaffAssignment.create({ data: input }));
+    } catch (error) {
+      throw translateError(error);
+    }
+  }
+
+  updateStaff(id, patch) {
+    return this._update(this.prisma.warehouseStaffAssignment, id, patch);
   }
 }
 

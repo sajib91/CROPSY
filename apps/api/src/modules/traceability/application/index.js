@@ -1,9 +1,9 @@
-const { TraceabilityService, TraceabilityServiceToken } = require('./traceability.service');
-const { moduleInfoSchema, toModuleInfoDto } = require('./traceability.dto');
+const { EVENTS, TraceabilityService, TraceabilityServiceToken } = require('./traceability.service');
+const dto = require('./traceability.dto');
 
 module.exports = {
   TraceabilityService,
   TraceabilityServiceToken,
-  moduleInfoSchema,
-  toModuleInfoDto,
+  EVENTS,
+  ...dto,
 };

@@ -1,6 +1,6 @@
 # Database design
 
-This document describes the CROPSY PostgreSQL database. Sources of truth are [`schema.prisma`](../../apps/api/prisma/schema.prisma), the [initial migration](../../apps/api/prisma/migrations/20261125000000_init/migration.sql), the [review-hardening migration](../../apps/api/prisma/migrations/20261125120000_review_hardening/migration.sql), the [auth-identity migration](../../apps/api/prisma/migrations/20261125130000_auth_identity/migration.sql), the [organization/profile migration](../../apps/api/prisma/migrations/20261125140000_organization_profile_management/migration.sql), the [farm-management migration](../../apps/api/prisma/migrations/20261125150000_farm_management/migration.sql), the [crop/cultivation/expense migration](../../apps/api/prisma/migrations/20261125160000_crop_cultivation_expense_management/migration.sql), the [catalog/marketplace migration](../../apps/api/prisma/migrations/20261125170000_catalog_marketplace/migration.sql), the [inventory/cooperative migration](../../apps/api/prisma/migrations/20261125180000_inventory_cooperative/migration.sql), the [cart/order management migration](../../apps/api/prisma/migrations/20261126000000_cart_order_management/migration.sql), the [payment/ledger infrastructure migration](../../apps/api/prisma/migrations/20261126010000_payment_ledger_infrastructure/migration.sql), and the [idempotent seed](../../apps/api/prisma/seed.js). The root baseline documents `RTB.md`, `SSD.md`, and `user-story.md` remain unchanged.
+This document describes the CROPSY PostgreSQL database. Sources of truth are [`schema.prisma`](../../apps/api/prisma/schema.prisma), the [initial migration](../../apps/api/prisma/migrations/20261125000000_init/migration.sql), the [review-hardening migration](../../apps/api/prisma/migrations/20261125120000_review_hardening/migration.sql), the [auth-identity migration](../../apps/api/prisma/migrations/20261125130000_auth_identity/migration.sql), the [organization/profile migration](../../apps/api/prisma/migrations/20261125140000_organization_profile_management/migration.sql), the [farm-management migration](../../apps/api/prisma/migrations/20261125150000_farm_management/migration.sql), the [crop/cultivation/expense migration](../../apps/api/prisma/migrations/20261125160000_crop_cultivation_expense_management/migration.sql), the [catalog/marketplace migration](../../apps/api/prisma/migrations/20261125170000_catalog_marketplace/migration.sql), the [inventory/cooperative migration](../../apps/api/prisma/migrations/20261125180000_inventory_cooperative/migration.sql), the [cart/order management migration](../../apps/api/prisma/migrations/20261126000000_cart_order_management/migration.sql), the [payment/ledger infrastructure migration](../../apps/api/prisma/migrations/20261126010000_payment_ledger_infrastructure/migration.sql), the [logistics/warehouse/quality/traceability migration](../../apps/api/prisma/migrations/20261126020000_logistics_warehouse_quality_traceability/migration.sql), and the [idempotent seed](../../apps/api/prisma/seed.js). The root baseline documents `RTB.md`, `SSD.md`, and `user-story.md` remain unchanged.
 
 ## Technology choices
 
@@ -67,7 +67,7 @@ PostgreSQL enum types are generated from Prisma enums. Representative groups:
 | Catalog | `AttributeValueType`, `CatalogEntityType` |
 | Marketplace | `ListingStatus`, `PriceSource`, `ListingReportReason`, `ListingReportStatus` |
 | Commerce | `CartStatus`, `CheckoutStatus`, `OrderStatus`, `PaymentMethod`, `PaymentStatus`, `RefundStatus`, `RefundReason`, `TransactionType`, `TransactionDirection`, `TransactionStatus`, `LedgerAccountType`, `NormalBalance`, `CommissionBasis`, `CommissionStatus`, `SettlementStatus` |
-| Logistics | `ShipmentStatus`, `DeliveryStatus`, `WarehouseStatus`, `InspectionResult`, `TraceabilityEventType` |
+| Logistics | `ShipmentStatus`, `DeliveryStatus`, `WarehouseStatus`, `InspectionResult`, `TraceabilityEventType`, `DeliveryPhase`, `DeliveryServiceType`, `ShipmentEventSource`, `WarehouseLocationStatus`, `StorageConditionStatus`, `ReconciliationStatus`, `TraceabilityBatchStatus`, `InspectionEvidenceType` |
 | AI | `KnowledgeSourceType`, `DocumentStatus`, `LanguageCode`, `ChatRole`, `RecommendationType`, `RecommendationStatus`, `AgentStatus` |
 | SaaS | `BillingInterval`, `SubscriptionStatus`, `InvoiceStatus` |
 | System | `NotificationChannel`, `NotificationStatus`, `AuditSeverity`, `OutboxStatus` |
@@ -433,11 +433,58 @@ local tests. Provider adapters are configured outside the database through
 `PAYMENT_PROVIDER_MODE`/`PAYMENT_PROVIDERS_JSON`, and structural chart-of-account overrides come
 from `LEDGER_ACCOUNTS_JSON`.
 
+## Logistics, warehouse, quality, and traceability follow-up
+
+The follow-up migration `20261126020000_logistics_warehouse_quality_traceability` adds operational
+records without introducing a 21st module, a new permission, or any seeded business policy. Earlier
+migrations remain immutable; Prisma generates the table/column/index/foreign-key DDL while the
+existing raw-SQL constraints and triggers continue to protect the inventory/ledger/audit history.
+
+- **Logistics:** `shipments` gains a mandatory unique `reference_key` (existing rows receive a
+  deterministic `shipment:<id>` value before the column is constrained), provider/service/assignee
+  references, recorded pickup/destination coordinates, planned distance, and notes.
+  `deliveries` gains pickup/delivery `phase`, recorded coordinates, proof hash, failure reason,
+  next-attempt time, and buyer confirmation metadata. `logistics_providers` gains tenant/owner
+  references, recorded longitude/latitude, service radius, and `service_types`. New tables
+  `delivery_services`, `shipment_routes`, `shipment_events`, and `delivery_audit_events` store
+  service definitions, recorded routes, status events, and audit context (`before`/`after`, actor,
+  request id, IP, user agent). No live GPS feed is simulated; all coordinates are recorded values.
+- **Expanded warehouse:** `warehouse_inventories` gains an optional `location_id`. New
+  `warehouse_locations`, `warehouse_staff_assignments`, `storage_condition_records`, and
+  `inventory_reconciliations` tables hold locations, staff assignments, condition readings, and
+  counted/system differences. Reconciliation is unique by `reference_key`, and approval is recorded
+  explicitly; receipts, transfers, dispatch, and approval write through the existing append-only
+  `inventory_movements` history. `InventoryMovementType` gains `RECEIPT`, `TRANSFER_IN`,
+  `TRANSFER_OUT`, and `DISPATCH`. Fixture cleanup must retain immutable movement rows and their
+  inventory/parent records because the existing append-only trigger also rejects the implicit
+  `ON DELETE SET NULL` update.
+- **Quality:** `quality_inspections` gains `batch_code`, caller-supplied `grade_code`/`grade_source`,
+  and conservative `verification_status` (`UNVERIFIED` by default), verifier, and timestamp.
+  `inspection_evidence` stores caller-supplied URI/checksum/MIME metadata with
+  `public_disclosure` defaulting to `false`; `quality_audit_events` stores inspection action
+  history. Creating or grading an inspection does not certify it.
+- **Traceability:** the baseline `traceability_records` spatial event log remains. New
+  `traceability_batches` carry a unique `verification_token`, unique
+  `(organization_id, batch_code)`, disclosure/verification state, participant references, and QR
+  payload. `traceability_events` form the chain of custody with event type, title, description,
+  location description, recorded coordinates, source module/record, disclosure, verification, and
+  metadata; the `(public_disclosure, verification_status)` index supports conservative public
+  queries. `traceability_audit_events` records verification and QR actions. Public verification is
+  derived from a verified, publicly disclosed batch plus verified, publicly disclosed events;
+  unverified claims are never presented as certified. `TraceabilityEventType` gains `FARM_ORIGIN`,
+  `CULTIVATION`, `WAREHOUSE_ENTRY`, `STORAGE_HISTORY`, `BUYER_CONFIRMED`, and `SELLER`.
+
+`LOGISTICS_STORE`, `QUALITY_STORE`, and `TRACEABILITY_STORE` select the corresponding modules'
+persistence adapters: `memory` is the local/test default and production requires `prisma`. Traceability
+QR URLs use `WEB_PUBLIC_URL` (default `http://localhost:3000`) plus `/verify/<token>`; no external QR
+service or provider credential is introduced.
+
 ## PostGIS geometry and nearby listings
 
 Geometry columns are `Unsupported("geometry(...)")` in Prisma and are created by the migration:
 
 - `Point, 4326`: `organization_addresses.location`, `user_addresses.location`, `farm_locations.location`, `listing_locations.location`, `warehouses.location`, `traceability_records.location`.
+- Logistics: `logistics_providers.longitude`/`latitude`, `deliveries.longitude`/`latitude`, `shipments.pickup_*`/`destination_*`, `shipment_events.longitude`/`latitude`, and `traceability_events.longitude`/`latitude` are recorded `DECIMAL(10,7)` columns. Nearby-provider queries build WGS84 points with `ST_MakePoint(longitude, latitude)` and cast to `geography`; no geometry column is written for a simulated live location.
 - `Polygon, 4326`: `farm_locations.boundary`, `land_parcels.boundary`.
 
 Each non-null geometry column has a partial GiST index (`*_gix`) in the migration. Queries use raw SQL because Prisma Client cannot filter or return `Unsupported` geometry fields. Cast to `geography` so `ST_DWithin` distances are in meters:
@@ -467,7 +514,7 @@ const nearby = await prisma.$queryRaw`
 `;
 ```
 
-`ST_MakePoint` takes **longitude first, latitude second**; SRID 4326 is WGS84. Writes to geometry columns also require raw SQL (or a separate migration), not Prisma Client. Marketplace proximity queries add caller-visible listing ids and statuses to the same primitive and return only a `distance_meters` summary; the service never serializes stored coordinates into public DTOs.
+`ST_MakePoint` takes **longitude first, latitude second**; SRID 4326 is WGS84. Writes to geometry columns also require raw SQL (or a separate migration), not Prisma Client. Marketplace proximity queries add caller-visible listing ids and statuses to the same primitive and return only a `distance_meters` summary; the service never serializes stored coordinates into public DTOs. Logistics nearby-provider discovery uses the same `geography`-cast `ST_DWithin`/`ST_Distance` pattern over decimal provider coordinates, ordering by meters and returning only recorded provider facts. Traceability event coordinates are private/internal metadata and are excluded from public verification output.
 
 Farm map and spatial queries use the same raw geometry access inside the
 `farmers` module: bounding boxes use `ST_MakeEnvelope`, radius searches cast to
@@ -506,7 +553,7 @@ These values remain configurable via `PlatformSetting` (`key` + `scope_key`), th
 
 ## Database tests
 
-[`apps/api/test/database/integrity.test.js`](../../apps/api/test/database/integrity.test.js), [`apps/api/test/database/farms.test.js`](../../apps/api/test/database/farms.test.js), [`apps/api/test/database/agriculture.test.js`](../../apps/api/test/database/agriculture.test.js), [`apps/api/test/database/catalog-marketplace.test.js`](../../apps/api/test/database/catalog-marketplace.test.js), [`apps/api/test/database/orders.test.js`](../../apps/api/test/database/orders.test.js), [`apps/api/test/database/payments.test.js`](../../apps/api/test/database/payments.test.js), and [`apps/api/test/database/ledger.test.js`](../../apps/api/test/database/ledger.test.js) run only when `DATABASE_URL` is set. [`scripts/test-database.sh`](../../scripts/test-database.sh), exposed as `npm run db:test`, provides a complete self-contained check: it starts a temporary PostgreSQL 17 + PostGIS 3.5 container, validates and generates Prisma Client, deploys all migrations, checks for drift, runs the seed twice, then executes the tests. `CROPSY_RUN_DB_TESTS=1 npm run verify` includes this containerized run.
+[`apps/api/test/database/integrity.test.js`](../../apps/api/test/database/integrity.test.js), [`apps/api/test/database/farms.test.js`](../../apps/api/test/database/farms.test.js), [`apps/api/test/database/agriculture.test.js`](../../apps/api/test/database/agriculture.test.js), [`apps/api/test/database/catalog-marketplace.test.js`](../../apps/api/test/database/catalog-marketplace.test.js), [`apps/api/test/database/orders.test.js`](../../apps/api/test/database/orders.test.js), [`apps/api/test/database/payments.test.js`](../../apps/api/test/database/payments.test.js), [`apps/api/test/database/ledger.test.js`](../../apps/api/test/database/ledger.test.js), and [`apps/api/test/database/logistics-warehouse-quality-traceability.test.js`](../../apps/api/test/database/logistics-warehouse-quality-traceability.test.js) run only when `DATABASE_URL` is set. [`scripts/test-database.sh`](../../scripts/test-database.sh), exposed as `npm run db:test`, provides a complete self-contained check: it starts a temporary PostgreSQL 17 + PostGIS 3.5 container, validates and generates Prisma Client, deploys all migrations, checks for drift, runs the seed twice, then executes the tests. `CROPSY_RUN_DB_TESTS=1 npm run verify` includes this containerized run.
 
 Covered cases:
 
@@ -544,7 +591,12 @@ Covered cases:
 | Payment amount/idempotency guards | captured/refunded bounds, duplicate payment id/reference/idempotency keys, append-only status history, and webhook event uniqueness/tenant match |
 | Journal balance and immutability | unbalanced commits rejected by deferred trigger, duplicate journal keys rejected, positive line amounts, and update/delete of posted journals/lines/audits rejected |
 | Settlement/reconciliation guards | settlement net/period checks, unique settlement and expectation keys, and cross-tenant financial references rejected |
-| Migration and seed state | ten applied migrations, no drift, cart/order/payment/ledger objects, and stable 22/50/479/13 counts |
+| Logistics PostGIS proximity | `ST_DWithin`/`ST_Distance` geography casts include a nearby provider and exclude a far provider |
+| Operational unique keys | duplicate shipment `reference_key`, traceability `verification_token`, and reconciliation `reference_key` are rejected |
+| Conservative verification defaults | inspection verification starts `UNVERIFIED`, grade source defaults to `INSPECTOR`, and evidence disclosure defaults to `false` |
+| Verified public traceability facts | a verified public batch returns only verified, publicly disclosed events |
+| Operational history | `RECEIPT` movement quantity/reference and reconciliation counted/system difference are preserved |
+| Migration and seed state | eleven applied migrations, no drift, logistics/warehouse/quality/traceability objects, and stable 22/50/479/13 counts |
 
 ## Validation performed
 
@@ -553,11 +605,12 @@ The final review run completed the following checks:
 1. `prisma format` — schema formatted successfully.
 2. `prisma validate` — schema valid.
 3. `prisma generate` — Prisma Client generated successfully.
-4. `prisma migrate deploy` on a fresh temporary PostgreSQL 17 + PostGIS 3.5 instance — all ten migrations applied, including indexes, functions, triggers, validated checks, nullable email, the new OTP purpose, organization/profile tables, farm soil/irrigation tables, area/soil/irrigation checks, farm geometry/tenant guards, crop calendars, recommendations, expense guards, catalog attribute types, marketplace constraints, catalog/marketplace tenant guards, warehouse movement/settlement functions, append-only movement triggers, low-stock alert uniqueness, cooperative tables, parent checkouts, seller fulfillments, append-only status history, atomic listing availability helpers, payment history/callbacks, immutable journals, bucket balances, reconciliation expectations, and database financial invariants.
+4. `prisma migrate deploy` on a fresh temporary PostgreSQL 17 + PostGIS 3.5 instance — all eleven migrations applied, including indexes, functions, triggers, validated checks, nullable email, the new OTP purpose, organization/profile tables, farm soil/irrigation tables, area/soil/irrigation checks, farm geometry/tenant guards, crop calendars, recommendations, expense guards, catalog attribute types, marketplace constraints, catalog/marketplace tenant guards, warehouse movement/settlement functions, append-only movement triggers, low-stock alert uniqueness, cooperative tables, parent checkouts, seller fulfillments, append-only status history, atomic listing availability helpers, payment history/callbacks, immutable journals, bucket balances, reconciliation expectations, database financial invariants, logistics providers/services/shipments/deliveries/audits, warehouse locations/staff/conditions/reconciliations, quality inspections/evidence/audits, and traceability batches/events/audits.
 5. `prisma migrate diff --from-migrations --to-schema-datamodel` — empty diff; no drift between migrations and schema.
 6. Idempotent seed run twice — stable counts: 1 country, 8 divisions, 64 districts, 64 upazilas, 64 unions, 22 roles (12 canonical + 10 aliases), 50 permissions, 479 assignments, 13 product categories, 10 ledger accounts, and 2 platform settings.
-7. `npm run db:test` — 40/40 database tests passed (13 integrity/concurrency, 6 farm/PostGIS, 5 agriculture persistence/guards, 5 catalog/marketplace persistence/guards, 4 cart/order invariants, 4 ledger invariants, and 3 payment invariants).
-8. `npm run verify` — boundary check, lint, format check, builds, API/AI tests, optional database tests, and live health checks passed.
+7. `npm run db:test` — 45/45 database tests passed (13 integrity/concurrency, 6 farm/PostGIS, 5 agriculture persistence/guards, 5 catalog/marketplace persistence/guards, 4 cart/order invariants, 4 ledger invariants, 3 payment invariants, and 5 logistics/warehouse/quality/traceability invariants).
+8. `npm run test -w @cropsy/api` — 71/71 API tests passed, including default-deny, tenant scoping, conservative public verification, PostGIS-backed nearby discovery, append-only history behavior, and QR output.
+9. `CROPSY_RUN_DB_TESTS=1 npm run verify` — boundary check, lint, format check, builds, API/AI tests, containerized database tests, and live health checks passed.
 
 ## Operational notes
 
@@ -570,8 +623,12 @@ The final review run completed the following checks:
 - `ORDERS_STORE` selects the orders module's persistence adapter. `memory` is the local/test default; production requires `ORDERS_STORE=prisma` so carts, parent checkouts, seller fulfillments, status history, and listing stock changes use the transactional tables and SQL functions described here.
 - `PAYMENTS_STORE` selects the payments module's persistence adapter. `memory` is the local/test default; production requires `PAYMENTS_STORE=prisma`, `PAYMENT_PROVIDER_MODE=configured`, and configured providers with codes, methods, and webhook secrets. No real provider credentials are committed, and the mock adapter is accepted only in automated tests.
 - `LEDGER_STORE` selects the ledger module's persistence adapter. `memory` is the local/test default; production requires `LEDGER_STORE=prisma`. `LEDGER_ACCOUNTS_JSON` may override structural accounts, but commission rates, refund policies, and settlement periods remain caller-supplied policy snapshots or external rule keys.
+- `LOGISTICS_STORE` selects the logistics module's persistence adapter. `memory` is the local/test default; production requires `LOGISTICS_STORE=prisma` so providers/services/shipments/deliveries/audits and nearby PostGIS queries use these tables.
+- `QUALITY_STORE` selects the quality module's persistence adapter. `memory` is the local/test default; production requires `QUALITY_STORE=prisma` so inspections, evidence, grading, verification, and audits use these tables.
+- `TRACEABILITY_STORE` selects the traceability module's persistence adapter. `memory` is the local/test default; production requires `TRACEABILITY_STORE=prisma` so batches/events/audits and public verification use these tables. `WEB_PUBLIC_URL` controls the QR verification base URL and defaults to `http://localhost:3000`.
+- Append-only history applies to `inventory_movements`, `order_status_changes`, payment status history, and ledger journals/lines/audits. Cleanup must retain immutable rows and avoid implicit updates from parent deletes (for example, deleting an inventory fires the movement's `ON DELETE SET NULL` update and is rejected).
 - First migration needs a role that can `CREATE EXTENSION postgis`.
 - `Unsupported` geometry fields are not available through Prisma Client. Use `$queryRaw` / `$executeRaw` for geometry reads and writes, and manage spatial indexes in raw SQL migrations.
-- The initial migration is the immutable baseline; `20261125120000_review_hardening`, `20261125130000_auth_identity`, `20261125140000_organization_profile_management`, `20261125150000_farm_management`, `20261125160000_crop_cultivation_expense_management`, `20261125170000_catalog_marketplace`, `20261125180000_inventory_cooperative`, `20261126000000_cart_order_management`, and
-`20261126010000_payment_ledger_infrastructure` are follow-ups. Future schema or invariant changes
-require new migrations; do not edit any applied migration in place.
+- The initial migration is the immutable baseline; `20261125120000_review_hardening`, `20261125130000_auth_identity`, `20261125140000_organization_profile_management`, `20261125150000_farm_management`, `20261125160000_crop_cultivation_expense_management`, `20261125170000_catalog_marketplace`, `20261125180000_inventory_cooperative`, `20261126000000_cart_order_management`, `20261126010000_payment_ledger_infrastructure`, and
+`20261126020000_logistics_warehouse_quality_traceability` are follow-ups. Future schema or invariant
+changes require new migrations; do not edit any applied migration in place.

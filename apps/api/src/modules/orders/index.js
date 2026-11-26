@@ -4,6 +4,7 @@ const {
   IdentityStoreToken,
   MarketplaceAccessPortToken,
   MarketplaceListingStockToken,
+  OrderAccessPortToken,
   PlatformAuthorizationToken,
 } = require('../../shared/di/tokens');
 const { defineModule } = require('../../shared/module/define-module');
@@ -18,6 +19,30 @@ const { EVENTS, OrdersService, OrdersServiceToken } = require('./application/ord
 const ordersRoutes = require('./presentation/orders.routes');
 
 function registerOrdersInfrastructure({ container }) {
+  // Publish a deliberately narrow read-only port. Consumers receive fulfillment
+  // facts for delivery and traceability, never order mutation capabilities.
+  if (!container.has(OrderAccessPortToken)) {
+    container.register(OrderAccessPortToken, (resolver) => {
+      const store = resolver.resolve(OrdersStoreToken);
+      return {
+        async findOrder(orderId) {
+          const order = await store.findOrder({ id: orderId });
+          if (!order) return null;
+          return {
+            id: order.id,
+            organizationId: order.organization_id ?? null,
+            checkoutId: order.purchase_group_id ?? null,
+            buyerUserId: order.buyer_user_id ?? null,
+            sellerUserId: order.seller_user_id ?? null,
+            status: order.status,
+            placedAt: order.placed_at ?? null,
+            completedAt: order.completed_at ?? null,
+          };
+        },
+      };
+    });
+  }
+
   if (container.has(OrdersStoreToken)) return;
 
   container.register(OrdersStoreToken, (resolver) => {

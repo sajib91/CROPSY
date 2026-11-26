@@ -26,6 +26,7 @@ const allowedPackages = new Set([
   '@cropsy/validation',
   '@prisma/client',
   'fastify',
+  'qrcode-terminal',
 ]);
 
 const errors = [];

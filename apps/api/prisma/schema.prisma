@@ -481,6 +481,10 @@ enum InventoryMovementType {
   ADJUSTMENT
   DAMAGED
   EXPIRED
+  RECEIPT
+  TRANSFER_IN
+  TRANSFER_OUT
+  DISPATCH
 }
 
 enum InventoryReservationStatus {
@@ -554,14 +558,71 @@ enum InspectionResult {
   CONDITIONAL
 }
 
+enum InspectionEvidenceType {
+  IMAGE
+  DOCUMENT
+  MEASUREMENT
+  OTHER
+}
+
+enum DeliveryPhase {
+  PICKUP
+  DELIVERY
+}
+
+enum DeliveryServiceType {
+  STANDARD
+  EXPRESS
+  COLD_CHAIN
+  BULK
+  OTHER
+}
+
+enum ShipmentEventSource {
+  SYSTEM
+  PROVIDER
+  BUYER
+  SELLER
+  WAREHOUSE
+}
+
+enum WarehouseLocationStatus {
+  ACTIVE
+  INACTIVE
+}
+
+enum StorageConditionStatus {
+  NORMAL
+  WARNING
+  CRITICAL
+}
+
+enum ReconciliationStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
 enum TraceabilityEventType {
   PRODUCED
+  FARM_ORIGIN
+  CULTIVATION
   HARVESTED
   INSPECTED
+  WAREHOUSE_ENTRY
+  STORAGE_HISTORY
   STORED
   SHIPPED
   DELIVERED
+  BUYER_CONFIRMED
+  SELLER
   RECALLED
+}
+
+enum TraceabilityBatchStatus {
+  DRAFT
+  ACTIVE
+  SEALED
 }
 
 enum KnowledgeSourceType {
@@ -795,52 +856,65 @@ model User {
   sessions                  Session[]
   refresh_tokens            RefreshToken[]
   otp_verifications         OTPVerification[]
-  owned_organizations       Organization[]           @relation("OrganizationOwner")
-  verified_organizations    Organization[]           @relation("OrganizationVerifiedBy")
-  uploaded_org_documents    OrganizationDocument[]   @relation("OrganizationDocumentUploader")
+  owned_organizations       Organization[]             @relation("OrganizationOwner")
+  verified_organizations    Organization[]             @relation("OrganizationVerifiedBy")
+  uploaded_org_documents    OrganizationDocument[]     @relation("OrganizationDocumentUploader")
   notification_preferences  NotificationPreference[]
   role_profile_extensions   RoleProfileExtension[]
   organization_members      OrganizationMember[]
-  invitations_sent          OrganizationInvitation[] @relation("OrganizationInvitationInvitedBy")
-  granted_roles             UserRole[]               @relation("UserRoleGrantedBy")
+  invitations_sent          OrganizationInvitation[]   @relation("OrganizationInvitationInvitedBy")
+  granted_roles             UserRole[]                 @relation("UserRoleGrantedBy")
   addresses                 UserAddress[]
   farmer_profiles           FarmerProfile[]
   favorite_listings         FavoriteListing[]
-  listing_reports_reported  ListingReport[]          @relation("ListingReportReporter")
-  listing_reports_reviewed  ListingReport[]          @relation("ListingReportReviewer")
-  listing_messages_sent     ListingMessage[]         @relation("ListingMessageSender")
-  listing_messages_received ListingMessage[]         @relation("ListingMessageRecipient")
-  farm_activities           FarmActivity[]           @relation("FarmActivityPerformer")
-  inspections               QualityInspection[]      @relation("QualityInspector")
-  managed_warehouses        Warehouse[]              @relation("WarehouseManager")
-  inventory_movements       InventoryMovement[]      @relation("InventoryMovementActor")
-  inventory_reservations    InventoryReservation[]   @relation("InventoryReservationActor")
-  owned_farmer_groups       FarmerGroup[]            @relation("FarmerGroupOwner")
+  listing_reports_reported  ListingReport[]            @relation("ListingReportReporter")
+  listing_reports_reviewed  ListingReport[]            @relation("ListingReportReviewer")
+  listing_messages_sent     ListingMessage[]           @relation("ListingMessageSender")
+  listing_messages_received ListingMessage[]           @relation("ListingMessageRecipient")
+  farm_activities           FarmActivity[]             @relation("FarmActivityPerformer")
+  inspections               QualityInspection[]        @relation("QualityInspector")
+  quality_verifications     QualityInspection[]        @relation("QualityInspectionVerifiedBy")
+  quality_evidence          InspectionEvidence[]       @relation("EvidenceRecorder")
+  quality_audit_events      QualityAuditEvent[]        @relation("QualityAuditActor")
+  assigned_shipments        Shipment[]                 @relation("ShipmentAssignee")
+  owned_logistics_providers LogisticsProvider[]        @relation("LogisticsProviderOwner")
+  confirmed_deliveries      Delivery[]                 @relation("DeliveryConfirmedBy")
+  shipment_events           ShipmentEvent[]            @relation("ShipmentEventActor")
+  delivery_audit_events     DeliveryAuditEvent[]       @relation("DeliveryAuditActor")
+  managed_warehouses        Warehouse[]                @relation("WarehouseManager")
+  warehouse_staff           WarehouseStaffAssignment[] @relation("WarehouseStaff")
+  warehouse_staff_assigned  WarehouseStaffAssignment[] @relation("WarehouseStaffAssignedBy")
+  storage_conditions        StorageConditionRecord[]   @relation("StorageConditionRecorder")
+  reconciliations_counted   InventoryReconciliation[]  @relation("ReconciliationCountedBy")
+  reconciliations_approved  InventoryReconciliation[]  @relation("ReconciliationApprovedBy")
+  inventory_movements       InventoryMovement[]        @relation("InventoryMovementActor")
+  inventory_reservations    InventoryReservation[]     @relation("InventoryReservationActor")
+  owned_farmer_groups       FarmerGroup[]              @relation("FarmerGroupOwner")
   farmer_group_memberships  FarmerGroupMember[]
-  created_campaigns         CooperativeCampaign[]    @relation("CooperativeCampaignCreator")
+  created_campaigns         CooperativeCampaign[]      @relation("CooperativeCampaignCreator")
   group_contributions       GroupContribution[]
   group_purchase_requests   GroupPurchaseRequest[]
   group_allocations         GroupAllocation[]
   group_earnings            GroupEarning[]
   carts                     Cart[]
-  purchase_groups           PurchaseGroup[]          @relation("PurchaseGroupBuyer")
-  orders_as_buyer           Order[]                  @relation("OrderBuyer")
-  orders_as_seller          Order[]                  @relation("OrderSeller")
-  order_status_changes      OrderStatusChange[]      @relation("OrderStatusChangeActor")
+  purchase_groups           PurchaseGroup[]            @relation("PurchaseGroupBuyer")
+  orders_as_buyer           Order[]                    @relation("OrderBuyer")
+  orders_as_seller          Order[]                    @relation("OrderSeller")
+  order_status_changes      OrderStatusChange[]        @relation("OrderStatusChangeActor")
   payments                  Payment[]
-  payment_status_changes    PaymentStatusChange[]    @relation("PaymentStatusChangeActor")
-  ledger_journals           LedgerJournal[]          @relation("LedgerJournalActor")
-  ledger_audit_events       LedgerAuditEvent[]       @relation("LedgerAuditActor")
-  commissions               Commission[]             @relation("CommissionSeller")
-  settlements               Settlement[]             @relation("SettlementSeller")
+  payment_status_changes    PaymentStatusChange[]      @relation("PaymentStatusChangeActor")
+  ledger_journals           LedgerJournal[]            @relation("LedgerJournalActor")
+  ledger_audit_events       LedgerAuditEvent[]         @relation("LedgerAuditActor")
+  commissions               Commission[]               @relation("CommissionSeller")
+  settlements               Settlement[]               @relation("SettlementSeller")
   conversations             Conversation[]
   recommendations           AIRecommendation[]
-  agent_executions          AgentExecution[]         @relation("AgentInitiator")
+  agent_executions          AgentExecution[]           @relation("AgentInitiator")
   ai_feedback               AIFeedback[]
   notifications             Notification[]
-  audit_logs                AuditLog[]               @relation("AuditActor")
+  audit_logs                AuditLog[]                 @relation("AuditActor")
   farms                     Farm[]
-  operated_farms            Farm[]                   @relation("FarmOperator")
+  operated_farms            Farm[]                     @relation("FarmOperator")
   productListings           ProductListing[]
 
   @@index([account_status])
@@ -1032,83 +1106,89 @@ model Organization {
   created_at          DateTime           @default(now()) @db.Timestamp(6)
   updated_at          DateTime           @updatedAt @db.Timestamp(6)
 
-  owner                     User                      @relation("OrganizationOwner", fields: [owner_user_id], references: [id], onDelete: Restrict)
-  verified_by               User?                     @relation("OrganizationVerifiedBy", fields: [verified_by_user_id], references: [id], onDelete: SetNull)
-  documents                 OrganizationDocument[]
-  role_profile_extensions   RoleProfileExtension[]
-  members                   OrganizationMember[]
-  invitations               OrganizationInvitation[]
-  addresses                 OrganizationAddress[]
-  user_roles                UserRole[]
-  farmer_profiles           FarmerProfile[]
-  crop_seasons              CropSeason[]
-  farms                     Farm[]
-  farm_soil_profiles        FarmSoilProfile[]
-  farm_irrigations          FarmIrrigation[]
-  land_parcels              LandParcel[]
-  cultivations              Cultivation[]
-  farm_activities           FarmActivity[]
-  harvests                  Harvest[]
-  agricultural_inputs       AgriculturalInput[]
-  crop_calendars            CropCalendar[]
-  agronomic_recommendations AgronomicRecommendation[]
-  farm_expenses             FarmExpense[]
-  product_categories        ProductCategory[]
-  units_of_measure          UnitOfMeasure[]
-  products                  Product[]
-  product_varieties         ProductVariety[]
-  product_attributes        ProductAttribute[]
-  product_attribute_values  ProductAttributeValue[]
-  quality_grades            QualityGrade[]
-  product_inventories       ProductInventory[]
-  product_listings          ProductListing[]
-  price_history             PriceHistory[]
-  carts                     Cart[]
-  purchase_groups           PurchaseGroup[]
-  orders                    Order[]
-  order_status_changes      OrderStatusChange[]
-  payments                  Payment[]
-  refunds                   Refund[]
-  transactions              Transaction[]
-  ledger_accounts           LedgerAccount[]
-  ledger_entries            LedgerEntry[]
-  commissions               Commission[]
-  settlements               Settlement[]
-  payment_status_changes    PaymentStatusChange[]
-  payment_webhook_events    PaymentWebhookEvent[]
-  ledger_journals           LedgerJournal[]
-  ledger_journal_lines      LedgerJournalLine[]
-  ledger_balances           LedgerBalance[]
-  ledger_audit_events       LedgerAuditEvent[]
+  owner                       User                        @relation("OrganizationOwner", fields: [owner_user_id], references: [id], onDelete: Restrict)
+  verified_by                 User?                       @relation("OrganizationVerifiedBy", fields: [verified_by_user_id], references: [id], onDelete: SetNull)
+  documents                   OrganizationDocument[]
+  role_profile_extensions     RoleProfileExtension[]
+  members                     OrganizationMember[]
+  invitations                 OrganizationInvitation[]
+  addresses                   OrganizationAddress[]
+  user_roles                  UserRole[]
+  farmer_profiles             FarmerProfile[]
+  crop_seasons                CropSeason[]
+  farms                       Farm[]
+  farm_soil_profiles          FarmSoilProfile[]
+  farm_irrigations            FarmIrrigation[]
+  land_parcels                LandParcel[]
+  cultivations                Cultivation[]
+  farm_activities             FarmActivity[]
+  harvests                    Harvest[]
+  agricultural_inputs         AgriculturalInput[]
+  crop_calendars              CropCalendar[]
+  agronomic_recommendations   AgronomicRecommendation[]
+  farm_expenses               FarmExpense[]
+  product_categories          ProductCategory[]
+  units_of_measure            UnitOfMeasure[]
+  products                    Product[]
+  product_varieties           ProductVariety[]
+  product_attributes          ProductAttribute[]
+  product_attribute_values    ProductAttributeValue[]
+  quality_grades              QualityGrade[]
+  product_inventories         ProductInventory[]
+  product_listings            ProductListing[]
+  price_history               PriceHistory[]
+  carts                       Cart[]
+  purchase_groups             PurchaseGroup[]
+  orders                      Order[]
+  order_status_changes        OrderStatusChange[]
+  payments                    Payment[]
+  refunds                     Refund[]
+  transactions                Transaction[]
+  ledger_accounts             LedgerAccount[]
+  ledger_entries              LedgerEntry[]
+  commissions                 Commission[]
+  settlements                 Settlement[]
+  payment_status_changes      PaymentStatusChange[]
+  payment_webhook_events      PaymentWebhookEvent[]
+  ledger_journals             LedgerJournal[]
+  ledger_journal_lines        LedgerJournalLine[]
+  ledger_balances             LedgerBalance[]
+  ledger_audit_events         LedgerAuditEvent[]
   reconciliation_expectations ReconciliationExpectation[]
-  shipments                 Shipment[]
-  warehouses                Warehouse[]
-  quality_inspections       QualityInspection[]
-  inventory_movements       InventoryMovement[]
-  inventory_reservations    InventoryReservation[]
-  inventory_alerts          InventoryAlert[]
-  farmer_groups             FarmerGroup[]
-  cooperative_campaigns     CooperativeCampaign[]
-  group_contributions       GroupContribution[]
-  group_purchase_requests   GroupPurchaseRequest[]
-  group_allocations         GroupAllocation[]
-  group_earnings            GroupEarning[]
-  traceability_records      TraceabilityRecord[]
-  knowledge_sources         KnowledgeSource[]
-  knowledge_documents       KnowledgeDocument[]
-  embedding_references      EmbeddingReference[]
-  conversations             Conversation[]
-  recommendations           AIRecommendation[]
-  agent_executions          AgentExecution[]
-  subscriptions             Subscription[]
-  subscription_invoices     SubscriptionInvoice[]
-  usage_records             UsageRecord[]
-  notifications             Notification[]
-  audit_logs                AuditLog[]
-  outbox_events             OutboxEvent[]
-  feature_flags             FeatureFlag[]
-  platform_settings         PlatformSetting[]
-  aifeedbacks               AIFeedback[]
+  shipments                   Shipment[]
+  logistics_providers         LogisticsProvider[]
+  delivery_audit_events       DeliveryAuditEvent[]
+  warehouses                  Warehouse[]
+  inventory_reconciliations   InventoryReconciliation[]
+  quality_inspections         QualityInspection[]
+  quality_audit_events        QualityAuditEvent[]
+  inventory_movements         InventoryMovement[]
+  inventory_reservations      InventoryReservation[]
+  inventory_alerts            InventoryAlert[]
+  farmer_groups               FarmerGroup[]
+  cooperative_campaigns       CooperativeCampaign[]
+  group_contributions         GroupContribution[]
+  group_purchase_requests     GroupPurchaseRequest[]
+  group_allocations           GroupAllocation[]
+  group_earnings              GroupEarning[]
+  traceability_records        TraceabilityRecord[]
+  traceability_batches        TraceabilityBatch[]
+  traceability_audit_events   TraceabilityAuditEvent[]
+  knowledge_sources           KnowledgeSource[]
+  knowledge_documents         KnowledgeDocument[]
+  embedding_references        EmbeddingReference[]
+  conversations               Conversation[]
+  recommendations             AIRecommendation[]
+  agent_executions            AgentExecution[]
+  subscriptions               Subscription[]
+  subscription_invoices       SubscriptionInvoice[]
+  usage_records               UsageRecord[]
+  notifications               Notification[]
+  audit_logs                  AuditLog[]
+  outbox_events               OutboxEvent[]
+  feature_flags               FeatureFlag[]
+  platform_settings           PlatformSetting[]
+  aifeedbacks                 AIFeedback[]
 
   @@index([owner_user_id])
   @@index([status])
@@ -1549,6 +1629,7 @@ model Cultivation {
   harvests             Harvest[]
   expenses             FarmExpense[]
   traceability_records TraceabilityRecord[]
+  traceability_batches TraceabilityBatch[]
   crop                 Crop?                @relation(fields: [crop_id], references: [id])
   crop_id              String?              @db.Uuid
 
@@ -1620,6 +1701,7 @@ model Harvest {
   farm         Farm          @relation(fields: [farm_id], references: [id], onDelete: Cascade)
 
   traceability_records TraceabilityRecord[]
+  traceability_batches TraceabilityBatch[]
 
   @@index([organization_id, status])
   @@index([cultivation_id, harvested_at])
@@ -1795,20 +1877,22 @@ model Product {
   farmer_profile FarmerProfile?  @relation(fields: [farmer_profile_id], references: [id], onDelete: SetNull)
   unit           UnitOfMeasure?  @relation(fields: [unit_id], references: [id], onDelete: SetNull)
 
-  images                 ProductImage[]
-  varieties              ProductVariety[]
-  inventories            ProductInventory[]
-  listings               ProductListing[]
-  price_history          PriceHistory[]
-  order_items            OrderItem[]
-  warehouse_inventories  WarehouseInventory[]
-  quality_inspections    QualityInspection[]
-  inventory_movements    InventoryMovement[]
-  inventory_reservations InventoryReservation[]
-  inventory_alerts       InventoryAlert[]
-  cooperative_campaigns  CooperativeCampaign[]
-  group_contributions    GroupContribution[]
-  traceability_records   TraceabilityRecord[]
+  images                    ProductImage[]
+  varieties                 ProductVariety[]
+  inventories               ProductInventory[]
+  listings                  ProductListing[]
+  price_history             PriceHistory[]
+  order_items               OrderItem[]
+  warehouse_inventories     WarehouseInventory[]
+  quality_inspections       QualityInspection[]
+  inventory_movements       InventoryMovement[]
+  inventory_reservations    InventoryReservation[]
+  inventory_alerts          InventoryAlert[]
+  inventory_reconciliations InventoryReconciliation[]
+  cooperative_campaigns     CooperativeCampaign[]
+  group_contributions       GroupContribution[]
+  traceability_records      TraceabilityRecord[]
+  traceability_batches      TraceabilityBatch[]
 
   @@index([organization_id, category_id])
   @@index([deleted_at])
@@ -2304,41 +2388,41 @@ model OrderStatusChange {
 }
 
 model Payment {
-  id                 String        @id @default(uuid()) @db.Uuid
-  organization_id    String?       @db.Uuid
-  order_id           String        @db.Uuid
-  purchase_group_id  String?       @db.Uuid
-  user_id            String        @db.Uuid
+  id                       String        @id @default(uuid()) @db.Uuid
+  organization_id          String?       @db.Uuid
+  order_id                 String        @db.Uuid
+  purchase_group_id        String?       @db.Uuid
+  user_id                  String        @db.Uuid
   // Provider is supplied by configuration; no providers are seeded.
-  provider_code      String?       @db.VarChar(80)
-  provider_reference String?       @db.VarChar(255)
-  idempotency_key    String        @unique @db.VarChar(255)
-  method             PaymentMethod @default(OTHER)
-  status             PaymentStatus @default(INITIATED)
-  amount             Decimal       @db.Decimal(14, 2)
-  captured_amount    Decimal       @default(0) @db.Decimal(14, 2)
-  refunded_amount    Decimal       @default(0) @db.Decimal(14, 2)
-  currency           String        @default("BDT") @db.Char(3)
+  provider_code            String?       @db.VarChar(80)
+  provider_reference       String?       @db.VarChar(255)
+  idempotency_key          String        @unique @db.VarChar(255)
+  method                   PaymentMethod @default(OTHER)
+  status                   PaymentStatus @default(INITIATED)
+  amount                   Decimal       @db.Decimal(14, 2)
+  captured_amount          Decimal       @default(0) @db.Decimal(14, 2)
+  refunded_amount          Decimal       @default(0) @db.Decimal(14, 2)
+  currency                 String        @default("BDT") @db.Char(3)
   // Provider output and caller-supplied allocation snapshots are metadata;
   // commission rates and settlement periods are never stored as policies.
-  metadata               Json      @default("{}")
-  allocation_snapshot    Json      @default("{}")
-  commission_rule_snapshot Json    @default("{}")
-  initiated_at       DateTime      @default(now()) @db.Timestamp(6)
-  captured_at        DateTime?     @db.Timestamp(6)
-  failed_at          DateTime?     @db.Timestamp(6)
-  created_at         DateTime      @default(now()) @db.Timestamp(6)
-  updated_at         DateTime      @updatedAt @db.Timestamp(6)
+  metadata                 Json          @default("{}")
+  allocation_snapshot      Json          @default("{}")
+  commission_rule_snapshot Json          @default("{}")
+  initiated_at             DateTime      @default(now()) @db.Timestamp(6)
+  captured_at              DateTime?     @db.Timestamp(6)
+  failed_at                DateTime?     @db.Timestamp(6)
+  created_at               DateTime      @default(now()) @db.Timestamp(6)
+  updated_at               DateTime      @updatedAt @db.Timestamp(6)
 
-  organization   Organization?    @relation(fields: [organization_id], references: [id], onDelete: SetNull)
-  order          Order            @relation(fields: [order_id], references: [id], onDelete: Restrict)
-  purchase_group PurchaseGroup?   @relation(fields: [purchase_group_id], references: [id], onDelete: SetNull)
-  user           User             @relation(fields: [user_id], references: [id], onDelete: Restrict)
+  organization   Organization?  @relation(fields: [organization_id], references: [id], onDelete: SetNull)
+  order          Order          @relation(fields: [order_id], references: [id], onDelete: Restrict)
+  purchase_group PurchaseGroup? @relation(fields: [purchase_group_id], references: [id], onDelete: SetNull)
+  user           User           @relation(fields: [user_id], references: [id], onDelete: Restrict)
 
-  transactions        Transaction[]
-  refunds             Refund[]
-  statusChanges       PaymentStatusChange[]
-  webhookEvents       PaymentWebhookEvent[]
+  transactions  Transaction[]
+  refunds       Refund[]
+  statusChanges PaymentStatusChange[]
+  webhookEvents PaymentWebhookEvent[]
 
   @@unique([provider_code, provider_reference])
   @@index([organization_id, status])
@@ -2350,16 +2434,16 @@ model Payment {
 
 /// Append-only payment state transitions.
 model PaymentStatusChange {
-  id                String        @id @default(uuid()) @db.Uuid
-  organization_id   String?       @db.Uuid
-  payment_id        String        @db.Uuid
+  id                String         @id @default(uuid()) @db.Uuid
+  organization_id   String?        @db.Uuid
+  payment_id        String         @db.Uuid
   from_status       PaymentStatus?
   to_status         PaymentStatus
-  reason            String?       @db.VarChar(255)
-  actor_user_id     String?       @db.Uuid
-  provider_event_id String?       @db.VarChar(255)
-  metadata          Json          @default("{}")
-  created_at        DateTime      @default(now()) @db.Timestamp(6)
+  reason            String?        @db.VarChar(255)
+  actor_user_id     String?        @db.Uuid
+  provider_event_id String?        @db.VarChar(255)
+  metadata          Json           @default("{}")
+  created_at        DateTime       @default(now()) @db.Timestamp(6)
 
   organization Organization? @relation(fields: [organization_id], references: [id], onDelete: SetNull)
   payment      Payment       @relation(fields: [payment_id], references: [id], onDelete: Restrict)
@@ -2396,21 +2480,21 @@ model PaymentWebhookEvent {
 }
 
 model Refund {
-  id                 String       @id @default(uuid()) @db.Uuid
-  organization_id    String?      @db.Uuid
-  payment_id         String       @db.Uuid
-  order_id           String       @db.Uuid
-  amount             Decimal      @db.Decimal(14, 2)
-  currency           String       @default("BDT") @db.Char(3)
-  reason             RefundReason @default(OTHER)
-  status             RefundStatus @default(REQUESTED)
-  provider_reference String?      @db.VarChar(255)
+  id                  String       @id @default(uuid()) @db.Uuid
+  organization_id     String?      @db.Uuid
+  payment_id          String       @db.Uuid
+  order_id            String       @db.Uuid
+  amount              Decimal      @db.Decimal(14, 2)
+  currency            String       @default("BDT") @db.Char(3)
+  reason              RefundReason @default(OTHER)
+  status              RefundStatus @default(REQUESTED)
+  provider_reference  String?      @db.VarChar(255)
   // Idempotency prevents duplicate financial effects for the same refund.
-  idempotency_key    String?      @unique @db.VarChar(255)
-  allocation_snapshot Json        @default("{}")
-  processed_at       DateTime?    @db.Timestamp(6)
-  created_at         DateTime     @default(now()) @db.Timestamp(6)
-  updated_at         DateTime     @updatedAt @db.Timestamp(6)
+  idempotency_key     String?      @unique @db.VarChar(255)
+  allocation_snapshot Json         @default("{}")
+  processed_at        DateTime?    @db.Timestamp(6)
+  created_at          DateTime     @default(now()) @db.Timestamp(6)
+  updated_at          DateTime     @updatedAt @db.Timestamp(6)
 
   organization Organization? @relation(fields: [organization_id], references: [id], onDelete: SetNull)
   payment      Payment       @relation(fields: [payment_id], references: [id], onDelete: Restrict)
@@ -2466,8 +2550,8 @@ model LedgerAccount {
   created_at      DateTime          @default(now()) @db.Timestamp(6)
   updated_at      DateTime          @updatedAt @db.Timestamp(6)
 
-  organization Organization? @relation(fields: [organization_id], references: [id], onDelete: SetNull)
-  entries      LedgerEntry[]
+  organization  Organization?       @relation(fields: [organization_id], references: [id], onDelete: SetNull)
+  entries       LedgerEntry[]
   journal_lines LedgerJournalLine[]
   balances      LedgerBalance[]
 
@@ -2511,24 +2595,24 @@ model LedgerEntry {
 
 /// Immutable, balanced journal header. Posted rows are never updated or deleted.
 model LedgerJournal {
-  id                String    @id @default(uuid()) @db.Uuid
-  organization_id   String?   @db.Uuid
-  idempotency_key   String    @unique @db.VarChar(255)
-  reference_type    String    @db.VarChar(80)
-  reference_id      String?   @db.Uuid
-  description       String?   @db.VarChar(500)
-  currency          String    @default("BDT") @db.Char(3)
-  status            String    @default("POSTED") @db.VarChar(20)
-  actor_user_id     String?   @db.Uuid
-  request_id        String?   @db.VarChar(255)
-  posted_at         DateTime  @default(now()) @db.Timestamp(6)
-  created_at        DateTime  @default(now()) @db.Timestamp(6)
+  id              String   @id @default(uuid()) @db.Uuid
+  organization_id String?  @db.Uuid
+  idempotency_key String   @unique @db.VarChar(255)
+  reference_type  String   @db.VarChar(80)
+  reference_id    String?  @db.Uuid
+  description     String?  @db.VarChar(500)
+  currency        String   @default("BDT") @db.Char(3)
+  status          String   @default("POSTED") @db.VarChar(20)
+  actor_user_id   String?  @db.Uuid
+  request_id      String?  @db.VarChar(255)
+  posted_at       DateTime @default(now()) @db.Timestamp(6)
+  created_at      DateTime @default(now()) @db.Timestamp(6)
 
-  organization      Organization?             @relation(fields: [organization_id], references: [id], onDelete: SetNull)
-  actor             User?                     @relation("LedgerJournalActor", fields: [actor_user_id], references: [id], onDelete: SetNull)
-  lines             LedgerJournalLine[]
-  expectations      ReconciliationExpectation[]
-  settlements       Settlement[]
+  organization Organization?               @relation(fields: [organization_id], references: [id], onDelete: SetNull)
+  actor        User?                       @relation("LedgerJournalActor", fields: [actor_user_id], references: [id], onDelete: SetNull)
+  lines        LedgerJournalLine[]
+  expectations ReconciliationExpectation[]
+  settlements  Settlement[]
 
   @@index([organization_id, posted_at])
   @@index([reference_type, reference_id])
@@ -2536,21 +2620,21 @@ model LedgerJournal {
 }
 
 model LedgerJournalLine {
-  id              String             @id @default(uuid()) @db.Uuid
-  journal_id      String             @db.Uuid
-  organization_id String?            @db.Uuid
-  account_id      String             @db.Uuid
+  id              String               @id @default(uuid()) @db.Uuid
+  journal_id      String               @db.Uuid
+  organization_id String?              @db.Uuid
+  account_id      String               @db.Uuid
   direction       TransactionDirection
   bucket          LedgerBucket
-  amount          Decimal            @db.Decimal(14, 2)
-  currency        String             @default("BDT") @db.Char(3)
-  owner_user_id   String?            @db.Uuid
-  description     String?            @db.VarChar(500)
-  created_at      DateTime           @default(now()) @db.Timestamp(6)
+  amount          Decimal              @db.Decimal(14, 2)
+  currency        String               @default("BDT") @db.Char(3)
+  owner_user_id   String?              @db.Uuid
+  description     String?              @db.VarChar(500)
+  created_at      DateTime             @default(now()) @db.Timestamp(6)
 
-  organization Organization?  @relation(fields: [organization_id], references: [id], onDelete: SetNull)
-  journal      LedgerJournal  @relation(fields: [journal_id], references: [id], onDelete: Restrict)
-  account      LedgerAccount  @relation(fields: [account_id], references: [id], onDelete: Restrict)
+  organization Organization? @relation(fields: [organization_id], references: [id], onDelete: SetNull)
+  journal      LedgerJournal @relation(fields: [journal_id], references: [id], onDelete: Restrict)
+  account      LedgerAccount @relation(fields: [account_id], references: [id], onDelete: Restrict)
 
   @@index([journal_id])
   @@index([account_id, bucket])
@@ -2571,7 +2655,7 @@ model LedgerBalance {
   updated_at      DateTime     @updatedAt @db.Timestamp(6)
 
   organization Organization? @relation(fields: [organization_id], references: [id], onDelete: SetNull)
-  account      LedgerAccount  @relation(fields: [account_id], references: [id], onDelete: Restrict)
+  account      LedgerAccount @relation(fields: [account_id], references: [id], onDelete: Restrict)
 
   @@unique([account_id, owner_key, bucket, currency])
   @@index([organization_id, bucket])
@@ -2580,15 +2664,15 @@ model LedgerBalance {
 
 /// Append-only financial audit trail.
 model LedgerAuditEvent {
-  id              String    @id @default(uuid()) @db.Uuid
-  organization_id String?   @db.Uuid
-  action          String    @db.VarChar(120)
-  actor_user_id   String?   @db.Uuid
-  entity_type     String?   @db.VarChar(80)
-  entity_id       String?   @db.Uuid
-  metadata        Json      @default("{}")
-  request_id      String?   @db.VarChar(255)
-  created_at      DateTime  @default(now()) @db.Timestamp(6)
+  id              String   @id @default(uuid()) @db.Uuid
+  organization_id String?  @db.Uuid
+  action          String   @db.VarChar(120)
+  actor_user_id   String?  @db.Uuid
+  entity_type     String?  @db.VarChar(80)
+  entity_id       String?  @db.Uuid
+  metadata        Json     @default("{}")
+  request_id      String?  @db.VarChar(255)
+  created_at      DateTime @default(now()) @db.Timestamp(6)
 
   organization Organization? @relation(fields: [organization_id], references: [id], onDelete: SetNull)
   actor        User?         @relation("LedgerAuditActor", fields: [actor_user_id], references: [id], onDelete: SetNull)
@@ -2600,20 +2684,20 @@ model LedgerAuditEvent {
 
 /// Expected financial effects used by reconciliation.
 model ReconciliationExpectation {
-  id                String    @id @default(uuid()) @db.Uuid
-  organization_id   String?   @db.Uuid
-  expectation_key   String    @unique @db.VarChar(255)
-  reference_type    String    @db.VarChar(80)
-  reference_id      String?   @db.Uuid
-  amount            Decimal   @db.Decimal(14, 2)
-  currency          String    @default("BDT") @db.Char(3)
-  status            String    @default("EXPECTED") @db.VarChar(40)
-  journal_id        String?   @db.Uuid
-  created_at        DateTime  @default(now()) @db.Timestamp(6)
-  matched_at        DateTime? @db.Timestamp(6)
+  id              String    @id @default(uuid()) @db.Uuid
+  organization_id String?   @db.Uuid
+  expectation_key String    @unique @db.VarChar(255)
+  reference_type  String    @db.VarChar(80)
+  reference_id    String?   @db.Uuid
+  amount          Decimal   @db.Decimal(14, 2)
+  currency        String    @default("BDT") @db.Char(3)
+  status          String    @default("EXPECTED") @db.VarChar(40)
+  journal_id      String?   @db.Uuid
+  created_at      DateTime  @default(now()) @db.Timestamp(6)
+  matched_at      DateTime? @db.Timestamp(6)
 
   organization Organization?  @relation(fields: [organization_id], references: [id], onDelete: SetNull)
-  journal      LedgerJournal?  @relation(fields: [journal_id], references: [id], onDelete: SetNull)
+  journal      LedgerJournal? @relation(fields: [journal_id], references: [id], onDelete: SetNull)
 
   @@index([organization_id, status])
   @@map("reconciliation_expectations")
@@ -2648,24 +2732,24 @@ model Commission {
 }
 
 model Settlement {
-  id                String           @id @default(uuid()) @db.Uuid
-  organization_id   String?          @db.Uuid
-  seller_user_id    String           @db.Uuid
+  id                  String           @id @default(uuid()) @db.Uuid
+  organization_id     String?          @db.Uuid
+  seller_user_id      String           @db.Uuid
   // Pay timing and calculation rules are external policy references only.
-  rule_key          String?          @db.VarChar(120)
-  idempotency_key   String           @unique @db.VarChar(255)
-  allocation_snapshot Json           @default("{}")
-  journal_id        String?          @db.Uuid
-  period_start      DateTime         @db.Timestamp(6)
-  period_end        DateTime         @db.Timestamp(6)
-  gross_amount      Decimal          @db.Decimal(14, 2)
-  deductions_amount Decimal          @default(0) @db.Decimal(14, 2)
-  net_amount        Decimal          @db.Decimal(14, 2)
-  currency          String           @default("BDT") @db.Char(3)
-  status            SettlementStatus @default(DRAFT)
-  paid_at           DateTime?        @db.Timestamp(6)
-  created_at        DateTime         @default(now()) @db.Timestamp(6)
-  updated_at        DateTime         @updatedAt @db.Timestamp(6)
+  rule_key            String?          @db.VarChar(120)
+  idempotency_key     String           @unique @db.VarChar(255)
+  allocation_snapshot Json             @default("{}")
+  journal_id          String?          @db.Uuid
+  period_start        DateTime         @db.Timestamp(6)
+  period_end          DateTime         @db.Timestamp(6)
+  gross_amount        Decimal          @db.Decimal(14, 2)
+  deductions_amount   Decimal          @default(0) @db.Decimal(14, 2)
+  net_amount          Decimal          @db.Decimal(14, 2)
+  currency            String           @default("BDT") @db.Char(3)
+  status              SettlementStatus @default(DRAFT)
+  paid_at             DateTime?        @db.Timestamp(6)
+  created_at          DateTime         @default(now()) @db.Timestamp(6)
+  updated_at          DateTime         @updatedAt @db.Timestamp(6)
 
   organization   Organization?  @relation(fields: [organization_id], references: [id], onDelete: SetNull)
   seller         User           @relation("SettlementSeller", fields: [seller_user_id], references: [id], onDelete: Restrict)
@@ -2687,10 +2771,19 @@ model Shipment {
   organization_id        String?        @db.Uuid
   order_id               String         @db.Uuid
   provider_id            String?        @db.Uuid
+  delivery_service_id    String?        @db.Uuid
+  assigned_user_id       String?        @db.Uuid
+  reference_key          String         @unique @db.VarChar(128)
   pickup_address_id      String?        @db.Uuid
   destination_address_id String?        @db.Uuid
   tracking_number        String?        @db.VarChar(120)
   status                 ShipmentStatus @default(PENDING)
+  pickup_longitude       Decimal?       @db.Decimal(10, 7)
+  pickup_latitude        Decimal?       @db.Decimal(10, 7)
+  destination_longitude  Decimal?       @db.Decimal(10, 7)
+  destination_latitude   Decimal?       @db.Decimal(10, 7)
+  planned_distance_km    Decimal?       @db.Decimal(12, 3)
+  notes                  String?        @db.Text
   shipped_at             DateTime?      @db.Timestamp(6)
   delivered_at           DateTime?      @db.Timestamp(6)
   created_at             DateTime       @default(now()) @db.Timestamp(6)
@@ -2699,55 +2792,172 @@ model Shipment {
   organization        Organization?        @relation(fields: [organization_id], references: [id], onDelete: SetNull)
   order               Order                @relation(fields: [order_id], references: [id], onDelete: Restrict)
   provider            LogisticsProvider?   @relation(fields: [provider_id], references: [id], onDelete: SetNull)
+  deliveryService     DeliveryService?     @relation(fields: [delivery_service_id], references: [id], onDelete: SetNull)
+  assignedUser        User?                @relation("ShipmentAssignee", fields: [assigned_user_id], references: [id], onDelete: SetNull)
   pickup_address      OrganizationAddress? @relation("ShipmentPickupAddress", fields: [pickup_address_id], references: [id], onDelete: SetNull)
   destination_address OrganizationAddress? @relation("ShipmentDestinationAddress", fields: [destination_address_id], references: [id], onDelete: SetNull)
 
   deliveries           Delivery[]
+  route                ShipmentRoute?
+  events               ShipmentEvent[]
+  audits               DeliveryAuditEvent[]
   quality_inspections  QualityInspection[]
   traceability_records TraceabilityRecord[]
+  traceability_batches TraceabilityBatch[]
 
   @@unique([provider_id, tracking_number])
   @@index([organization_id, status])
   @@index([order_id])
+  @@index([provider_id, status])
+  @@index([delivery_service_id])
+  @@index([assigned_user_id])
   @@index([pickup_address_id])
   @@index([destination_address_id])
   @@map("shipments")
 }
 
-model Delivery {
-  id              String         @id @default(uuid()) @db.Uuid
-  shipment_id     String         @db.Uuid
-  attempt_number  Int
-  status          DeliveryStatus @default(SCHEDULED)
-  scheduled_at    DateTime?      @db.Timestamp(6)
-  attempted_at    DateTime?      @db.Timestamp(6)
-  delivered_at    DateTime?      @db.Timestamp(6)
-  recipient_name  String?        @db.VarChar(180)
-  recipient_phone String?        @db.VarChar(32)
-  proof_url       String?        @db.Text
-  created_at      DateTime       @default(now()) @db.Timestamp(6)
-  updated_at      DateTime       @updatedAt @db.Timestamp(6)
+model DeliveryService {
+  id              String              @id @default(uuid()) @db.Uuid
+  provider_id     String              @db.Uuid
+  code            String              @db.VarChar(80)
+  name            String              @db.VarChar(180)
+  service_type    DeliveryServiceType @default(STANDARD)
+  estimated_hours Decimal?            @db.Decimal(10, 2)
+  is_active       Boolean             @default(true)
+  created_at      DateTime            @default(now()) @db.Timestamp(6)
+  updated_at      DateTime            @updatedAt @db.Timestamp(6)
 
-  shipment Shipment @relation(fields: [shipment_id], references: [id], onDelete: Cascade)
+  provider  LogisticsProvider @relation(fields: [provider_id], references: [id], onDelete: Cascade)
+  shipments Shipment[]
 
-  @@unique([shipment_id, attempt_number])
-  @@index([status])
-  @@map("deliveries")
+  @@unique([provider_id, code])
+  @@index([provider_id, is_active])
+  @@map("delivery_services")
 }
 
 model LogisticsProvider {
-  id            String   @id @default(uuid()) @db.Uuid
-  code          String   @unique @db.VarChar(80)
-  name          String   @db.VarChar(180)
-  contact_email String?  @db.VarChar(255)
-  phone         String?  @db.VarChar(32)
-  is_active     Boolean  @default(true)
-  created_at    DateTime @default(now()) @db.Timestamp(6)
-  updated_at    DateTime @updatedAt @db.Timestamp(6)
+  id                String   @id @default(uuid()) @db.Uuid
+  organization_id   String?  @db.Uuid
+  owner_user_id     String?  @db.Uuid
+  code              String   @unique @db.VarChar(80)
+  name              String   @db.VarChar(180)
+  contact_email     String?  @db.VarChar(255)
+  phone             String?  @db.VarChar(32)
+  longitude         Decimal? @db.Decimal(10, 7)
+  latitude          Decimal? @db.Decimal(10, 7)
+  service_radius_km Decimal? @db.Decimal(10, 3)
+  service_types     Json     @default("[]")
+  is_active         Boolean  @default(true)
+  created_at        DateTime @default(now()) @db.Timestamp(6)
+  updated_at        DateTime @updatedAt @db.Timestamp(6)
 
-  shipments Shipment[]
+  organization Organization?     @relation(fields: [organization_id], references: [id], onDelete: SetNull)
+  owner        User?             @relation("LogisticsProviderOwner", fields: [owner_user_id], references: [id], onDelete: SetNull)
+  shipments    Shipment[]
+  services     DeliveryService[]
 
+  @@index([organization_id, is_active])
+  @@index([owner_user_id])
   @@map("logistics_providers")
+}
+
+model Delivery {
+  id                   String         @id @default(uuid()) @db.Uuid
+  shipment_id          String         @db.Uuid
+  attempt_number       Int
+  phase                DeliveryPhase  @default(DELIVERY)
+  status               DeliveryStatus @default(SCHEDULED)
+  scheduled_at         DateTime?      @db.Timestamp(6)
+  attempted_at         DateTime?      @db.Timestamp(6)
+  delivered_at         DateTime?      @db.Timestamp(6)
+  longitude            Decimal?       @db.Decimal(10, 7)
+  latitude             Decimal?       @db.Decimal(10, 7)
+  recipient_name       String?        @db.VarChar(180)
+  recipient_phone      String?        @db.VarChar(32)
+  proof_url            String?        @db.Text
+  proof_hash           String?        @db.VarChar(255)
+  reason_code          String?        @db.VarChar(180)
+  next_attempt_at      DateTime?      @db.Timestamp(6)
+  note                 String?        @db.Text
+  confirmed_at         DateTime?      @db.Timestamp(6)
+  confirmed_by_user_id String?        @db.Uuid
+  created_at           DateTime       @default(now()) @db.Timestamp(6)
+  updated_at           DateTime       @updatedAt @db.Timestamp(6)
+
+  shipment    Shipment             @relation(fields: [shipment_id], references: [id], onDelete: Cascade)
+  confirmedBy User?                @relation("DeliveryConfirmedBy", fields: [confirmed_by_user_id], references: [id], onDelete: SetNull)
+  audits      DeliveryAuditEvent[]
+
+  @@unique([shipment_id, attempt_number])
+  @@index([status])
+  @@index([phase, status])
+  @@map("deliveries")
+}
+
+model ShipmentRoute {
+  id                    String   @id @default(uuid()) @db.Uuid
+  shipment_id           String   @unique @db.Uuid
+  origin_longitude      Decimal  @db.Decimal(10, 7)
+  origin_latitude       Decimal  @db.Decimal(10, 7)
+  destination_longitude Decimal  @db.Decimal(10, 7)
+  destination_latitude  Decimal  @db.Decimal(10, 7)
+  distance_km           Decimal? @db.Decimal(12, 3)
+  path_geojson          Json?
+  source                String   @db.VarChar(40)
+  created_at            DateTime @default(now()) @db.Timestamp(6)
+  updated_at            DateTime @updatedAt @db.Timestamp(6)
+
+  shipment Shipment @relation(fields: [shipment_id], references: [id], onDelete: Cascade)
+
+  @@index([source])
+  @@map("shipment_routes")
+}
+
+model ShipmentEvent {
+  id            String              @id @default(uuid()) @db.Uuid
+  shipment_id   String              @db.Uuid
+  status        String              @db.VarChar(60)
+  source        ShipmentEventSource @default(SYSTEM)
+  occurred_at   DateTime            @db.Timestamp(6)
+  longitude     Decimal?            @db.Decimal(10, 7)
+  latitude      Decimal?            @db.Decimal(10, 7)
+  note          String?             @db.Text
+  actor_user_id String?             @db.Uuid
+  created_at    DateTime            @default(now()) @db.Timestamp(6)
+
+  shipment Shipment @relation(fields: [shipment_id], references: [id], onDelete: Cascade)
+  actor    User?    @relation("ShipmentEventActor", fields: [actor_user_id], references: [id], onDelete: SetNull)
+
+  @@index([shipment_id, occurred_at])
+  @@index([status])
+  @@map("shipment_events")
+}
+
+model DeliveryAuditEvent {
+  id              String   @id @default(uuid()) @db.Uuid
+  shipment_id     String?  @db.Uuid
+  delivery_id     String?  @db.Uuid
+  action          String   @db.VarChar(120)
+  entity_type     String?  @db.VarChar(80)
+  entity_id       String?  @db.Uuid
+  actor_user_id   String?  @db.Uuid
+  organization_id String?  @db.Uuid
+  before          Json?
+  after           Json     @default("{}")
+  ip_address      String?  @db.VarChar(64)
+  user_agent      String?  @db.Text
+  request_id      String?  @db.VarChar(255)
+  created_at      DateTime @default(now()) @db.Timestamp(6)
+
+  shipment     Shipment?     @relation(fields: [shipment_id], references: [id], onDelete: SetNull)
+  delivery     Delivery?     @relation(fields: [delivery_id], references: [id], onDelete: SetNull)
+  actor        User?         @relation("DeliveryAuditActor", fields: [actor_user_id], references: [id], onDelete: SetNull)
+  organization Organization? @relation(fields: [organization_id], references: [id], onDelete: SetNull)
+
+  @@index([shipment_id, created_at])
+  @@index([delivery_id, created_at])
+  @@index([organization_id, created_at])
+  @@map("delivery_audit_events")
 }
 
 model Warehouse {
@@ -2780,6 +2990,10 @@ model Warehouse {
   inventory_movements    InventoryMovement[]
   inventory_reservations InventoryReservation[]
   inventory_alerts       InventoryAlert[]
+  locations              WarehouseLocation[]
+  staff_assignments      WarehouseStaffAssignment[]
+  condition_records      StorageConditionRecord[]
+  reconciliations        InventoryReconciliation[]
 
   @@index([organization_id, status])
   @@index([division_id, district_id, upazila_id])
@@ -2794,6 +3008,7 @@ model Warehouse {
 model WarehouseInventory {
   id                  String   @id @default(uuid()) @db.Uuid
   warehouse_id        String   @db.Uuid
+  location_id         String?  @db.Uuid
   product_id          String   @db.Uuid
   batch_code          String   @default("NO_BATCH") @db.VarChar(80)
   quantity_on_hand    Decimal  @default(0) @db.Decimal(14, 3)
@@ -2804,17 +3019,21 @@ model WarehouseInventory {
   created_at          DateTime @default(now()) @db.Timestamp(6)
   updated_at          DateTime @updatedAt @db.Timestamp(6)
 
-  warehouse Warehouse @relation(fields: [warehouse_id], references: [id], onDelete: Cascade)
-  product   Product   @relation(fields: [product_id], references: [id], onDelete: Restrict)
+  warehouse Warehouse          @relation(fields: [warehouse_id], references: [id], onDelete: Cascade)
+  location  WarehouseLocation? @relation(fields: [location_id], references: [id], onDelete: SetNull)
+  product   Product            @relation(fields: [product_id], references: [id], onDelete: Restrict)
 
   inspections         QualityInspection[]
   movements           InventoryMovement[]
   reservations        InventoryReservation[]
   alerts              InventoryAlert[]
   group_contributions GroupContribution[]
+  condition_records   StorageConditionRecord[]
+  reconciliations     InventoryReconciliation[]
 
   @@unique([warehouse_id, product_id, batch_code])
   @@index([product_id])
+  @@index([location_id])
   @@map("warehouse_inventories")
 }
 
@@ -2899,6 +3118,100 @@ model InventoryAlert {
   @@index([warehouse_inventory_id, status])
   @@index([product_id, status])
   @@map("inventory_alerts")
+}
+
+model WarehouseLocation {
+  id             String                  @id @default(uuid()) @db.Uuid
+  warehouse_id   String                  @db.Uuid
+  code           String                  @db.VarChar(64)
+  name           String                  @db.VarChar(180)
+  zone           String?                 @db.VarChar(80)
+  aisle          String?                 @db.VarChar(80)
+  rack           String?                 @db.VarChar(80)
+  shelf          String?                 @db.VarChar(80)
+  capacity_units Decimal?                @db.Decimal(14, 3)
+  status         WarehouseLocationStatus @default(ACTIVE)
+  created_at     DateTime                @default(now()) @db.Timestamp(6)
+  updated_at     DateTime                @updatedAt @db.Timestamp(6)
+
+  warehouse   Warehouse            @relation(fields: [warehouse_id], references: [id], onDelete: Cascade)
+  inventories WarehouseInventory[]
+
+  @@unique([warehouse_id, code])
+  @@index([warehouse_id, status])
+  @@map("warehouse_locations")
+}
+
+model WarehouseStaffAssignment {
+  id                  String   @id @default(uuid()) @db.Uuid
+  warehouse_id        String   @db.Uuid
+  user_id             String   @db.Uuid
+  role_code           String   @db.VarChar(80)
+  assigned_by_user_id String?  @db.Uuid
+  is_active           Boolean  @default(true)
+  created_at          DateTime @default(now()) @db.Timestamp(6)
+  updated_at          DateTime @updatedAt @db.Timestamp(6)
+
+  warehouse  Warehouse @relation(fields: [warehouse_id], references: [id], onDelete: Cascade)
+  user       User      @relation("WarehouseStaff", fields: [user_id], references: [id], onDelete: Restrict)
+  assignedBy User?     @relation("WarehouseStaffAssignedBy", fields: [assigned_by_user_id], references: [id], onDelete: SetNull)
+
+  @@unique([warehouse_id, user_id, role_code])
+  @@index([user_id, is_active])
+  @@map("warehouse_staff_assignments")
+}
+
+model StorageConditionRecord {
+  id                     String                 @id @default(uuid()) @db.Uuid
+  warehouse_id           String                 @db.Uuid
+  warehouse_inventory_id String?                @db.Uuid
+  recorded_at            DateTime               @db.Timestamp(6)
+  temperature_c          Decimal?               @db.Decimal(8, 2)
+  humidity_percent       Decimal?               @db.Decimal(8, 2)
+  condition_status       StorageConditionStatus @default(NORMAL)
+  notes                  String?                @db.Text
+  recorded_by_user_id    String?                @db.Uuid
+  created_at             DateTime               @default(now()) @db.Timestamp(6)
+
+  warehouse  Warehouse           @relation(fields: [warehouse_id], references: [id], onDelete: Cascade)
+  inventory  WarehouseInventory? @relation(fields: [warehouse_inventory_id], references: [id], onDelete: SetNull)
+  recordedBy User?               @relation("StorageConditionRecorder", fields: [recorded_by_user_id], references: [id], onDelete: SetNull)
+
+  @@index([warehouse_id, recorded_at])
+  @@index([warehouse_inventory_id, recorded_at])
+  @@index([condition_status])
+  @@map("storage_condition_records")
+}
+
+model InventoryReconciliation {
+  id                     String               @id @default(uuid()) @db.Uuid
+  organization_id        String?              @db.Uuid
+  warehouse_id           String               @db.Uuid
+  warehouse_inventory_id String               @db.Uuid
+  product_id             String               @db.Uuid
+  counted_quantity       Decimal              @db.Decimal(14, 3)
+  system_quantity        Decimal              @db.Decimal(14, 3)
+  difference_quantity    Decimal              @db.Decimal(14, 3)
+  status                 ReconciliationStatus @default(PENDING)
+  reference_key          String               @unique @db.VarChar(128)
+  notes                  String?              @db.Text
+  counted_by_user_id     String?              @db.Uuid
+  approved_by_user_id    String?              @db.Uuid
+  approved_at            DateTime?            @db.Timestamp(6)
+  created_at             DateTime             @default(now()) @db.Timestamp(6)
+  updated_at             DateTime             @updatedAt @db.Timestamp(6)
+
+  organization Organization?      @relation(fields: [organization_id], references: [id], onDelete: SetNull)
+  warehouse    Warehouse          @relation(fields: [warehouse_id], references: [id], onDelete: Restrict)
+  inventory    WarehouseInventory @relation(fields: [warehouse_inventory_id], references: [id], onDelete: Restrict)
+  product      Product            @relation(fields: [product_id], references: [id], onDelete: Restrict)
+  countedBy    User?              @relation("ReconciliationCountedBy", fields: [counted_by_user_id], references: [id], onDelete: SetNull)
+  approvedBy   User?              @relation("ReconciliationApprovedBy", fields: [approved_by_user_id], references: [id], onDelete: SetNull)
+
+  @@index([organization_id, status])
+  @@index([warehouse_id, created_at])
+  @@index([warehouse_inventory_id])
+  @@map("inventory_reconciliations")
 }
 
 model FarmerGroup {
@@ -3107,31 +3420,87 @@ model GroupEarning {
 }
 
 model QualityInspection {
-  id                     String           @id @default(uuid()) @db.Uuid
-  organization_id        String?          @db.Uuid
-  shipment_id            String?          @db.Uuid
-  warehouse_inventory_id String?          @db.Uuid
-  product_id             String?          @db.Uuid
-  inspector_user_id      String           @db.Uuid
-  inspected_at           DateTime         @db.Timestamp(6)
-  result                 InspectionResult @default(PENDING)
-  grade                  String?          @db.VarChar(32)
-  notes                  String?          @db.Text
-  created_at             DateTime         @default(now()) @db.Timestamp(6)
-  updated_at             DateTime         @updatedAt @db.Timestamp(6)
+  id                     String             @id @default(uuid()) @db.Uuid
+  organization_id        String?            @db.Uuid
+  shipment_id            String?            @db.Uuid
+  warehouse_inventory_id String?            @db.Uuid
+  product_id             String?            @db.Uuid
+  batch_code             String?            @db.VarChar(120)
+  inspector_user_id      String             @db.Uuid
+  inspected_at           DateTime           @db.Timestamp(6)
+  result                 InspectionResult   @default(PENDING)
+  grade                  String?            @db.VarChar(32)
+  grade_code             String?            @db.VarChar(32)
+  grade_source           String             @default("INSPECTOR") @db.VarChar(32)
+  notes                  String?            @db.Text
+  verification_status    VerificationStatus @default(UNVERIFIED)
+  verified_by_user_id    String?            @db.Uuid
+  verified_at            DateTime?          @db.Timestamp(6)
+  created_at             DateTime           @default(now()) @db.Timestamp(6)
+  updated_at             DateTime           @updatedAt @db.Timestamp(6)
 
   organization        Organization?       @relation(fields: [organization_id], references: [id], onDelete: SetNull)
   shipment            Shipment?           @relation(fields: [shipment_id], references: [id], onDelete: SetNull)
   warehouse_inventory WarehouseInventory? @relation(fields: [warehouse_inventory_id], references: [id], onDelete: SetNull)
   product             Product?            @relation(fields: [product_id], references: [id], onDelete: SetNull)
   inspector           User                @relation("QualityInspector", fields: [inspector_user_id], references: [id], onDelete: Restrict)
+  verifiedBy          User?               @relation("QualityInspectionVerifiedBy", fields: [verified_by_user_id], references: [id], onDelete: SetNull)
+
+  evidence InspectionEvidence[]
+  audits   QualityAuditEvent[]
+  batches  TraceabilityBatch[]
 
   @@index([organization_id, result])
   @@index([shipment_id])
   @@index([product_id])
   @@index([warehouse_inventory_id])
   @@index([inspector_user_id])
+  @@index([verification_status])
+  @@index([batch_code])
   @@map("quality_inspections")
+}
+
+model InspectionEvidence {
+  id                  String                 @id @default(uuid()) @db.Uuid
+  inspection_id       String                 @db.Uuid
+  evidence_type       InspectionEvidenceType @default(OTHER)
+  uri                 String                 @db.Text
+  checksum            String?                @db.VarChar(255)
+  mime_type           String?                @db.VarChar(120)
+  description         String?                @db.Text
+  captured_at         DateTime?              @db.Timestamp(6)
+  recorded_by_user_id String?                @db.Uuid
+  public_disclosure   Boolean                @default(false)
+  created_at          DateTime               @default(now()) @db.Timestamp(6)
+
+  inspection QualityInspection @relation(fields: [inspection_id], references: [id], onDelete: Cascade)
+  recordedBy User?             @relation("EvidenceRecorder", fields: [recorded_by_user_id], references: [id], onDelete: SetNull)
+
+  @@index([inspection_id, evidence_type])
+  @@index([public_disclosure])
+  @@map("inspection_evidence")
+}
+
+model QualityAuditEvent {
+  id              String   @id @default(uuid()) @db.Uuid
+  inspection_id   String?  @db.Uuid
+  organization_id String?  @db.Uuid
+  action          String   @db.VarChar(120)
+  actor_user_id   String?  @db.Uuid
+  before          Json?
+  after           Json     @default("{}")
+  ip_address      String?  @db.VarChar(64)
+  user_agent      String?  @db.Text
+  request_id      String?  @db.VarChar(255)
+  created_at      DateTime @default(now()) @db.Timestamp(6)
+
+  inspection   QualityInspection? @relation(fields: [inspection_id], references: [id], onDelete: SetNull)
+  organization Organization?      @relation(fields: [organization_id], references: [id], onDelete: SetNull)
+  actor        User?              @relation("QualityAuditActor", fields: [actor_user_id], references: [id], onDelete: SetNull)
+
+  @@index([inspection_id, created_at])
+  @@index([organization_id, created_at])
+  @@map("quality_audit_events")
 }
 
 model TraceabilityRecord {
@@ -3161,6 +3530,94 @@ model TraceabilityRecord {
   @@index([shipment_id])
   @@index([cultivation_id])
   @@map("traceability_records")
+}
+
+model TraceabilityBatch {
+  id                  String                  @id @default(uuid()) @db.Uuid
+  organization_id     String?                 @db.Uuid
+  product_id          String?                 @db.Uuid
+  batch_code          String                  @db.VarChar(120)
+  harvest_id          String?                 @db.Uuid
+  cultivation_id      String?                 @db.Uuid
+  farm_id             String?                 @db.Uuid
+  farmer_user_id      String?                 @db.Uuid
+  seller_user_id      String?                 @db.Uuid
+  buyer_user_id       String?                 @db.Uuid
+  shipment_id         String?                 @db.Uuid
+  inspection_id       String?                 @db.Uuid
+  warehouse_entry_at  DateTime?               @db.Timestamp(6)
+  status              TraceabilityBatchStatus @default(ACTIVE)
+  verification_status VerificationStatus      @default(UNVERIFIED)
+  public_disclosure   Boolean                 @default(false)
+  verification_token  String                  @unique @db.VarChar(128)
+  qr_payload          String?                 @db.Text
+  created_by_user_id  String?                 @db.Uuid
+  verified_by_user_id String?                 @db.Uuid
+  verified_at         DateTime?               @db.Timestamp(6)
+  notes               String?                 @db.Text
+  created_at          DateTime                @default(now()) @db.Timestamp(6)
+  updated_at          DateTime                @updatedAt @db.Timestamp(6)
+
+  organization Organization?      @relation(fields: [organization_id], references: [id], onDelete: SetNull)
+  product      Product?           @relation(fields: [product_id], references: [id], onDelete: SetNull)
+  harvest      Harvest?           @relation(fields: [harvest_id], references: [id], onDelete: SetNull)
+  cultivation  Cultivation?       @relation(fields: [cultivation_id], references: [id], onDelete: SetNull)
+  shipment     Shipment?          @relation(fields: [shipment_id], references: [id], onDelete: SetNull)
+  inspection   QualityInspection? @relation(fields: [inspection_id], references: [id], onDelete: SetNull)
+
+  events TraceabilityEvent[]
+  audits TraceabilityAuditEvent[]
+
+  @@unique([organization_id, batch_code])
+  @@index([organization_id, status])
+  @@index([product_id])
+  @@index([shipment_id])
+  @@index([verification_status])
+  @@map("traceability_batches")
+}
+
+model TraceabilityEvent {
+  id                   String                @id @default(uuid()) @db.Uuid
+  batch_id             String                @db.Uuid
+  event_type           TraceabilityEventType
+  occurred_at          DateTime              @db.Timestamp(6)
+  title                String                @db.VarChar(180)
+  description          String?               @db.Text
+  location_description String?               @db.VarChar(255)
+  longitude            Decimal?              @db.Decimal(10, 7)
+  latitude             Decimal?              @db.Decimal(10, 7)
+  actor_user_id        String?               @db.Uuid
+  source_module        String?               @db.VarChar(40)
+  source_record_id     String?               @db.Uuid
+  public_disclosure    Boolean               @default(false)
+  verification_status  VerificationStatus    @default(UNVERIFIED)
+  metadata             Json                  @default("{}")
+  created_at           DateTime              @default(now()) @db.Timestamp(6)
+
+  batch TraceabilityBatch @relation(fields: [batch_id], references: [id], onDelete: Cascade)
+
+  @@index([batch_id, occurred_at])
+  @@index([event_type])
+  @@index([public_disclosure, verification_status])
+  @@map("traceability_events")
+}
+
+model TraceabilityAuditEvent {
+  id              String   @id @default(uuid()) @db.Uuid
+  batch_id        String?  @db.Uuid
+  organization_id String?  @db.Uuid
+  action          String   @db.VarChar(120)
+  actor_user_id   String?  @db.Uuid
+  before          Json?
+  after           Json     @default("{}")
+  created_at      DateTime @default(now()) @db.Timestamp(6)
+
+  batch        TraceabilityBatch? @relation(fields: [batch_id], references: [id], onDelete: SetNull)
+  organization Organization?      @relation(fields: [organization_id], references: [id], onDelete: SetNull)
+
+  @@index([batch_id, created_at])
+  @@index([organization_id, created_at])
+  @@map("traceability_audit_events")
 }
 
 // ---------------------------------------------------------------------------

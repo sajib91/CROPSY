@@ -1,9 +1,9 @@
-const { QualityService, QualityServiceToken } = require('./quality.service');
-const { moduleInfoSchema, toModuleInfoDto } = require('./quality.dto');
+const dto = require('./quality.dto');
+const { EVENTS, QualityService, QualityServiceToken } = require('./quality.service');
 
 module.exports = {
   QualityService,
   QualityServiceToken,
-  moduleInfoSchema,
-  toModuleInfoDto,
+  EVENTS,
+  ...dto,
 };

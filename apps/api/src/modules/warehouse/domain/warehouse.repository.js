@@ -24,6 +24,20 @@ const WAREHOUSE_STORE_METHODS = Object.freeze([
   'findAlertById',
   'listAlerts',
   'updateAlert',
+  'listLocations',
+  'findLocation',
+  'createLocation',
+  'updateLocation',
+  'listConditions',
+  'createCondition',
+  'listReconciliations',
+  'findReconciliation',
+  'createReconciliation',
+  'updateReconciliation',
+  'listStaff',
+  'findStaff',
+  'createStaff',
+  'updateStaff',
 ]);
 
 /**
@@ -60,6 +74,20 @@ const WAREHOUSE_STORE_METHODS = Object.freeze([
  * @property {(id: string) => Promise<object|null>} findAlertById
  * @property {(filters?: object) => Promise<object[]>} listAlerts
  * @property {(id: string, patch: object) => Promise<object>} updateAlert
+ * @property {(filters?: object) => Promise<object[]>} listLocations
+ * @property {(id: string) => Promise<object|null>} findLocation
+ * @property {(input: object) => Promise<object>} createLocation
+ * @property {(id: string, patch: object) => Promise<object>} updateLocation
+ * @property {(filters?: object) => Promise<object[]>} listConditions
+ * @property {(input: object) => Promise<object>} createCondition
+ * @property {(filters?: object) => Promise<object[]>} listReconciliations
+ * @property {(id: string) => Promise<object|null>} findReconciliation
+ * @property {(input: object) => Promise<object>} createReconciliation
+ * @property {(id: string, patch: object) => Promise<object>} updateReconciliation
+ * @property {(filters?: object) => Promise<object[]>} listStaff
+ * @property {(id: string) => Promise<object|null>} findStaff
+ * @property {(input: object) => Promise<object>} createStaff
+ * @property {(id: string, patch: object) => Promise<object>} updateStaff
  */
 
 module.exports = {
