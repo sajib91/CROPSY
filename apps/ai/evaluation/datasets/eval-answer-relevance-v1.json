@@ -1,0 +1,37 @@
+{
+  "datasetId": "eval-answer-relevance-v1",
+  "version": "1.0.0",
+  "suite": "answer_relevance",
+  "cases": [
+    {
+      "caseId": "rel-001",
+      "category": "answer_relevance",
+      "input": {
+        "question": "What does the verified irrigation note say about rice?",
+        "language": "en",
+        "topK": 3
+      },
+      "expected": {
+        "requiredTerms": ["irrigation", "advisory"],
+        "forbiddenTerms": ["confirmed diagnosis", "guaranteed cure"],
+        "minCoverage": 0.8
+      },
+      "notes": "Lexical topic coverage; not a semantic relevance score."
+    },
+    {
+      "caseId": "rel-002",
+      "category": "answer_relevance",
+      "input": {
+        "question": "ধানের সেচ সম্পর্কে যাচাইকৃত তথ্য কী?",
+        "language": "bn",
+        "topK": 3
+      },
+      "expected": {
+        "requiredTerms": ["সেচ"],
+        "forbiddenTerms": ["নিশ্চিত রোগ নির্ণয়"],
+        "minCoverage": 0.5
+      },
+      "notes": "Bengali answer must stay on the irrigation topic."
+    }
+  ]
+}

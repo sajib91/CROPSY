@@ -1,0 +1,34 @@
+{
+  "datasetId": "cropsy-image-retrieval-v1",
+  "version": "1.0.0",
+  "queries": [
+    {
+      "queryId": "image-rice-leaf-spots",
+      "query": "Which uploaded image shows rice leaf spots?",
+      "imageDescription": "Rice leaf photograph with visible spot pattern.",
+      "relevantAssetIds": ["eval-image-rice-leaf"],
+      "notes": "Image retrieval must return the visual asset; visual observations are not diagnoses."
+    },
+    {
+      "queryId": "image-chart-yield",
+      "query": "Find the chart about historical rice yield.",
+      "imageDescription": "Agricultural chart image showing annual yield values.",
+      "relevantAssetIds": ["eval-chart-rice-yield"],
+      "notes": "Chart retrieval uses OCR and multimodal indexing metadata."
+    },
+    {
+      "queryId": "image-table-fertilizer",
+      "query": "Which image contains the fertilizer dose table?",
+      "imageDescription": "Photographed table with fertilizer dose columns.",
+      "relevantAssetIds": ["eval-table-fertilizer"],
+      "notes": "Table image retrieval uses OCR and layout analysis."
+    },
+    {
+      "queryId": "image-plant-photo-bn",
+      "query": "ধানের পাতার ছবি কোনটি?",
+      "imageDescription": "Bengali query for a rice plant photograph.",
+      "relevantAssetIds": ["eval-image-rice-leaf"],
+      "notes": "Bengali cross-modal image retrieval case."
+    }
+  ]
+}

@@ -24,6 +24,34 @@ const OPERATION_PATHS = Object.freeze({
   getWeatherForecasts: '/weather/forecasts',
   getWeatherAlerts: '/weather/alerts',
   getWeatherAdvisory: '/weather/advisory',
+  runAgentic: '/agentic/run',
+  approveAgentic: '/agentic/approve',
+  graphExtract: '/graph/extract',
+  graphBuild: '/graph/build',
+  graphRetrieve: '/graph/retrieve',
+  graphContext: '/graph/context',
+  graphCapabilities: '/graph/capabilities',
+  ingestMultimodalAsset: '/multimodal/assets',
+  retrieveMultimodal: '/multimodal/retrieve',
+  runUnified: '/orchestration/run',
+  unifiedCapabilities: '/orchestration/capabilities',
+  evaluateUnified: '/orchestration/evaluation',
+  analyzeImage: '/image-analysis/analyze',
+  imageAnalysisCapabilities: '/image-analysis/capabilities',
+  submitImageFeedback: '/image-analysis/feedback',
+  requestExpertReview: '/image-analysis/reviews',
+  decideExpertReview: '/image-analysis/reviews/decide',
+  evaluationFrameworkCapabilities: '/evaluation/framework/capabilities',
+  runEvaluation: '/evaluation/framework/runs',
+  submitEvaluationFeedback: '/evaluation/framework/feedback',
+  createRegressionBaseline: '/evaluation/framework/baselines',
+  listRegressionBaselines: '/evaluation/framework/baselines',
+  checkRegression: '/evaluation/framework/regression',
+  compareEvaluations: '/evaluation/framework/comparison',
+  retrievalDiagnostics: '/evaluation/framework/diagnostics',
+  failureDashboard: '/evaluation/framework/dashboards/failures',
+  agentMonitoring: '/evaluation/framework/monitoring',
+  promptVersions: '/evaluation/framework/prompts',
 });
 const OPERATION_METHODS = Object.freeze({
   ask: 'POST',
@@ -41,6 +69,36 @@ const OPERATION_METHODS = Object.freeze({
   getWeatherForecasts: 'POST',
   getWeatherAlerts: 'POST',
   getWeatherAdvisory: 'POST',
+  runAgentic: 'POST',
+  approveAgentic: 'POST',
+  graphExtract: 'POST',
+  graphBuild: 'POST',
+  graphRetrieve: 'POST',
+  graphContext: 'POST',
+  graphCapabilities: 'GET',
+  ingestMultimodalAsset: 'POST',
+  retrieveMultimodal: 'POST',
+  runUnified: 'POST',
+  unifiedCapabilities: 'GET',
+  evaluateUnified: 'POST',
+  analyzeImage: 'POST',
+  imageAnalysisCapabilities: 'GET',
+  submitImageFeedback: 'POST',
+  requestExpertReview: 'POST',
+  decideExpertReview: 'POST',
+  getExpertReview: 'GET',
+  evaluationFrameworkCapabilities: 'GET',
+  runEvaluation: 'POST',
+  getEvaluationRun: 'GET',
+  submitEvaluationFeedback: 'POST',
+  createRegressionBaseline: 'POST',
+  listRegressionBaselines: 'GET',
+  checkRegression: 'POST',
+  compareEvaluations: 'POST',
+  retrievalDiagnostics: 'GET',
+  failureDashboard: 'GET',
+  agentMonitoring: 'GET',
+  promptVersions: 'GET',
 });
 
 // The AI service validates these headers against a conservative identifier
@@ -60,6 +118,20 @@ function operationPath(operation, payload) {
       throw gatewayError('A conversation id is required.', { reason: 'missing_conversation_id' });
     }
     return `/conversations/${encodeURIComponent(conversationId)}`;
+  }
+  if (operation === 'getExpertReview') {
+    const reviewId = headerValue(payload?.reviewId, '');
+    if (!reviewId) {
+      throw gatewayError('A review id is required.', { reason: 'missing_review_id' });
+    }
+    return `/image-analysis/reviews/${encodeURIComponent(reviewId)}`;
+  }
+  if (operation === 'getEvaluationRun') {
+    const runId = headerValue(payload?.runId, '');
+    if (!runId) {
+      throw gatewayError('An evaluation run id is required.', { reason: 'missing_run_id' });
+    }
+    return `/evaluation/framework/runs/${encodeURIComponent(runId)}`;
   }
   return OPERATION_PATHS[operation];
 }
@@ -274,6 +346,126 @@ class HttpAiGateway {
     return this._call('getWeatherAdvisory', payload, metadata);
   }
 
+  runAgenticAi(payload, metadata) {
+    return this._call('runAgentic', payload, metadata);
+  }
+
+  approveAgenticAi(payload, metadata) {
+    return this._call('approveAgentic', payload, metadata);
+  }
+
+  graphExtractAi(payload, metadata) {
+    return this._call('graphExtract', payload, metadata);
+  }
+
+  graphBuildAi(payload, metadata) {
+    return this._call('graphBuild', payload, metadata);
+  }
+
+  graphRetrieveAi(payload, metadata) {
+    return this._call('graphRetrieve', payload, metadata);
+  }
+
+  graphContextAi(payload, metadata) {
+    return this._call('graphContext', payload, metadata);
+  }
+
+  graphCapabilitiesAi(payload, metadata) {
+    return this._call('graphCapabilities', payload, metadata);
+  }
+
+  ingestMultimodalAssetAi(payload, metadata) {
+    return this._call('ingestMultimodalAsset', payload, metadata);
+  }
+
+  retrieveMultimodalAi(payload, metadata) {
+    return this._call('retrieveMultimodal', payload, metadata);
+  }
+
+  runUnifiedAi(payload, metadata) {
+    return this._call('runUnified', payload, metadata);
+  }
+
+  unifiedCapabilitiesAi(payload, metadata) {
+    return this._call('unifiedCapabilities', payload, metadata);
+  }
+
+  evaluateUnifiedAi(payload, metadata) {
+    return this._call('evaluateUnified', payload, metadata);
+  }
+
+  analyzeImageAi(payload, metadata) {
+    return this._call('analyzeImage', payload, metadata);
+  }
+
+  imageAnalysisCapabilitiesAi(payload, metadata) {
+    return this._call('imageAnalysisCapabilities', payload, metadata);
+  }
+
+  submitImageFeedbackAi(payload, metadata) {
+    return this._call('submitImageFeedback', payload, metadata);
+  }
+
+  requestExpertReviewAi(payload, metadata) {
+    return this._call('requestExpertReview', payload, metadata);
+  }
+
+  decideExpertReviewAi(payload, metadata) {
+    return this._call('decideExpertReview', payload, metadata);
+  }
+
+  getExpertReviewAi(payload, metadata) {
+    return this._call('getExpertReview', payload, metadata);
+  }
+
+  evaluationFrameworkCapabilitiesAi(payload, metadata) {
+    return this._call('evaluationFrameworkCapabilities', payload, metadata);
+  }
+
+  runEvaluationAi(payload, metadata) {
+    return this._call('runEvaluation', payload, metadata);
+  }
+
+  getEvaluationRunAi(payload, metadata) {
+    return this._call('getEvaluationRun', payload, metadata);
+  }
+
+  submitEvaluationFeedbackAi(payload, metadata) {
+    return this._call('submitEvaluationFeedback', payload, metadata);
+  }
+
+  createRegressionBaselineAi(payload, metadata) {
+    return this._call('createRegressionBaseline', payload, metadata);
+  }
+
+  listRegressionBaselinesAi(payload, metadata) {
+    return this._call('listRegressionBaselines', payload, metadata);
+  }
+
+  checkRegressionAi(payload, metadata) {
+    return this._call('checkRegression', payload, metadata);
+  }
+
+  compareEvaluationsAi(payload, metadata) {
+    return this._call('compareEvaluations', payload, metadata);
+  }
+
+  retrievalDiagnosticsAi(payload, metadata) {
+    return this._call('retrievalDiagnostics', payload, metadata);
+  }
+
+  failureDashboardAi(payload, metadata) {
+    return this._call('failureDashboard', payload, metadata);
+  }
+
+  agentMonitoringAi(payload, metadata) {
+    return this._call('agentMonitoring', payload, metadata);
+  }
+
+  promptVersionsAi(payload, metadata) {
+    return this._call('promptVersions', payload, metadata);
+  }
+
   forecastMarket(payload, metadata) {
     return this.forecastMarketAi(payload, metadata);
   }
@@ -340,6 +532,62 @@ class HttpAiGateway {
 
   describeCapabilities(payload, metadata) {
     return this.describeAiCapabilities(payload, metadata);
+  }
+
+  runAgentic(payload, metadata) {
+    return this.runAgenticAi(payload, metadata);
+  }
+
+  agenticRun(payload, metadata) {
+    return this.runAgenticAi(payload, metadata);
+  }
+
+  approveAgentic(payload, metadata) {
+    return this.approveAgenticAi(payload, metadata);
+  }
+
+  agenticApprove(payload, metadata) {
+    return this.approveAgenticAi(payload, metadata);
+  }
+
+  graphExtract(payload, metadata) {
+    return this.graphExtractAi(payload, metadata);
+  }
+
+  extractGraph(payload, metadata) {
+    return this.graphExtractAi(payload, metadata);
+  }
+
+  graphBuild(payload, metadata) {
+    return this.graphBuildAi(payload, metadata);
+  }
+
+  buildGraph(payload, metadata) {
+    return this.graphBuildAi(payload, metadata);
+  }
+
+  graphRetrieve(payload, metadata) {
+    return this.graphRetrieveAi(payload, metadata);
+  }
+
+  retrieveGraph(payload, metadata) {
+    return this.graphRetrieveAi(payload, metadata);
+  }
+
+  graphContext(payload, metadata) {
+    return this.graphContextAi(payload, metadata);
+  }
+
+  graphCombinedContext(payload, metadata) {
+    return this.graphContextAi(payload, metadata);
+  }
+
+  graphCapabilities(payload, metadata) {
+    return this.graphCapabilitiesAi(payload, metadata);
+  }
+
+  describeGraphCapabilities(payload, metadata) {
+    return this.graphCapabilitiesAi(payload, metadata);
   }
 
   describe() {
@@ -418,6 +666,34 @@ class UnavailableAiGateway {
     throw aiGatewayUnavailableError();
   }
 
+  runAgenticAi() {
+    throw aiGatewayUnavailableError();
+  }
+
+  approveAgenticAi() {
+    throw aiGatewayUnavailableError();
+  }
+
+  graphExtractAi() {
+    throw aiGatewayUnavailableError();
+  }
+
+  graphBuildAi() {
+    throw aiGatewayUnavailableError();
+  }
+
+  graphRetrieveAi() {
+    throw aiGatewayUnavailableError();
+  }
+
+  graphContextAi() {
+    throw aiGatewayUnavailableError();
+  }
+
+  graphCapabilitiesAi() {
+    throw aiGatewayUnavailableError();
+  }
+
   forecastMarket() {
     throw aiGatewayUnavailableError();
   }
@@ -486,11 +762,77 @@ class UnavailableAiGateway {
     throw aiGatewayUnavailableError();
   }
 
+  runAgentic() {
+    throw aiGatewayUnavailableError();
+  }
+
+  agenticRun() {
+    throw aiGatewayUnavailableError();
+  }
+
+  approveAgentic() {
+    throw aiGatewayUnavailableError();
+  }
+
+  agenticApprove() {
+    throw aiGatewayUnavailableError();
+  }
+
+  graphExtract() {
+    throw aiGatewayUnavailableError();
+  }
+
+  extractGraph() {
+    throw aiGatewayUnavailableError();
+  }
+
+  graphBuild() {
+    throw aiGatewayUnavailableError();
+  }
+
+  buildGraph() {
+    throw aiGatewayUnavailableError();
+  }
+
+  graphRetrieve() {
+    throw aiGatewayUnavailableError();
+  }
+
+  retrieveGraph() {
+    throw aiGatewayUnavailableError();
+  }
+
+  graphContext() {
+    throw aiGatewayUnavailableError();
+  }
+
+  graphCombinedContext() {
+    throw aiGatewayUnavailableError();
+  }
+
+  graphCapabilities() {
+    throw aiGatewayUnavailableError();
+  }
+
+  describeGraphCapabilities() {
+    throw aiGatewayUnavailableError();
+  }
+
   describe() {
     return {
       configured: false,
       operations: [],
       methods: [],
+    };
+  }
+}
+
+// The unavailable adapter must fail explicitly for every declared operation,
+// including newer advisory and evaluation endpoints.
+for (const method of Object.values(AI_GATEWAY_METHODS)) {
+  if (typeof UnavailableAiGateway.prototype[method] !== 'function') {
+    UnavailableAiGateway.prototype[method] = () => {
+      throw aiGatewayUnavailableError();
     };
   }
 }

@@ -125,7 +125,9 @@ def test_capabilities_expose_modules_without_credentials() -> None:
     assert response.status_code == 200
     body = response.json()
     assert body["success"] is True
-    assert len(body["data"]["modules"]) == 15
+    assert len(body["data"]["modules"]) == 22
+    assert "advisory-image-analysis" in body["data"]["modules"]
+    assert "ai-evaluation-framework" in body["data"]["modules"]
     assert "market-forecasting" in body["data"]["modules"]
     assert "market-explanation" in body["data"]["modules"]
     assert "weather-intelligence" in body["data"]["modules"]
@@ -246,3 +248,183 @@ def test_feedback_updates_evaluation_snapshot() -> None:
     snapshot = response.json()["data"]
     assert snapshot["feedbackCount"] >= 1
     assert snapshot["averageRating"] is not None
+
+
+def graph_extraction_body(reference: str = "api-graph-v1") -> dict:
+    return {
+        "text": (
+            "Rice blast affects rice. Agricultural research has evidence for rice blast. "
+            "Expert recommendation recommends irrigation for rice."
+        ),
+        "source": "Internal agronomy note",
+        "sourceReference": reference,
+        "documentStatus": "verified",
+        "licenseVerified": True,
+    }
+
+
+def graph_retrieval_body(**overrides: object) -> dict:
+    body = {
+        "query": "rice blast",
+        "organizationIds": ["org-ai-test"],
+        "includeGlobal": False,
+        "topK": 10,
+        "minConfidence": 0.5,
+        "includeCandidates": False,
+    }
+    body.update(overrides)
+    return body
+
+
+def test_new_internal_routes_require_hmac_authentication() -> None:
+    cases = (
+        ("POST", "/api/v1/internal/agentic/run", {"query": "rice irrigation"}),
+        (
+            "POST",
+            "/api/v1/internal/agentic/approve",
+            {"traceId": "trace-x", "approval": {}},
+        ),
+        ("POST", "/api/v1/internal/graph/extract", graph_extraction_body()),
+        ("POST", "/api/v1/internal/graph/build", {"extraction": graph_extraction_body()}),
+        ("POST", "/api/v1/internal/graph/retrieve", graph_retrieval_body()),
+        (
+            "POST",
+            "/api/v1/internal/graph/context",
+            {
+                "query": "rice blast",
+                "graph": graph_retrieval_body(),
+            },
+        ),
+        ("GET", "/api/v1/internal/graph/capabilities", None),
+    )
+    for method, path, body in cases:
+        response = (
+            client.post(path, json=body) if method == "POST" else client.get(path)
+        )
+        assert response.status_code == 401, path
+        assert response.json()["error"]["code"] == "unauthorized"
+
+
+def test_agentic_run_resumes_after_human_approval_over_internal_api() -> None:
+    run_path = "/api/v1/internal/agentic/run"
+    trace_id = "req-agentic-approval-api"
+    response, payload = post(
+        run_path,
+        {
+            "query": "Rice irrigation guidance",
+            "language": "en",
+            "useGraph": False,
+            "requireApproval": True,
+        },
+        request_id=trace_id,
+    )
+    assert response.status_code == 200, payload
+    assert payload["data"]["status"] == "awaiting_approval"
+    assert payload["data"]["advisory"] is False
+    approval_id = payload["data"]["approvalId"]
+    assert approval_id
+
+    approve_path = "/api/v1/internal/agentic/approve"
+    response, payload = post(
+        approve_path,
+        {
+            "traceId": trace_id,
+            "approval": {
+                "approvalId": approval_id,
+                "approvedBy": "internal-reviewer",
+                "decision": "approved",
+                "scope": ["response_generation"],
+            },
+        },
+    )
+    assert response.status_code == 200, payload
+    assert payload["data"]["approval"]["approvedBy"] == "internal-reviewer"
+    assert payload["data"]["status"] in {"ok", "insufficient_evidence"}
+    assert payload["data"]["traceId"] == trace_id
+    usage = payload["data"]["usage"]
+    assert not usage or usage.get("totalTokens", 0) >= 0
+
+
+def test_agentic_requests_reject_farmer_identifiers() -> None:
+    response, payload = post(
+        "/api/v1/internal/agentic/run",
+        {"query": "rice blast", "farmId": "farm-secret"},
+    )
+    assert response.status_code == 400
+    assert payload["error"]["code"] == "validation_error"
+
+    response, payload = post(
+        "/api/v1/internal/graph/retrieve",
+        graph_retrieval_body(farmerId="farmer-secret"),
+    )
+    assert response.status_code == 400
+    assert payload["error"]["code"] == "validation_error"
+
+
+def test_graph_extract_build_retrieve_and_context_over_internal_api() -> None:
+    response, payload = post("/api/v1/internal/graph/extract", graph_extraction_body())
+    assert response.status_code == 200, payload
+    assert payload["data"]["extractionMethod"] == "deterministic"
+    assert payload["data"]["relationships"]
+
+    build_path = "/api/v1/internal/graph/build"
+    response, payload = post(build_path, {"extraction": graph_extraction_body()})
+    assert response.status_code == 200, payload
+    assert payload["data"]["status"] == "awaiting_approval"
+    assert payload["data"]["relationshipsWritten"] >= 1
+    assert payload["data"]["verifiedRelationships"] == 0
+    assert payload["data"]["validation"]["requiresApproval"] is True
+    classes = {
+        item["evidenceClass"] for item in payload["data"]["validation"]["accepted"]
+    }
+    assert "verified_relationship" not in classes
+    assert "validated_extraction" in classes
+
+    retrieve_path = "/api/v1/internal/graph/retrieve"
+    response, payload = post(retrieve_path, graph_retrieval_body())
+    assert response.status_code == 200, payload
+    assert payload["data"]["evidence"]
+    assert all(not item["verified"] for item in payload["data"]["evidence"])
+
+    context_path = "/api/v1/internal/graph/context"
+    response, payload = post(
+        context_path,
+        {
+            "query": "rice blast",
+            "graph": graph_retrieval_body(),
+            "topK": 5,
+            "documentTypes": [],
+        },
+    )
+    assert response.status_code == 200, payload
+    assert payload["data"]["counts"]["graphEvidence"] >= 1
+    assert any(
+        "not scientific facts" in limitation
+        for limitation in payload["data"]["limitations"]
+    )
+
+
+def test_graph_retrieve_denies_cross_organization_scope() -> None:
+    response, payload = post(
+        "/api/v1/internal/graph/retrieve",
+        graph_retrieval_body(
+            organizationIds=["org-other"],
+            includeGlobal=False,
+        ),
+        organization_id="org-ai-test",
+    )
+    assert response.status_code == 401, payload
+    assert payload["error"]["code"] == "unauthorized"
+    assert payload["error"]["details"]["reason"] == "cross_organization_graph_scope_denied"
+
+
+def test_graph_capabilities_disclose_provenance_policy() -> None:
+    path = "/api/v1/internal/graph/capabilities"
+    response = client.get(path, headers=signed("GET", path))
+    assert response.status_code == 200
+    data = response.json()["data"]
+    assert data["policies"]["tenantScopeEnforced"] is True
+    assert data["policies"]["llmRelationshipsRequireValidation"] is True
+    assert data["policies"]["humanApprovalRequiredForVerifiedRelationship"] is True
+    assert "HAS_EVIDENCE" in data["relationships"]
+    assert "verified_relationship" in data["evidenceClasses"]

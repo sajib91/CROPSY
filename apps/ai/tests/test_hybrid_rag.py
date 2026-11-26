@@ -492,6 +492,10 @@ def test_production_retrieval_requires_real_backends_and_bge() -> None:
         llm_base_url="http://llm.test",
         embedding_provider="http",
         embedding_base_url="http://embed.test",
+        graph_backend="neo4j",
+        neo4j_uri="bolt://neo4j.test:7687",
+        neo4j_user="neo4j",
+        neo4j_password=SecretStr("test-neo4j-password"),
     )
     with pytest.raises(ConfigurationError) as error:
         require_production_retrieval(stack["retrieval"], production)

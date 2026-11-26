@@ -35,14 +35,14 @@ class ModelRegistry:
                 key="advisory-local",
                 provider="mock",
                 modelName="cropsy-deterministic-advisory-v1",
-                tasks=["general", "ask", "recommend", "classify", "ocr-review"],
+                tasks=["general", "ask", "recommend", "classify", "ocr-review", "orchestration"],
                 enabled=not production or self.settings.allow_mock_provider,
             ),
             ModelConfig(
                 key="advisory-http",
                 provider="http",
                 modelName="configured-http-model",
-                tasks=["general", "ask", "recommend", "classify", "ocr-review"],
+                tasks=["general", "ask", "recommend", "classify", "ocr-review", "orchestration"],
                 enabled=self.settings.llm_provider == "http",
             ),
         ]

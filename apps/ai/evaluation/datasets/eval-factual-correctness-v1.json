@@ -1,0 +1,37 @@
+{
+  "datasetId": "eval-factual-correctness-v1",
+  "version": "1.0.0",
+  "suite": "factual_correctness",
+  "cases": [
+    {
+      "caseId": "fact-001",
+      "category": "factual_correctness",
+      "input": {
+        "question": "According to the supplied research note, what irrigation practice was observed?",
+        "language": "en",
+        "topK": 3
+      },
+      "expected": {
+        "expectedFacts": ["alternate wetting and drying", "local agronomist"],
+        "contradictionTerms": ["scientifically validated", "guaranteed yield"],
+        "minFactCoverage": 0.8
+      },
+      "notes": "Facts are checked against fixture text by deterministic string matching."
+    },
+    {
+      "caseId": "fact-002",
+      "category": "factual_correctness",
+      "input": {
+        "question": "Does the supplied note claim a confirmed plant diagnosis?",
+        "language": "en",
+        "topK": 3
+      },
+      "expected": {
+        "expectedFacts": ["not a confirmed"],
+        "contradictionTerms": ["confirmed diagnosis is proven"],
+        "minFactCoverage": 0.5
+      },
+      "notes": "Negative claim must be explicit in the answer."
+    }
+  ]
+}

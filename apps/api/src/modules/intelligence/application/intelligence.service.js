@@ -16,15 +16,36 @@ const {
   aiGatewayUnavailableError,
 } = require('../domain/ai-gateway.entity');
 const {
+  aiAgenticApprovalSchema,
+  aiAgenticRunSchema,
   aiAskSchema,
+  aiBaselineSchema,
   aiChatSchema,
+  aiComparisonSchema,
   aiConversationCreateSchema,
+  aiEvaluationFeedbackSchema,
+  aiEvaluationRunSchema,
+  aiExpertReviewDecisionSchema,
+  aiExpertReviewRequestSchema,
   aiFeedbackSchema,
+  aiImageAnalysisSchema,
+  aiImageFeedbackSchema,
+  aiGraphBuildSchema,
+  aiGraphContextSchema,
+  aiGraphExtractionSchema,
+  aiGraphRetrievalSchema,
   aiMarketExplanationSchema,
   aiMarketForecastSchema,
+  aiMultimodalAssetSchema,
+  aiMultimodalRetrieveSchema,
   aiRecommendSchema,
+  aiRegressionSchema,
   aiRetrieveSchema,
   aiRetrievalEvaluationSchema,
+  aiReviewParamsSchema,
+  aiRunParamsSchema,
+  aiUnifiedEvaluationSchema,
+  aiUnifiedRunSchema,
   aiWeatherAdvisorySchema,
   aiWeatherLookupSchema,
   moduleInfoSchema,
@@ -78,6 +99,96 @@ const NULL_AI_GATEWAY = Object.freeze({
     throw aiGatewayUnavailableError();
   },
   getWeatherAdvisoryAi: () => {
+    throw aiGatewayUnavailableError();
+  },
+  runAgenticAi: () => {
+    throw aiGatewayUnavailableError();
+  },
+  approveAgenticAi: () => {
+    throw aiGatewayUnavailableError();
+  },
+  graphExtractAi: () => {
+    throw aiGatewayUnavailableError();
+  },
+  graphBuildAi: () => {
+    throw aiGatewayUnavailableError();
+  },
+  graphRetrieveAi: () => {
+    throw aiGatewayUnavailableError();
+  },
+  graphContextAi: () => {
+    throw aiGatewayUnavailableError();
+  },
+  graphCapabilitiesAi: () => {
+    throw aiGatewayUnavailableError();
+  },
+  ingestMultimodalAssetAi: () => {
+    throw aiGatewayUnavailableError();
+  },
+  retrieveMultimodalAi: () => {
+    throw aiGatewayUnavailableError();
+  },
+  runUnifiedAi: () => {
+    throw aiGatewayUnavailableError();
+  },
+  unifiedCapabilitiesAi: () => {
+    throw aiGatewayUnavailableError();
+  },
+  evaluateUnifiedAi: () => {
+    throw aiGatewayUnavailableError();
+  },
+  analyzeImageAi: () => {
+    throw aiGatewayUnavailableError();
+  },
+  imageAnalysisCapabilitiesAi: () => {
+    throw aiGatewayUnavailableError();
+  },
+  submitImageFeedbackAi: () => {
+    throw aiGatewayUnavailableError();
+  },
+  requestExpertReviewAi: () => {
+    throw aiGatewayUnavailableError();
+  },
+  decideExpertReviewAi: () => {
+    throw aiGatewayUnavailableError();
+  },
+  getExpertReviewAi: () => {
+    throw aiGatewayUnavailableError();
+  },
+  evaluationFrameworkCapabilitiesAi: () => {
+    throw aiGatewayUnavailableError();
+  },
+  runEvaluationAi: () => {
+    throw aiGatewayUnavailableError();
+  },
+  getEvaluationRunAi: () => {
+    throw aiGatewayUnavailableError();
+  },
+  submitEvaluationFeedbackAi: () => {
+    throw aiGatewayUnavailableError();
+  },
+  createRegressionBaselineAi: () => {
+    throw aiGatewayUnavailableError();
+  },
+  listRegressionBaselinesAi: () => {
+    throw aiGatewayUnavailableError();
+  },
+  checkRegressionAi: () => {
+    throw aiGatewayUnavailableError();
+  },
+  compareEvaluationsAi: () => {
+    throw aiGatewayUnavailableError();
+  },
+  retrievalDiagnosticsAi: () => {
+    throw aiGatewayUnavailableError();
+  },
+  failureDashboardAi: () => {
+    throw aiGatewayUnavailableError();
+  },
+  agentMonitoringAi: () => {
+    throw aiGatewayUnavailableError();
+  },
+  promptVersionsAi: () => {
     throw aiGatewayUnavailableError();
   },
 });
@@ -174,7 +285,8 @@ class IntelligenceService {
     return validate(moduleInfoSchema, dto, 'intelligence module info');
   }
 
-  async _callAi(operation, payload, request) {
+  async _callAi(operation, payload, request, options = {}) {
+    const { includeMetadataInPayload = true } = options;
     const metadata = metadataFromRequest(request);
     const gateway = this.aiGateway;
     const candidates = [AI_GATEWAY_METHODS[operation], ...AI_GATEWAY_METHOD_ALIASES[operation]];
@@ -184,7 +296,9 @@ class IntelligenceService {
     // Metadata travels both as a nested object (for port implementations) and
     // flattened (for narrow fake adapters). It is advisory only and never
     // changes business state.
-    const call = { ...payload, ...metadata, metadata };
+    // Legacy advisory methods tolerate metadata in the body. Agentic/GraphRAG
+    // schemas forbid it, so the trusted context travels only as gateway headers.
+    const call = includeMetadataInPayload ? { ...payload, ...metadata, metadata } : payload;
     try {
       return await gateway[methodName](call, metadata);
     } catch (error) {
@@ -387,6 +501,248 @@ class IntelligenceService {
     const payload = validate(aiWeatherAdvisorySchema, input, 'AI weather advisory input');
     const context = await this._weatherContext(payload, request);
     return this._callAi('getWeatherAdvisory', { ...payload, context }, request);
+  }
+
+  // -------------------------------------------------------------------------
+  // Agentic RAG and GraphRAG. These bodies are strict; organization trust is
+  // established by the authenticated headers built from `request` below.
+  // -------------------------------------------------------------------------
+
+  async runAgenticAi(args, source) {
+    const { input, request } = resolveAiArgs(args, source);
+    const payload = validate(aiAgenticRunSchema, input, 'AI agentic run input');
+    return this._callAi('runAgentic', payload, request, { includeMetadataInPayload: false });
+  }
+
+  async approveAgenticAi(args, source) {
+    const { input, request } = resolveAiArgs(args, source);
+    const payload = validate(aiAgenticApprovalSchema, input, 'AI agentic approval input');
+    return this._callAi('approveAgentic', payload, request, {
+      includeMetadataInPayload: false,
+    });
+  }
+
+  async graphExtractAi(args, source) {
+    const { input, request } = resolveAiArgs(args, source);
+    const payload = validate(aiGraphExtractionSchema, input, 'AI graph extraction input');
+    return this._callAi('graphExtract', payload, request, {
+      includeMetadataInPayload: false,
+    });
+  }
+
+  async graphBuildAi(args, source) {
+    const { input, request } = resolveAiArgs(args, source);
+    const payload = validate(aiGraphBuildSchema, input, 'AI graph build input');
+    return this._callAi('graphBuild', payload, request, {
+      includeMetadataInPayload: false,
+    });
+  }
+
+  async graphRetrieveAi(args, source) {
+    const { input, request } = resolveAiArgs(args, source);
+    const payload = validate(aiGraphRetrievalSchema, input || {}, 'AI graph retrieval input');
+    return this._callAi('graphRetrieve', payload, request, {
+      includeMetadataInPayload: false,
+    });
+  }
+
+  async graphContextAi(args, source) {
+    const { input, request } = resolveAiArgs(args, source);
+    const payload = validate(aiGraphContextSchema, input, 'AI graph context input');
+    return this._callAi('graphContext', payload, request, {
+      includeMetadataInPayload: false,
+    });
+  }
+
+  async graphCapabilitiesAi(args, source) {
+    const { request } = resolveAiArgs(args || {}, source);
+    return this._callAi('graphCapabilities', {}, request, {
+      includeMetadataInPayload: false,
+    });
+  }
+
+  async ingestMultimodalAssetAi(args, source) {
+    const { input, request } = resolveAiArgs(args, source);
+    const payload = validate(aiMultimodalAssetSchema, input, 'AI multimodal asset input');
+    return this._callAi('ingestMultimodalAsset', payload, request, {
+      includeMetadataInPayload: false,
+    });
+  }
+
+  async retrieveMultimodalAi(args, source) {
+    const { input, request } = resolveAiArgs(args || {}, source);
+    const payload = validate(
+      aiMultimodalRetrieveSchema,
+      input || {},
+      'AI multimodal retrieve input',
+    );
+    return this._callAi('retrieveMultimodal', payload, request, {
+      includeMetadataInPayload: false,
+    });
+  }
+
+  async runUnifiedAi(args, source) {
+    const { input, request } = resolveAiArgs(args, source);
+    const payload = validate(aiUnifiedRunSchema, input, 'AI unified RAG input');
+    return this._callAi('runUnified', payload, request, {
+      includeMetadataInPayload: false,
+    });
+  }
+
+  async unifiedCapabilitiesAi(args, source) {
+    const { request } = resolveAiArgs(args || {}, source);
+    return this._callAi('unifiedCapabilities', {}, request, {
+      includeMetadataInPayload: false,
+    });
+  }
+
+  async evaluateUnifiedAi(args, source) {
+    const { input, request } = resolveAiArgs(args || {}, source);
+    const payload = validate(aiUnifiedEvaluationSchema, input || {}, 'AI unified evaluation input');
+    return this._callAi('evaluateUnified', payload, request, {
+      includeMetadataInPayload: false,
+    });
+  }
+
+  async analyzeImageAi(args, source) {
+    const { input, request } = resolveAiArgs(args, source);
+    const payload = validate(aiImageAnalysisSchema, input, 'AI image analysis input');
+    return this._callAi('analyzeImage', payload, request, {
+      includeMetadataInPayload: false,
+    });
+  }
+
+  async imageAnalysisCapabilitiesAi(args, source) {
+    const { request } = resolveAiArgs(args || {}, source);
+    return this._callAi('imageAnalysisCapabilities', {}, request, {
+      includeMetadataInPayload: false,
+    });
+  }
+
+  async submitImageFeedbackAi(args, source) {
+    const { input, request } = resolveAiArgs(args, source);
+    const payload = validate(aiImageFeedbackSchema, input, 'AI image feedback input');
+    return this._callAi('submitImageFeedback', payload, request, {
+      includeMetadataInPayload: false,
+    });
+  }
+
+  async requestExpertReviewAi(args, source) {
+    const { input, request } = resolveAiArgs(args, source);
+    const payload = validate(aiExpertReviewRequestSchema, input, 'AI expert review request');
+    return this._callAi('requestExpertReview', payload, request, {
+      includeMetadataInPayload: false,
+    });
+  }
+
+  async decideExpertReviewAi(args, source) {
+    const { input, request } = resolveAiArgs(args, source);
+    const payload = validate(aiExpertReviewDecisionSchema, input, 'AI expert review decision');
+    return this._callAi('decideExpertReview', payload, request, {
+      includeMetadataInPayload: false,
+    });
+  }
+
+  async getExpertReviewAi(args, source) {
+    const { input, request } = resolveAiArgs(args || {}, source);
+    const raw = input || {};
+    const reviewId = raw.reviewId ?? raw.params?.reviewId;
+    const payload = validate(aiReviewParamsSchema, { reviewId }, 'AI expert review id');
+    return this._callAi('getExpertReview', payload, request, {
+      includeMetadataInPayload: false,
+    });
+  }
+
+  async evaluationFrameworkCapabilitiesAi(args, source) {
+    const { request } = resolveAiArgs(args || {}, source);
+    return this._callAi('evaluationFrameworkCapabilities', {}, request, {
+      includeMetadataInPayload: false,
+    });
+  }
+
+  async runEvaluationAi(args, source) {
+    const { input, request } = resolveAiArgs(args || {}, source);
+    const payload = validate(aiEvaluationRunSchema, input || {}, 'AI evaluation run input');
+    return this._callAi('runEvaluation', payload, request, {
+      includeMetadataInPayload: false,
+    });
+  }
+
+  async getEvaluationRunAi(args, source) {
+    const { input, request } = resolveAiArgs(args || {}, source);
+    const raw = input || {};
+    const runId = raw.runId ?? raw.params?.runId;
+    const payload = validate(aiRunParamsSchema, { runId }, 'AI evaluation run id');
+    return this._callAi('getEvaluationRun', payload, request, {
+      includeMetadataInPayload: false,
+    });
+  }
+
+  async submitEvaluationFeedbackAi(args, source) {
+    const { input, request } = resolveAiArgs(args, source);
+    const payload = validate(aiEvaluationFeedbackSchema, input, 'AI evaluation feedback input');
+    return this._callAi('submitEvaluationFeedback', payload, request, {
+      includeMetadataInPayload: false,
+    });
+  }
+
+  async createRegressionBaselineAi(args, source) {
+    const { input, request } = resolveAiArgs(args, source);
+    const payload = validate(aiBaselineSchema, input, 'AI regression baseline input');
+    return this._callAi('createRegressionBaseline', payload, request, {
+      includeMetadataInPayload: false,
+    });
+  }
+
+  async listRegressionBaselinesAi(args, source) {
+    const { request } = resolveAiArgs(args || {}, source);
+    return this._callAi('listRegressionBaselines', {}, request, {
+      includeMetadataInPayload: false,
+    });
+  }
+
+  async checkRegressionAi(args, source) {
+    const { input, request } = resolveAiArgs(args, source);
+    const payload = validate(aiRegressionSchema, input, 'AI regression check input');
+    return this._callAi('checkRegression', payload, request, {
+      includeMetadataInPayload: false,
+    });
+  }
+
+  async compareEvaluationsAi(args, source) {
+    const { input, request } = resolveAiArgs(args, source);
+    const payload = validate(aiComparisonSchema, input, 'AI evaluation comparison input');
+    return this._callAi('compareEvaluations', payload, request, {
+      includeMetadataInPayload: false,
+    });
+  }
+
+  async retrievalDiagnosticsAi(args, source) {
+    const { request } = resolveAiArgs(args || {}, source);
+    return this._callAi('retrievalDiagnostics', {}, request, {
+      includeMetadataInPayload: false,
+    });
+  }
+
+  async failureDashboardAi(args, source) {
+    const { request } = resolveAiArgs(args || {}, source);
+    return this._callAi('failureDashboard', {}, request, {
+      includeMetadataInPayload: false,
+    });
+  }
+
+  async agentMonitoringAi(args, source) {
+    const { request } = resolveAiArgs(args || {}, source);
+    return this._callAi('agentMonitoring', {}, request, {
+      includeMetadataInPayload: false,
+    });
+  }
+
+  async promptVersionsAi(args, source) {
+    const { request } = resolveAiArgs(args || {}, source);
+    return this._callAi('promptVersions', {}, request, {
+      includeMetadataInPayload: false,
+    });
   }
 }
 

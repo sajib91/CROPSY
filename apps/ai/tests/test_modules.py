@@ -72,6 +72,10 @@ def test_production_rejects_mock_providers_unless_explicitly_allowed() -> None:
         embedding_provider="deterministic",
         allow_mock_provider=False,
         internal_service_secret=SecretStr("strong-production-secret-at-least-32-chars"),
+        graph_backend="neo4j",
+        neo4j_uri="bolt://neo4j.test:7687",
+        neo4j_user="neo4j",
+        neo4j_password=SecretStr("test-neo4j-password"),
     )
     with pytest.raises(ConfigurationError):
         LLMProviderManager(settings).resolve()

@@ -74,6 +74,58 @@ with bounded history for follow-up questions. Retrieval quality is measured offl
 Recall@K, Precision@K, MRR, and nDCG@K; results are not represented as a production accuracy
 claim without a representative, independently judged dataset.
 
+The AI service also exposes an Agentic RAG workflow and a GraphRAG layer through the same
+authenticated gateway. A LangGraph `StateGraph` supervisor selects from seven agents: query
+understanding, agricultural knowledge retrieval, market intelligence, crop advisory, document
+analysis, evidence verification, and response generation. The workflow has explicit state,
+conditional routing, bounded read-only tools, retries/fallbacks, resumable human approval,
+per-span tracing, and token/cost accounting. Its tool policy denies payments, order/listing
+mutations, ledger posting, deletes, and any other autonomous business transaction. Agentic and
+GraphRAG request schemas forbid farmer/farm/organization identifiers; the tenant is established
+only by authenticated metadata and signed internal headers.
+
+GraphRAG models allowlisted agricultural entities and predicates with source provenance,
+evidence snippets, and evidence classes. It supports deterministic or LLM extraction, entity
+resolution, validation, idempotent graph construction, communities, bounded multi-hop traversal,
+tenant-scoped retrieval, and vector+graph context fusion. Extracted relationships remain
+unverified candidates until validation and explicit human approval; the service never claims
+fabricated facts, prices, weather, citations, dosages, or regulations. The graph backend is
+`memory` for development/tests, `none` for explicit unavailability, and Neo4j for production.
+
+The same `intelligence` gateway now exposes Multimodal RAG and unified orchestration. Multimodal
+ingestion handles PDFs, images, charts, tables, text, and research materials with preprocessing,
+OCR, layout metadata, text embeddings, explicit deterministic image signatures (not semantic
+embeddings), shared vector/keyword indexes, tenant-scoped cross-modal retrieval, and citation
+preservation. The vision provider is `none` by default; an HTTP model produces advisory
+observations only, and plant-image output is explicitly not a confirmed diagnosis. Missing OCR,
+PDF, image, or vision integrations are reported honestly and never simulated.
+
+The unified orchestrator routes with deterministic rules rather than LLM selection: simple
+questions use `hybrid`, multi-hop relationships use `graph_hybrid`, image/document questions use
+`multimodal`, and approval-required complex workflows use `agentic`. It fuses multi-source evidence
+by chunk identity, deduplicates, preserves citations and source attribution, applies bounded
+configured fallbacks, and records tracer/monitoring data. Confidence is a rule-based retrieval
+summary, not a calibrated probability or scientific validation. Text-retrieval, image-retrieval,
+and multimodal-QA datasets are evaluated separately. All new public routes reuse `ai.read`; no
+permission codes were added and no module imports another module's source.
+
+The same gateway exposes advisory agricultural image analysis and the complete evaluation
+framework. Image analysis validates uploaded bytes and reports honestly when Pillow is absent,
+uses a replaceable `ImageAnalysisModel` adapter (`none` means no inference), surfaces confidence
+only when the model reports a numeric `0..1` value, screens restricted prescription/definitive
+claims, retrieves tenant-scoped citation-eligible references via deterministic signatures, and
+offers only safe allowlisted next steps. Results store model/prompt versions and inference
+metadata, and always mark themselves advisory with no diagnosis or hazardous prescription.
+Feedback, review requests/decisions, and baseline creation reuse `ai.feedback`; all other routes
+reuse `ai.read`.
+
+The evaluation framework executes nine versioned suites through real retrieval, answer,
+multimodal, and agent callbacks injected by the composition root. Scores, baselines, comparisons,
+retrieval diagnostics, prompt-version attribution, agent monitoring, and failure dashboards are
+computed only from completed runs, recorded feedback, and recorded executions. No caller can
+supply scores and no report is seeded, estimated, or interpolated. The model seam and prompt
+registry let deployments replace models and versions without changing business logic.
+
 The 21st module, `market-intelligence`, is read-only. It consumes actual collected price
 observations through the shared `MarketObservationPortToken` published by `marketplace`; it
 never invents a live quote. Market responses separate `historicalObservations`,

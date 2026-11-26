@@ -112,11 +112,67 @@ class Settings(BaseSettings):
     weather_low_temperature_c: float = Field(default=5.0, ge=-100, le=100)
     weather_high_humidity_pct: float = Field(default=90.0, ge=0, le=100)
 
+    # Agentic RAG and GraphRAG. Graph writes are idempotent and never perform
+    # business transactions; LLM-extracted relationships remain unverified
+    # candidates until validation and explicit human approval.
+    agentic_rag_enabled: bool = True
+    agentic_max_agent_attempts: int = Field(default=2, ge=1, le=5)
+    agentic_max_tool_calls: int = Field(default=12, ge=1, le=50)
+    agentic_max_context_chars: int = Field(default=12000, ge=2000, le=60000)
+    graph_backend: Literal["memory", "none", "neo4j"] = "memory"
+    graph_extraction_provider: Literal["deterministic", "llm"] = "deterministic"
+    graph_confidence_threshold: float = Field(default=0.6, ge=0.0, le=1.0)
+    graph_max_hops: int = Field(default=2, ge=1, le=6)
+    graph_max_paths: int = Field(default=20, ge=1, le=100)
+    graph_community_algorithm: Literal["connected_components", "label_propagation"] = (
+        "connected_components"
+    )
+    neo4j_uri: str = Field(default="")
+    neo4j_user: str = Field(default="")
+    neo4j_password: SecretStr = Field(default=SecretStr(""), repr=False)
+    neo4j_database: str = Field(default="neo4j", min_length=1)
+
     # Document processing. No OCR or PDF engine is faked when unavailable.
     ocr_mode: Literal["auto", "never", "always"] = "auto"
     max_upload_bytes: int = Field(default=10 * 1024 * 1024, ge=1024, le=100 * 1024 * 1024)
     max_chunk_chars: int = Field(default=1200, ge=200, le=8000)
     chunk_overlap_chars: int = Field(default=150, ge=0, le=2000)
+
+    # Multimodal RAG. Visual models are advisory only and never diagnose.
+    multimodal_enabled: bool = True
+    multimodal_max_assets: int = Field(default=1000, ge=1, le=100000)
+    vision_provider: Literal["none", "http"] = "none"
+    vision_base_url: str = Field(default="", max_length=1000)
+    vision_model: str = Field(default="", max_length=200)
+    vision_api_key: SecretStr = Field(default=SecretStr(""), repr=False)
+    vision_timeout_seconds: float = Field(default=20.0, ge=1.0, le=120.0)
+    vision_max_chars: int = Field(default=2000, ge=200, le=8000)
+
+    # Unified orchestration. Rules are deterministic; the LLM never selects the
+    # retrieval strategy.
+    orchestration_enabled: bool = True
+    orchestration_max_evidence: int = Field(default=12, ge=1, le=50)
+    orchestration_context_chars: int = Field(default=12000, ge=2000, le=60000)
+    orchestration_fallback_enabled: bool = True
+
+    # Agricultural image analysis. The model is replaceable through the
+    # ImageAnalysisModelRegistry; "none" is an explicit unavailable state.
+    image_analysis_enabled: bool = True
+    image_analysis_model_provider: Literal["none", "http"] = "none"
+    image_analysis_model: str = Field(default="", max_length=200)
+    image_analysis_base_url: str = Field(default="", max_length=1000)
+    image_analysis_api_key: SecretStr = Field(default=SecretStr(""), repr=False)
+    image_analysis_timeout_seconds: float = Field(default=20.0, ge=1.0, le=120.0)
+    image_analysis_min_width: int = Field(default=64, ge=16, le=2000)
+    image_analysis_min_height: int = Field(default=64, ge=16, le=2000)
+    image_analysis_max_references: int = Field(default=5, ge=1, le=20)
+    image_analysis_max_records: int = Field(default=500, ge=10, le=10000)
+
+    # Evaluation framework. Every score is produced by an actual run; the
+    # framework never seeds, estimates, or interpolates results.
+    evaluation_framework_enabled: bool = True
+    evaluation_framework_max_runs: int = Field(default=100, ge=1, le=1000)
+    evaluation_framework_max_feedback: int = Field(default=1000, ge=10, le=50000)
 
     # Request protection and observability.
     rate_limit_max_requests: int = Field(default=120, ge=1, le=10000)
@@ -168,6 +224,30 @@ class Settings(BaseSettings):
             raise ValueError("CROPSY_AI_OPENSEARCH_URL is required in production")
         if self.weather_provider == "http" and not self.weather_base_url:
             raise ValueError("CROPSY_AI_WEATHER_BASE_URL is required for HTTP weather provider")
+        if self.vision_provider == "http" and not self.vision_base_url:
+            raise ValueError("CROPSY_AI_VISION_BASE_URL is required for HTTP vision provider")
+        if self.vision_provider == "http" and not self.vision_model:
+            raise ValueError("CROPSY_AI_VISION_MODEL is required for HTTP vision provider")
+        if self.image_analysis_model_provider == "http" and not self.image_analysis_base_url:
+            raise ValueError(
+                "CROPSY_AI_IMAGE_ANALYSIS_BASE_URL is required for the HTTP image model"
+            )
+        if self.image_analysis_model_provider == "http" and not self.image_analysis_model:
+            raise ValueError("CROPSY_AI_IMAGE_ANALYSIS_MODEL is required for the HTTP image model")
+        if self.agentic_rag_enabled and not self.allow_mock_provider:
+            if self.graph_backend != "neo4j":
+                raise ValueError(
+                    "CROPSY_AI_GRAPH_BACKEND=neo4j is required in production unless mock "
+                    "providers are explicitly allowed"
+                )
+            if not self.neo4j_uri or not self.neo4j_user:
+                raise ValueError(
+                    "CROPSY_AI_NEO4J_URI and CROPSY_AI_NEO4J_USER are required in production"
+                )
+            if not self.neo4j_password.get_secret_value():
+                raise ValueError("CROPSY_AI_NEO4J_PASSWORD is required in production")
+            if self.graph_extraction_provider == "llm" and self.llm_provider != "http":
+                raise ValueError("LLM graph extraction requires CROPSY_AI_LLM_PROVIDER=http")
         return self
 
     def parsed_model_configs(self) -> list[dict[str, Any]]:

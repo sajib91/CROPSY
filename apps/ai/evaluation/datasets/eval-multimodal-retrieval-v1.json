@@ -1,0 +1,36 @@
+{
+  "datasetId": "eval-multimodal-retrieval-v1",
+  "version": "1.0.0",
+  "suite": "multimodal_retrieval",
+  "cases": [
+    {
+      "caseId": "mm-001",
+      "category": "multimodal_retrieval",
+      "input": {
+        "query": "Find the verified leaf reference image.",
+        "language": "en",
+        "topK": 3,
+        "assetIds": ["eval-leaf-reference"]
+      },
+      "expected": {
+        "relevantAssetIds": ["eval-leaf-reference"],
+        "minRecallAtK": 0.9
+      },
+      "notes": "Ranking judgment for deterministic visual signatures."
+    },
+    {
+      "caseId": "mm-002",
+      "category": "multimodal_retrieval",
+      "input": {
+        "query": "Find the verified rice irrigation note.",
+        "language": "en",
+        "topK": 3
+      },
+      "expected": {
+        "relevantAssetIds": ["eval-unified-doc"],
+        "minRecallAtK": 0.5
+      },
+      "notes": "Cross-modal text-to-asset judgment."
+    }
+  ]
+}

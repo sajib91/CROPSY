@@ -1,0 +1,37 @@
+{
+  "datasetId": "eval-performance-v1",
+  "version": "1.0.0",
+  "suite": "performance",
+  "cases": [
+    {
+      "caseId": "perf-001",
+      "category": "performance",
+      "input": {
+        "query": "What does verified guidance say about rice irrigation?",
+        "language": "en",
+        "topK": 3
+      },
+      "expected": {
+        "maxLatencyMs": 5000,
+        "requireUsageReported": true,
+        "maxCostUsdPerRequest": 1.0
+      },
+      "notes": "Thresholds are deployment-provided expectations, not measured values."
+    },
+    {
+      "caseId": "perf-002",
+      "category": "performance",
+      "input": {
+        "query": "ধানের সেচ সম্পর্কে যাচাইকৃত তথ্য কী?",
+        "language": "bn",
+        "topK": 3
+      },
+      "expected": {
+        "maxLatencyMs": 5000,
+        "requireUsageReported": true,
+        "maxCostUsdPerRequest": 1.0
+      },
+      "notes": "Latency, tokens, and cost come only from the observed run."
+    }
+  ]
+}

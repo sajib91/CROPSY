@@ -4,15 +4,36 @@ const { NotFoundError } = require('../../../shared/kernel/errors');
 const { validate } = require('../../../shared/validation/validate');
 const { MODULE_ID } = require('../domain/intelligence.entity');
 const {
+  aiAgenticApprovalSchema,
+  aiAgenticRunSchema,
   aiAskSchema,
+  aiBaselineSchema,
   aiChatSchema,
+  aiComparisonSchema,
   aiConversationCreateSchema,
+  aiEvaluationFeedbackSchema,
+  aiEvaluationRunSchema,
+  aiExpertReviewDecisionSchema,
+  aiExpertReviewRequestSchema,
   aiFeedbackSchema,
+  aiImageAnalysisSchema,
+  aiImageFeedbackSchema,
+  aiGraphBuildSchema,
+  aiGraphContextSchema,
+  aiGraphExtractionSchema,
+  aiGraphRetrievalSchema,
   aiMarketExplanationSchema,
   aiMarketForecastSchema,
+  aiMultimodalAssetSchema,
+  aiMultimodalRetrieveSchema,
   aiRecommendSchema,
+  aiRegressionSchema,
   aiRetrieveSchema,
   aiRetrievalEvaluationSchema,
+  aiReviewParamsSchema,
+  aiRunParamsSchema,
+  aiUnifiedEvaluationSchema,
+  aiUnifiedRunSchema,
   aiWeatherAdvisorySchema,
   aiWeatherLookupSchema,
 } = require('../application/intelligence.dto');
@@ -144,4 +165,182 @@ module.exports = async function intelligenceRoutes(fastify) {
     const input = validate(aiWeatherAdvisorySchema, request.body, 'AI weather advisory request');
     return ok(await service.getWeatherAdvisoryAi({ input, request }), meta(request));
   });
+
+  // -------------------------------------------------------------------------
+  // Agentic RAG and GraphRAG. Approval and graph construction are
+  // feedback-level operations because they can promote validated evidence;
+  // retrieval and advisory generation remain read-only.
+  // -------------------------------------------------------------------------
+
+  fastify.post('/ai/agentic/run', readAi, async (request) => {
+    const input = validate(aiAgenticRunSchema, request.body, 'AI agentic run request');
+    return ok(await service.runAgenticAi({ input, request }), meta(request));
+  });
+
+  fastify.post('/ai/agentic/approve', feedbackAi, async (request) => {
+    const input = validate(aiAgenticApprovalSchema, request.body, 'AI agentic approval request');
+    return ok(await service.approveAgenticAi({ input, request }), meta(request));
+  });
+
+  fastify.post('/ai/graph/extract', readAi, async (request) => {
+    const input = validate(aiGraphExtractionSchema, request.body, 'AI graph extraction request');
+    return ok(await service.graphExtractAi({ input, request }), meta(request));
+  });
+
+  fastify.post('/ai/graph/build', feedbackAi, async (request) => {
+    const input = validate(aiGraphBuildSchema, request.body, 'AI graph build request');
+    return ok(await service.graphBuildAi({ input, request }), meta(request));
+  });
+
+  fastify.post('/ai/graph/retrieve', readAi, async (request) => {
+    const input = validate(
+      aiGraphRetrievalSchema,
+      request.body ?? {},
+      'AI graph retrieval request',
+    );
+    return ok(await service.graphRetrieveAi({ input, request }), meta(request));
+  });
+
+  fastify.post('/ai/graph/context', readAi, async (request) => {
+    const input = validate(aiGraphContextSchema, request.body, 'AI graph context request');
+    return ok(await service.graphContextAi({ input, request }), meta(request));
+  });
+
+  fastify.get('/ai/graph/capabilities', readAi, async (request) =>
+    ok(await service.graphCapabilitiesAi({ request }), meta(request)),
+  );
+
+  // -------------------------------------------------------------------------
+  // Multimodal RAG and unified orchestration. Uploads are advisory-only asset
+  // indexing operations; every downstream answer preserves cited provenance.
+  // -------------------------------------------------------------------------
+
+  fastify.post('/ai/multimodal/assets', readAi, async (request) => {
+    const input = validate(aiMultimodalAssetSchema, request.body, 'AI multimodal asset request');
+    return ok(await service.ingestMultimodalAssetAi({ input, request }), meta(request));
+  });
+
+  fastify.post('/ai/multimodal/retrieve', readAi, async (request) => {
+    const input = validate(
+      aiMultimodalRetrieveSchema,
+      request.body ?? {},
+      'AI multimodal retrieval request',
+    );
+    return ok(await service.retrieveMultimodalAi({ input, request }), meta(request));
+  });
+
+  fastify.post('/ai/orchestration/run', readAi, async (request) => {
+    const input = validate(aiUnifiedRunSchema, request.body, 'AI unified RAG request');
+    return ok(await service.runUnifiedAi({ input, request }), meta(request));
+  });
+
+  fastify.get('/ai/orchestration/capabilities', readAi, async (request) =>
+    ok(await service.unifiedCapabilitiesAi({ request }), meta(request)),
+  );
+
+  fastify.post('/ai/orchestration/evaluation', readAi, async (request) => {
+    const input = validate(
+      aiUnifiedEvaluationSchema,
+      request.body ?? {},
+      'AI unified evaluation request',
+    );
+    return ok(await service.evaluateUnifiedAi({ input, request }), meta(request));
+  });
+
+  // -------------------------------------------------------------------------
+  // Advisory image analysis. Every result is an observation, never a confirmed
+  // diagnosis, and never a hazardous chemical prescription.
+  // -------------------------------------------------------------------------
+
+  fastify.get('/ai/image-analysis/capabilities', readAi, async (request) =>
+    ok(await service.imageAnalysisCapabilitiesAi({ request }), meta(request)),
+  );
+
+  fastify.post('/ai/image-analysis/analyze', readAi, async (request) => {
+    const input = validate(aiImageAnalysisSchema, request.body, 'AI image analysis request');
+    return ok(await service.analyzeImageAi({ input, request }), meta(request));
+  });
+
+  fastify.post('/ai/image-analysis/feedback', feedbackAi, async (request) => {
+    const input = validate(aiImageFeedbackSchema, request.body, 'AI image feedback request');
+    return ok(await service.submitImageFeedbackAi({ input, request }), meta(request));
+  });
+
+  fastify.post('/ai/image-analysis/reviews', feedbackAi, async (request) => {
+    const input = validate(aiExpertReviewRequestSchema, request.body, 'AI expert review request');
+    return ok(await service.requestExpertReviewAi({ input, request }), meta(request));
+  });
+
+  fastify.post('/ai/image-analysis/reviews/decide', feedbackAi, async (request) => {
+    const input = validate(aiExpertReviewDecisionSchema, request.body, 'AI expert review decision');
+    return ok(await service.decideExpertReviewAi({ input, request }), meta(request));
+  });
+
+  fastify.get('/ai/image-analysis/reviews/:reviewId', readAi, async (request) => {
+    const params = validate(aiReviewParamsSchema, request.params, 'AI expert review id');
+    return ok(await service.getExpertReviewAi({ ...params, request }), meta(request));
+  });
+
+  // -------------------------------------------------------------------------
+  // Evaluation framework. Reports exist only after an actual evaluation run;
+  // callers cannot supply scores, datasets, or callback implementations.
+  // -------------------------------------------------------------------------
+
+  fastify.get('/ai/evaluation/framework/capabilities', readAi, async (request) =>
+    ok(await service.evaluationFrameworkCapabilitiesAi({ request }), meta(request)),
+  );
+
+  fastify.post('/ai/evaluation/framework/runs', readAi, async (request) => {
+    const input = validate(aiEvaluationRunSchema, request.body ?? {}, 'AI evaluation run request');
+    return ok(await service.runEvaluationAi({ input, request }), meta(request));
+  });
+
+  fastify.get('/ai/evaluation/framework/runs/:runId', readAi, async (request) => {
+    const params = validate(aiRunParamsSchema, request.params, 'AI evaluation run id');
+    return ok(await service.getEvaluationRunAi({ ...params, request }), meta(request));
+  });
+
+  fastify.post('/ai/evaluation/framework/feedback', feedbackAi, async (request) => {
+    const input = validate(
+      aiEvaluationFeedbackSchema,
+      request.body,
+      'AI evaluation feedback request',
+    );
+    return ok(await service.submitEvaluationFeedbackAi({ input, request }), meta(request));
+  });
+
+  fastify.post('/ai/evaluation/framework/baselines', feedbackAi, async (request) => {
+    const input = validate(aiBaselineSchema, request.body, 'AI baseline request');
+    return ok(await service.createRegressionBaselineAi({ input, request }), meta(request));
+  });
+
+  fastify.get('/ai/evaluation/framework/baselines', readAi, async (request) =>
+    ok(await service.listRegressionBaselinesAi({ request }), meta(request)),
+  );
+
+  fastify.post('/ai/evaluation/framework/regression', readAi, async (request) => {
+    const input = validate(aiRegressionSchema, request.body, 'AI regression check request');
+    return ok(await service.checkRegressionAi({ input, request }), meta(request));
+  });
+
+  fastify.post('/ai/evaluation/framework/comparison', readAi, async (request) => {
+    const input = validate(aiComparisonSchema, request.body, 'AI evaluation comparison request');
+    return ok(await service.compareEvaluationsAi({ input, request }), meta(request));
+  });
+
+  fastify.get('/ai/evaluation/framework/diagnostics', readAi, async (request) =>
+    ok(await service.retrievalDiagnosticsAi({ request }), meta(request)),
+  );
+
+  fastify.get('/ai/evaluation/framework/dashboards/failures', readAi, async (request) =>
+    ok(await service.failureDashboardAi({ request }), meta(request)),
+  );
+
+  fastify.get('/ai/evaluation/framework/monitoring', readAi, async (request) =>
+    ok(await service.agentMonitoringAi({ request }), meta(request)),
+  );
+
+  fastify.get('/ai/evaluation/framework/prompts', readAi, async (request) =>
+    ok(await service.promptVersionsAi({ request }), meta(request)),
+  );
 };

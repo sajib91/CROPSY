@@ -74,6 +74,63 @@ credentials and cannot call the Python service directly.
 | `GET /intelligence/ai/conversations/:conversationId` | `ai.read` | Read conversation history |
 | `POST /intelligence/ai/evaluation/retrieval` | `ai.read` | Offline retrieval metrics |
 | `POST /intelligence/ai/feedback` | `ai.feedback` | Record advisory feedback |
+| `POST /intelligence/ai/agentic/run` | `ai.read` | Run the supervised LangGraph advisory workflow |
+| `POST /intelligence/ai/agentic/approve` | `ai.feedback` | Resume a pending run with human approval |
+| `POST /intelligence/ai/graph/extract` | `ai.read` | Extract provenance-grounded graph candidates |
+| `POST /intelligence/ai/graph/build` | `ai.feedback` | Build/idempotently update validated graph evidence |
+| `POST /intelligence/ai/graph/retrieve` | `ai.read` | Tenant-scoped graph evidence traversal |
+| `POST /intelligence/ai/graph/context` | `ai.read` | Fused vector/graph context with limitations |
+| `GET /intelligence/ai/graph/capabilities` | `ai.read` | Graph backend, vocabulary, and evidence policy |
+| `POST /intelligence/ai/multimodal/assets` | `ai.read` | Ingest/preprocess/index an agricultural document or image asset |
+| `POST /intelligence/ai/multimodal/retrieve` | `ai.read` | Text, image, or cross-modal evidence retrieval |
+| `POST /intelligence/ai/orchestration/run` | `ai.read` | Run the rule-routed unified RAG orchestrator |
+| `GET /intelligence/ai/orchestration/capabilities` | `ai.read` | Router, retrieval, vision, and policy metadata |
+| `POST /intelligence/ai/orchestration/evaluation` | `ai.read` | Text, image, or multimodal QA dataset evaluation |
+| `GET /intelligence/ai/image-analysis/capabilities` | `ai.read` | Image model, quality thresholds, and advisory policy |
+| `POST /intelligence/ai/image-analysis/analyze` | `ai.read` | Advisory image observation with evidence and safe next steps |
+| `POST /intelligence/ai/image-analysis/feedback` | `ai.feedback` | Attach human feedback to an analysis |
+| `POST /intelligence/ai/image-analysis/reviews` | `ai.feedback` | Request expert review of an analysis |
+| `POST /intelligence/ai/image-analysis/reviews/decide` | `ai.feedback` | Record an expert review decision |
+| `GET /intelligence/ai/image-analysis/reviews/:reviewId` | `ai.read` | Read a tenant-scoped expert review |
+| `GET /intelligence/ai/evaluation/framework/capabilities` | `ai.read` | Suites, datasets, prompt versions, and monitoring metadata |
+| `POST /intelligence/ai/evaluation/framework/runs` | `ai.read` | Run versioned datasets through real service callbacks |
+| `GET /intelligence/ai/evaluation/framework/runs/:runId` | `ai.read` | Read a completed recorded run |
+| `POST /intelligence/ai/evaluation/framework/feedback` | `ai.feedback` | Record human judgments for traces/cases/runs |
+| `GET /intelligence/ai/evaluation/framework/baselines` | `ai.read` | List baselines derived from recorded runs |
+| `POST /intelligence/ai/evaluation/framework/baselines` | `ai.feedback` | Create a baseline from a recorded run |
+| `POST /intelligence/ai/evaluation/framework/regression` | `ai.read` | Compare a recorded run against a baseline |
+| `POST /intelligence/ai/evaluation/framework/comparison` | `ai.read` | Compare two or more recorded runs |
+| `GET /intelligence/ai/evaluation/framework/diagnostics` | `ai.read` | Retrieval diagnostics from recorded retrievals |
+| `GET /intelligence/ai/evaluation/framework/dashboards/failures` | `ai.read` | Failure dashboard from recorded events |
+| `GET /intelligence/ai/evaluation/framework/monitoring` | `ai.read` | Agent execution monitoring from real runs |
+| `GET /intelligence/ai/evaluation/framework/prompts` | `ai.read` | Registered prompt versions used to attribute runs |
+
+Agentic/GraphRAG bodies are strict and reject farmer, farm, organization, and business record
+identifiers. The tenant and user are taken only from authenticated gateway metadata and signed
+headers. `agentic/approve` and `graph/build` require `ai.feedback` because they can promote
+evidence or resume generation; no new permission codes were introduced. These workflows never
+initiate payments, orders, listing changes, ledger postings, or deletions.
+
+The multimodal and unified orchestration routes use the same strict DTO policy: caller-supplied
+`organizationId`, `farmerId`, `farmId`, and business record identifiers are rejected, and the
+organization is taken only from authenticated gateway metadata. Multimodal assets support PDFs,
+images, charts, tables, text, and research materials; OCR/PDF/image libraries are optional and
+reported as unavailable rather than simulated. A configured vision model returns advisory
+observations only; plant-image output is explicitly **not a confirmed plant diagnosis**. Unified
+routing is rule-based (`hybrid`, `graph_hybrid`, `multimodal`, or `agentic`) with bounded fallbacks,
+multi-source fusion, deduplication, citation preservation, and rule-based confidence that is not a
+calibrated probability or scientific validation. No new permission codes were introduced.
+
+Image analysis and evaluation framework bodies follow the same strict DTO policy. Image results are
+advisory observations, never confirmed diagnoses or hazardous chemical prescriptions: quality
+failures stop inference, unconfigured models report `model_unavailable`, confidence is stored only
+when a configured model reports a number, restricted sentences are screened from observations,
+and next steps come from a fixed safe allowlist. Feedback, review requests, review decisions, and
+baseline creation require `ai.feedback`; all other new routes require `ai.read`. Evaluation runs
+execute nine versioned suites through real service callbacks; callers cannot submit scores.
+Baselines, regressions, comparisons, diagnostics, dashboards, and monitoring are derived only
+from recorded runs, recorded retrievals, human feedback, and real agent executions — no score is
+seeded, estimated, or interpolated.
 
 AI output is advisory only. Citations are limited to documents ingested with complete,
 verified provenance and licensing metadata. The service returns
@@ -81,7 +138,11 @@ verified provenance and licensing metadata. The service returns
 evidence exists. Assistant answers separate `established_fact` from `prediction`, mark every
 prediction `uncertain`, and attach mandatory safety notes for pesticide, fertilizer, chemical,
 and diagnosis questions. Retrieval evaluation reports Recall@K, Precision@K, MRR, and nDCG@K
-with `accuracyClaimed: false` for the small offline fixture dataset. See
+with `accuracyClaimed: false` for the small offline fixture dataset. Agentic runs trace the
+supervisor, seven agents, tool calls, retries/fallbacks, and token/cost usage; a run that requires
+approval pauses until a matching approver resumes it. Graph relationships carry provenance and
+evidence classes, and LLM-extracted candidates are never presented as verified agricultural facts
+without validation and human approval. See
 [`apps/ai/README.md`](../../apps/ai/README.md) for the internal pipeline and configuration.
 
 ### Market intelligence gateway routes

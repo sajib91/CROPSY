@@ -1,0 +1,34 @@
+{
+  "datasetId": "eval-retrieval-v1",
+  "version": "1.0.0",
+  "suite": "retrieval",
+  "cases": [
+    {
+      "caseId": "ret-001",
+      "category": "retrieval",
+      "input": {
+        "query": "What does verified guidance say about rice irrigation?",
+        "language": "en",
+        "topK": 3
+      },
+      "expected": {
+        "relevantDocumentIds": ["eval-unified-doc"],
+        "minRecallAtK": 0.9
+      },
+      "notes": "Document-level judgment from a local fixture, not a production accuracy claim."
+    },
+    {
+      "caseId": "ret-002",
+      "category": "retrieval",
+      "input": {
+        "query": "যাচাইকৃত ধানের সেচ নির্দেশিকা কী?",
+        "language": "bn",
+        "topK": 3
+      },
+      "expected": {
+        "relevantDocumentIds": ["bn-irrigation-doc"]
+      },
+      "notes": "Bengali relevance judgment supplied with the fixture."
+    }
+  ]
+}

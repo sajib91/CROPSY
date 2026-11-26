@@ -1,0 +1,42 @@
+{
+  "datasetId": "eval-language-quality-v1",
+  "version": "1.0.0",
+  "suite": "language_quality",
+  "cases": [
+    {
+      "caseId": "lang-en-001",
+      "category": "language_quality",
+      "input": {
+        "question": "Explain the verified irrigation observation in English.",
+        "language": "en",
+        "topK": 3
+      },
+      "expected": {
+        "language": "en",
+        "minScriptRatio": 0.7,
+        "minLength": 40,
+        "forbiddenMarkers": ["VERIFIED EVIDENCE:", "trace-"]
+      },
+      "notes": "Deterministic script and marker checks, not human fluency judgment."
+    },
+    {
+      "caseId": "lang-bn-001",
+      "category": "language_quality",
+      "input": {
+        "question": "যাচাইকৃত সেচ পর্যবেক্ষণ বাংলায় ব্যাখ্যা করুন।",
+        "language": "bn",
+        "topK": 3
+      },
+      "expected": {
+        "language": "bn",
+        "minScriptRatio": 0.5,
+        "minLength": 20,
+        "forbiddenMarkers": [
+          "VERIFIED EVIDENCE:",
+          "advisory answer (deterministic offline adapter)"
+        ]
+      },
+      "notes": "Bengali script ratio is measured from Unicode code points."
+    }
+  ]
+}

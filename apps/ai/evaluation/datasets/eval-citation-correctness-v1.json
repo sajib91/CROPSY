@@ -1,0 +1,35 @@
+{
+  "datasetId": "eval-citation-correctness-v1",
+  "version": "1.0.0",
+  "suite": "citation_correctness",
+  "cases": [
+    {
+      "caseId": "cite-001",
+      "category": "citation_correctness",
+      "input": {
+        "question": "What does the verified rice irrigation document say?",
+        "language": "en",
+        "topK": 3
+      },
+      "expected": {
+        "expectedCitationIds": ["eval-unified-doc"],
+        "requireEligibleCitation": true
+      },
+      "notes": "Citation must resolve to the supplied verified, licensed document."
+    },
+    {
+      "caseId": "cite-002",
+      "category": "citation_correctness",
+      "input": {
+        "question": "What does the verified image reference show?",
+        "language": "en",
+        "topK": 3
+      },
+      "expected": {
+        "expectedCitationIds": ["eval-leaf-reference"],
+        "requireEligibleCitation": true
+      },
+      "notes": "Visual reference attribution uses the same eligibility rules as text."
+    }
+  ]
+}

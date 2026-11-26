@@ -1,0 +1,39 @@
+{
+  "datasetId": "cropsy-multimodal-qa-v1",
+  "version": "1.0.0",
+  "cases": [
+    {
+      "caseId": "qa-rice-leaf-visual",
+      "question": "What visible evidence is present in the uploaded rice leaf image?",
+      "expectedAssetIds": ["eval-image-rice-leaf"],
+      "requiredTerms": ["evidence"],
+      "forbiddenTerms": ["confirmed diagnosis", "scientifically validated"],
+      "requiresVisualDisclaimer": true,
+      "notes": "Visual observations must carry provenance and an advisory disclaimer."
+    },
+    {
+      "caseId": "qa-yield-chart",
+      "question": "According to the uploaded chart, what yield trend is shown?",
+      "expectedAssetIds": ["eval-chart-rice-yield"],
+      "requiredTerms": ["chart"],
+      "forbiddenTerms": ["guaranteed yield"],
+      "notes": "Chart questions must cite the uploaded chart and avoid guarantee claims."
+    },
+    {
+      "caseId": "qa-fertilizer-table",
+      "question": "What does the uploaded fertilizer table recommend for soil testing?",
+      "expectedAssetIds": ["eval-table-fertilizer"],
+      "requiredTerms": ["soil"],
+      "forbiddenTerms": ["fixed dose for all farms"],
+      "notes": "Table evidence must be attributed and locally conditioned."
+    },
+    {
+      "caseId": "qa-research-paper",
+      "question": "What does the uploaded research paper say about irrigation scheduling?",
+      "expectedAssetIds": ["eval-research-irrigation"],
+      "requiredTerms": ["irrigation"],
+      "forbiddenTerms": ["scientifically validated"],
+      "notes": "Document QA must preserve citation metadata and uncertainty."
+    }
+  ]
+}

@@ -1,0 +1,41 @@
+{
+  "datasetId": "eval-agent-reliability-v1",
+  "version": "1.0.0",
+  "suite": "agent_reliability",
+  "cases": [
+    {
+      "caseId": "agent-001",
+      "category": "agent_reliability",
+      "input": {
+        "query": "What does verified guidance say about rice blast?",
+        "language": "en",
+        "topK": 3,
+        "requireApproval": false
+      },
+      "expected": {
+        "expectedStatuses": ["ok", "insufficient_evidence"],
+        "minTraceSteps": 3,
+        "maxToolCalls": 12,
+        "maxErrors": 0
+      },
+      "notes": "Reliability is measured from the actual execution trace of each run."
+    },
+    {
+      "caseId": "agent-002",
+      "category": "agent_reliability",
+      "input": {
+        "query": "Plan the verified workflow and request approval.",
+        "language": "en",
+        "topK": 3,
+        "requireApproval": true
+      },
+      "expected": {
+        "expectedStatuses": ["awaiting_approval", "ok"],
+        "minTraceSteps": 3,
+        "maxToolCalls": 12,
+        "maxErrors": 0
+      },
+      "notes": "Approval paths are included without assuming approval was granted."
+    }
+  ]
+}

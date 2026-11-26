@@ -126,6 +126,29 @@ class EvaluationMonitoringService:
     def record_error(self, code: str) -> None:
         self._errors[code] += 1
 
+    def retrieval_records(self) -> list[dict[str, Any]]:
+        """Read-only copies of retrieval observations for diagnostics."""
+
+        return [
+            {
+                "traceId": item.trace_id,
+                "queryHash": item.query_hash,
+                "language": item.language,
+                "intent": item.intent,
+                "rankedChunkIds": list(item.ranked_chunk_ids),
+                "scores": list(item.scores),
+                "backends": dict(item.backends),
+                "latencyMs": item.latency_ms,
+                "resultCount": item.result_count,
+                "insufficientEvidence": item.insufficient_evidence,
+                "filters": dict(item.filters),
+                "deduplicationRemoved": item.deduplication_removed,
+                "expansionCount": item.expansion_count,
+                "recordedAt": item.recorded_at.isoformat(),
+            }
+            for item in self._retrievals
+        ]
+
     def snapshot(self) -> dict[str, Any]:
         generations = self._generations
         total = len(generations)

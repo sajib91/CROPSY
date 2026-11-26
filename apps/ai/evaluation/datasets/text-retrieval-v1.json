@@ -1,0 +1,42 @@
+{
+  "datasetId": "cropsy-text-retrieval-v1",
+  "version": "1.0.0",
+  "queries": [
+    {
+      "queryId": "text-upland-rice-sowing",
+      "query": "What is the recommended method for sowing upland rice?",
+      "language": "en",
+      "relevantDocumentIds": ["eval-rice-cultivation"],
+      "relevantChunkIds": ["eval-rice-cultivation:v1:1"],
+      "notes": "Simple agricultural question routed to hybrid text retrieval."
+    },
+    {
+      "queryId": "text-bn-irrigation",
+      "query": "ধান সেচের নির্দেশিকা কী?",
+      "language": "bn",
+      "relevantDocumentIds": ["eval-rice-irrigation-bn"],
+      "notes": "Bengali text retrieval case."
+    },
+    {
+      "queryId": "text-soil-fertilizer-relationship",
+      "query": "How does soil pH affect fertilizer recommendations for rice?",
+      "language": "en",
+      "relevantDocumentIds": ["eval-soil-management", "eval-fertilizer-guidance"],
+      "notes": "Multi-hop relationship requiring both soil and nutrient guidance."
+    },
+    {
+      "queryId": "text-pesticide-label-safety",
+      "query": "Which registered pesticide label and safety practices apply to rice stem borer?",
+      "language": "en",
+      "relevantDocumentIds": ["eval-pest-safety"],
+      "notes": "Safety guidance must come from verified, licensed material."
+    },
+    {
+      "queryId": "text-market-evidence",
+      "query": "What evidence is available for a paddy market outlook?",
+      "language": "en",
+      "relevantDocumentIds": ["eval-market-intelligence"],
+      "notes": "Market evidence only; predictions must remain uncertain."
+    }
+  ]
+}
