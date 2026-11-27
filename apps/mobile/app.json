@@ -9,13 +9,29 @@
     "platforms": ["ios", "android", "web"],
     "newArchEnabled": false,
     "android": {
-      "edgeToEdgeEnabled": true
+      "package": "com.cropsy.app",
+      "edgeToEdgeEnabled": true,
+      "permissions": [
+        "android.permission.CAMERA",
+        "android.permission.READ_EXTERNAL_STORAGE",
+        "android.permission.WRITE_EXTERNAL_STORAGE",
+        "android.permission.POST_NOTIFICATIONS",
+        "android.permission.RECEIVE_BOOT_COMPLETED",
+        "android.permission.VIBRATE"
+      ]
     },
     "ios": {
-      "supportsTablet": true
+      "bundleIdentifier": "com.cropsy.app",
+      "supportsTablet": true,
+      "infoPlist": {
+        "NSCameraUsageDescription": "CROPSY uses the camera to analyze crops and attach proof of delivery.",
+        "NSPhotoLibraryUsageDescription": "CROPSY uses your photos to attach crop images and documents to listings.",
+        "UIBackgroundModes": ["remote-notification"]
+      }
     },
     "web": {
       "bundler": "metro"
-    }
+    },
+    "plugins": ["expo-image-picker", "expo-document-picker", "expo-notifications"]
   }
 }

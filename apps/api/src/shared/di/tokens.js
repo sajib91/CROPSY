@@ -67,6 +67,14 @@ const WarehouseOperationPortToken = Symbol.for('cropsy.platform.warehouseOperati
 const LogisticsAccessPortToken = Symbol.for('cropsy.platform.logisticsAccess');
 const TraceabilityBatchPortToken = Symbol.for('cropsy.platform.traceabilityBatch');
 
+// Notification composition ports. Implementations live in the notifications
+// module; application code consumes only these narrow capabilities.
+const NotificationPreferencesPortToken = Symbol.for('cropsy.platform.notificationPreferences');
+const NotificationAuthPortToken = Symbol.for('cropsy.platform.notificationAuth');
+const NotificationQueueToken = Symbol.for('cropsy.platform.notificationQueue');
+const NotificationRealtimeToken = Symbol.for('cropsy.platform.notificationRealtime');
+const NotificationProvidersToken = Symbol.for('cropsy.platform.notificationProviders');
+
 module.exports = {
   ConfigToken,
   LoggerToken,
@@ -90,4 +98,9 @@ module.exports = {
   WarehouseOperationPortToken,
   LogisticsAccessPortToken,
   TraceabilityBatchPortToken,
+  NotificationPreferencesPortToken,
+  NotificationAuthPortToken,
+  NotificationQueueToken,
+  NotificationRealtimeToken,
+  NotificationProvidersToken,
 };

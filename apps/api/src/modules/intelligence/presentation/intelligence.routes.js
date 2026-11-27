@@ -109,6 +109,10 @@ module.exports = async function intelligenceRoutes(fastify) {
     return ok(await service.createAiConversation({ input, request }), meta(request));
   });
 
+  fastify.get('/ai/conversations', readAi, async (request) =>
+    ok(await service.listAiConversations({ request }), meta(request)),
+  );
+
   fastify.get('/ai/conversations/:conversationId', readAi, async (request) => {
     const { conversationId } = validate(
       conversationParamsSchema,

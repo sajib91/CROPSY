@@ -17,6 +17,7 @@ const OPERATION_PATHS = Object.freeze({
   capabilities: '/capabilities',
   chat: '/assistant/chat',
   createConversation: '/conversations',
+  listConversations: '/conversations',
   evaluateRetrieval: '/evaluation/retrieval',
   forecastMarket: '/market/forecast',
   explainMarket: '/market/explain',
@@ -62,6 +63,7 @@ const OPERATION_METHODS = Object.freeze({
   chat: 'POST',
   createConversation: 'POST',
   getConversation: 'GET',
+  listConversations: 'GET',
   evaluateRetrieval: 'POST',
   forecastMarket: 'POST',
   explainMarket: 'POST',
@@ -256,14 +258,20 @@ class HttpAiGateway {
       timestamp: this.timestamp,
     });
 
+    const init = {
+      method: request.method,
+      headers: request.headers,
+      signal: AbortSignal.timeout(this.timeoutMs),
+    };
+    // Node fetch rejects a body on GET/HEAD even when it is empty. The signed
+    // canonical string still uses the empty body for those operations.
+    if (request.method !== 'GET' && request.method !== 'HEAD') {
+      init.body = request.body;
+    }
+
     let response;
     try {
-      response = await this.fetcher(request.url, {
-        method: request.method,
-        headers: request.headers,
-        body: request.body,
-        signal: AbortSignal.timeout(this.timeoutMs),
-      });
+      response = await this.fetcher(request.url, init);
     } catch (error) {
       throw gatewayError('The AI service is unreachable.', { reason: 'network' }, error);
     }
@@ -316,6 +324,10 @@ class HttpAiGateway {
 
   getAiConversation(payload, metadata) {
     return this._call('getConversation', payload, metadata);
+  }
+
+  listAiConversations(payload, metadata) {
+    return this._call('listConversations', payload, metadata);
   }
 
   evaluateRetrievalAi(payload, metadata) {
@@ -500,6 +512,10 @@ class HttpAiGateway {
 
   getConversation(payload, metadata) {
     return this.getAiConversation(payload, metadata);
+  }
+
+  listConversations(payload, metadata) {
+    return this.listAiConversations(payload, metadata);
   }
 
   evaluateRetrieval(payload, metadata) {
@@ -727,6 +743,10 @@ class UnavailableAiGateway {
   }
 
   getConversation() {
+    throw aiGatewayUnavailableError();
+  }
+
+  listConversations() {
     throw aiGatewayUnavailableError();
   }
 

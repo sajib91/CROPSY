@@ -72,6 +72,9 @@ npm run lint
 echo "== Format check =="
 npm run format:check
 
+echo "== Localization parity =="
+npm run check:i18n
+
 echo "== Build =="
 npm run build
 

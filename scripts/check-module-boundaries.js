@@ -27,6 +27,8 @@ const allowedPackages = new Set([
   '@prisma/client',
   'fastify',
   'qrcode-terminal',
+  'bullmq',
+  'socket.io',
 ]);
 
 const errors = [];

@@ -31,6 +31,7 @@
     "test:ai": "bash scripts/test-ai.sh",
     "lint": "eslint . --ext .js,.jsx,.mjs,.cjs",
     "check:boundaries": "node scripts/check-module-boundaries.js",
+    "check:i18n": "node scripts/check-i18n-parity.mjs",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "db:format": "prisma format --schema apps/api/prisma/schema.prisma",

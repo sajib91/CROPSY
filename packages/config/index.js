@@ -99,6 +99,24 @@ const apiSchema = sharedSchema
       ),
     AUTHZ_POLICY_JSON: z.string().trim().default(''),
     ORGANIZATION_INVITATION_TTL_HOURS: z.coerce.number().int().min(1).max(720).default(72),
+
+    // Notification delivery infrastructure. Providers are configured through
+    // environment-supplied HTTP adapters; the API never hard-codes credentials.
+    REDIS_URL: z.string().trim().default('redis://127.0.0.1:6379'),
+    NOTIFICATION_QUEUE_DRIVER: z.enum(['memory', 'bullmq']).default('memory'),
+    NOTIFICATION_REALTIME_ENABLED: z.enum(['true', 'false']).default('true'),
+    NOTIFICATION_MAX_ATTEMPTS: z.coerce.number().int().min(1).max(20).default(5),
+    NOTIFICATION_RETRY_BASE_MS: z.coerce.number().int().min(100).max(60000).default(1000),
+    NOTIFICATION_PROVIDER_TIMEOUT_MS: z.coerce.number().int().min(500).max(30000).default(5000),
+    NOTIFICATION_EMAIL_PROVIDER_MODE: z.enum(['disabled', 'http']).default('disabled'),
+    NOTIFICATION_EMAIL_PROVIDER_URL: z.string().trim().default(''),
+    NOTIFICATION_EMAIL_PROVIDER_TOKEN: z.string().trim().default(''),
+    NOTIFICATION_SMS_PROVIDER_MODE: z.enum(['disabled', 'http']).default('disabled'),
+    NOTIFICATION_SMS_PROVIDER_URL: z.string().trim().default(''),
+    NOTIFICATION_SMS_PROVIDER_TOKEN: z.string().trim().default(''),
+    NOTIFICATION_PUSH_PROVIDER_MODE: z.enum(['disabled', 'http']).default('disabled'),
+    NOTIFICATION_PUSH_PROVIDER_URL: z.string().trim().default(''),
+    NOTIFICATION_PUSH_PROVIDER_TOKEN: z.string().trim().default(''),
   })
   .superRefine((value, context) => {
     if (value.NODE_ENV === 'production') {
@@ -241,6 +259,47 @@ const apiSchema = sharedSchema
           code: z.ZodIssueCode.custom,
           path: ['AUTH_COOKIE_SECURE'],
           message: 'Production cookies must be secure',
+        });
+      }
+      if (value.NOTIFICATION_QUEUE_DRIVER !== 'bullmq') {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['NOTIFICATION_QUEUE_DRIVER'],
+          message: 'Production notification delivery must use the BullMQ queue',
+        });
+      }
+    }
+
+    for (const [modeField, urlField, tokenField] of [
+      [
+        'NOTIFICATION_EMAIL_PROVIDER_MODE',
+        'NOTIFICATION_EMAIL_PROVIDER_URL',
+        'NOTIFICATION_EMAIL_PROVIDER_TOKEN',
+      ],
+      [
+        'NOTIFICATION_SMS_PROVIDER_MODE',
+        'NOTIFICATION_SMS_PROVIDER_URL',
+        'NOTIFICATION_SMS_PROVIDER_TOKEN',
+      ],
+      [
+        'NOTIFICATION_PUSH_PROVIDER_MODE',
+        'NOTIFICATION_PUSH_PROVIDER_URL',
+        'NOTIFICATION_PUSH_PROVIDER_TOKEN',
+      ],
+    ]) {
+      if (value[modeField] !== 'http') continue;
+      if (value[urlField].length === 0) {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: [urlField],
+          message: `${urlField} is required when ${modeField}=http`,
+        });
+      }
+      if (value[tokenField].length === 0) {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: [tokenField],
+          message: `${tokenField} is required when ${modeField}=http`,
         });
       }
     }

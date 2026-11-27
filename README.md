@@ -3,9 +3,10 @@
 This repository contains the CROPSY foundation: four independently startable applications, four
 shared JavaScript packages, a PostgreSQL/Prisma data layer, infrastructure and documentation
 folders, and tooling. It configures health checks, development workflows, the database schema, and
-the 20-module Clean Architecture/DDD-lite boundary scaffolding for the business API. **Business
-workflows, authentication, external integrations, and product-specific policies are not
-implemented yet.**
+the 20-module Clean Architecture/DDD-lite boundary scaffolding for the business API. The API
+implements IAM authentication and authorization; the web app provides localized public pages and
+account flows through a same-origin API proxy. External integrations and product-specific policies
+are not implemented yet.
 
 The baseline documents `user-story.md`, `SSD.md`, and `RTB.md` are kept unchanged at the root.
 
@@ -85,6 +86,9 @@ Key defaults:
 | `API_PREFIX` | `/api/v1` | Business API |
 | `DATABASE_URL` | `postgresql://cropsy:cropsy@localhost:5432/cropsy?schema=public&connection_limit=5` | Prisma / database scripts |
 | `NEXT_PUBLIC_API_URL` | `http://localhost:4000/api/v1` | Web |
+| `CROPSY_API_PROXY_URL` | unset | Server-only web auth proxy override |
+| `NEXT_PUBLIC_SITE_URL` | `http://localhost:3000` | Web SEO metadata |
+| `NEXT_PUBLIC_SUPPORT_EMAIL` | unset | Optional public contact link on the website |
 | `EXPO_PUBLIC_API_URL` | `http://localhost:4000/api/v1` | Mobile |
 | `CROPSY_AI_HOST` | `0.0.0.0` | AI service |
 | `CROPSY_AI_PORT` | `4100` | AI service |
@@ -106,6 +110,7 @@ Key defaults:
 | `npm test` | Run API contract smoke tests and AI health tests |
 | `npm run lint` | Run ESLint across JavaScript files |
 | `npm run check:boundaries` | Verify module, layer, and dependency boundaries |
+| `npm run check:i18n` | Verify identical EN/BN dictionary leaf keys |
 | `npm run format` | Format files with Prettier, excluding Markdown |
 | `npm run format:check` | Check formatting |
 | `npm run db:format` | Format the Prisma schema |
@@ -137,7 +142,7 @@ Architecture endpoints:
 - `http://localhost:4000/api/v1/version`
 - `http://localhost:4000/api/v1/modules`
 - `http://localhost:4000/api/v1/observability`
-- `http://localhost:4000/api/v1/iam/info` — example module DTO; all 20 modules are mounted
+- `http://localhost:4000/api/v1/iam/info` — example module DTO; all 21 modules are mounted
 
 See [`docs/architecture`](docs/architecture/README.md) for the module dependency matrix, layer
 rules, and decision records. `npm run check:boundaries` rejects direct cross-module imports and
@@ -154,6 +159,47 @@ Health endpoint:
 - `http://localhost:3000/health`
 
 For production-style startup, run `npm run build:web` first, then `npm run start:web`.
+
+The public marketing site is available in English at `/en` and Bengali at `/bn`; `/` redirects to
+`/en`. It publishes only data explicitly exposed by the public API and includes live status,
+module directory, and batch verification panels with loading and error states. See
+[`docs/public-website.md`](docs/public-website.md) for routes, data boundaries, localization, and
+configuration.
+
+Localized account pages provide registration, login, verification, password recovery, session
+management, and role onboarding. They use the Fastify IAM API through same-origin Next.js proxy
+routes; tokens stay in HttpOnly cookies and are never written to browser storage. See
+[`docs/web-authentication.md`](docs/web-authentication.md) for the token policy and proxy map.
+
+The localized farmer workspace is available at `/en/farmers/dashboard` and
+`/bn/farmers/dashboard`. Its 17 sections render only authenticated API data, including GeoJSON farm
+maps, API-derived charts, and role-filtered navigation. See
+[`docs/farmer-dashboard.md`](docs/farmer-dashboard.md) for section sources and the data honesty
+policy.
+
+Nine additional localized role workspaces cover buyers, wholesalers, retailers, agricultural input
+suppliers, logistics providers, warehouse operators, agricultural experts, quality inspectors, and
+organization administrators. They share one shell but keep role-specific sources and actions in a
+configuration registry. See [`docs/role-dashboards.md`](docs/role-dashboards.md) for routes,
+permissions, APIs, and the honesty policy.
+
+The authenticated marketplace is available at `/en/marketplace` and `/bn/marketplace`. It covers
+discovery, filters, listing details, seller profiles, cart, checkout, orders, tracking, and seller
+listing management from live API data only. Checkout submits a `referenceKey` while the backend
+validates prices, stock, and final totals. See [`docs/marketplace.md`](docs/marketplace.md) for the
+route map, permissions, and validation policy.
+
+The authenticated AI Agricultural Assistant is available at `/en/ai-assistant` and
+`/bn/ai-assistant`. It supports English and Bengali chat, saved conversation history, follow-up
+questions, source citations, image analysis, document indexing, feedback, and explicit uncertainty
+states. Every request travels through the allowlisted dashboard proxy to the signed Fastify-to-FastAPI
+gateway; no answer, source, model status, or feedback success is generated in the browser. See
+[`docs/ai-assistant.md`](docs/ai-assistant.md) for the endpoint map, permissions, and honesty rules.
+
+The web UI uses the reusable CROPSY design system in `apps/web/components/ui`. Browse the live
+component gallery at `http://localhost:3000/design-system` and read
+[`docs/design-system.md`](docs/design-system.md) for tokens, APIs, accessibility, and responsive
+rules.
 
 ### Mobile
 
@@ -224,10 +270,11 @@ The readiness response adds `data.checks`. The shared response contract is defin
 1. Module boundary and dependency check
 2. ESLint
 3. Prettier check
-4. JavaScript package/API syntax, Next.js production build, mobile Babel transform, Python compile
-5. Fastify smoke tests using `inject`
-6. FastAPI smoke tests using `TestClient`
-7. Starts the API, web, and AI services and requests each health endpoint over HTTP
+4. EN/BN dictionary leaf-key parity check
+5. JavaScript package/API syntax, Next.js production build, mobile Babel transform, Python compile
+6. Fastify smoke tests using `inject`
+7. FastAPI smoke tests using `TestClient`
+8. Starts the API, web, and AI services and requests each health endpoint over HTTP
 
 To avoid collisions with other local services, health verification starts each app on an ephemeral
 port and asserts the expected service name in each response. It stops all started services when

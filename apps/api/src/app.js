@@ -9,18 +9,13 @@ const observability = require('./shared/presentation/observability');
 const { resolveApiVersion } = require('./shared/http/versioning');
 const { createContainer, registerModules } = require('./modules');
 const {
-  IdentityStoreToken,
-  PlatformAuthorizationToken,
-  PlatformTokenManagerToken,
+  NotificationProvidersToken,
+  NotificationQueueToken,
+  NotificationRealtimeToken,
 } = require('./shared/di/tokens');
 const { AuthStoreToken } = require('./modules/iam/domain/auth.repository');
 const { AiGatewayToken } = require('./modules/intelligence/domain/ai-gateway.entity');
-const {
-  AuthorizationServiceToken,
-  OtpProvidersToken,
-  RateLimiterToken,
-  TokenManagerToken,
-} = require('./modules/iam/application/tokens');
+const { OtpProvidersToken, RateLimiterToken } = require('./modules/iam/application/tokens');
 const { registerHttpAuthorization } = require('./modules/iam/presentation/http-authorization');
 const healthRoutes = require('./routes/health');
 const platformRoutes = require('./routes/platform');
@@ -40,6 +35,15 @@ async function buildServer(options = {}) {
   if (options.otpProviders) overrides.set(OtpProvidersToken, () => options.otpProviders);
   if (options.rateLimiter) overrides.set(RateLimiterToken, () => options.rateLimiter);
   if (options.aiGateway) overrides.set(AiGatewayToken, () => options.aiGateway);
+  if (options.notificationQueue) {
+    overrides.set(NotificationQueueToken, () => options.notificationQueue);
+  }
+  if (options.notificationRealtime) {
+    overrides.set(NotificationRealtimeToken, () => options.notificationRealtime);
+  }
+  if (options.notificationProviders) {
+    overrides.set(NotificationProvidersToken, () => options.notificationProviders);
+  }
   const container = createContainer({
     env,
     logger: app.log,
@@ -48,13 +52,15 @@ async function buildServer(options = {}) {
     overrides,
   });
 
-  // Composition-root aliases: business modules consume these shared ports
-  // without depending on the IAM module's source files.
-  container.register(IdentityStoreToken, (resolver) => resolver.resolve(AuthStoreToken));
-  container.register(PlatformAuthorizationToken, (resolver) =>
-    resolver.resolve(AuthorizationServiceToken),
-  );
-  container.register(PlatformTokenManagerToken, (resolver) => resolver.resolve(TokenManagerToken));
+  if (container.has(NotificationRealtimeToken)) {
+    const realtime = container.resolve(NotificationRealtimeToken);
+    realtime.attach(app.server);
+    app.addHook('onClose', async () => realtime.close());
+  }
+  if (container.has(NotificationQueueToken)) {
+    const queue = container.resolve(NotificationQueueToken);
+    app.addHook('onClose', async () => queue.close());
+  }
 
   app.decorate('cropsyEnv', env);
   app.decorate('startedAt', Date.now());

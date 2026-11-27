@@ -50,6 +50,7 @@ function createFakeGateway() {
     chatAi: handler('chat'),
     createAiConversation: handler('createConversation'),
     getAiConversation: handler('getConversation'),
+    listAiConversations: handler('listConversations'),
     evaluateRetrievalAi: handler('evaluateRetrieval'),
     runAgenticAi: handler('runAgentic'),
     approveAgenticAi: handler('approveAgentic'),
@@ -148,6 +149,8 @@ test('AI gateway forwards validated advisory requests with request metadata', as
   const capabilities = await inject(app, 'GET', '/capabilities', token);
   assert.equal(capabilities.statusCode, 200, capabilities.body);
   assert.equal(capabilities.json().data.operation, 'capabilities');
+  assert.equal(fakeGateway.calls.at(-1).metadata.organizationId, organization.id);
+  assert.equal(fakeGateway.calls.at(-1).metadata.userId, expert.id);
   assert.equal(capabilities.json().meta.requestId, REQUEST_ID);
   assert.equal(capabilities.json().meta.apiVersion, 'v1');
 
@@ -235,6 +238,12 @@ test('AI chat, conversation, and evaluation routes forward validated advisory re
   assert.equal(fetched.statusCode, 200, fetched.body);
   assert.equal(fakeGateway.calls.at(-1).operation, 'getConversation');
   assert.equal(fakeGateway.calls.at(-1).input.conversationId, conversationId);
+
+  const listed = await inject(app, 'GET', '/conversations', token);
+  assert.equal(listed.statusCode, 200, listed.body);
+  assert.equal(fakeGateway.calls.at(-1).operation, 'listConversations');
+  assert.equal(fakeGateway.calls.at(-1).metadata.organizationId, organization.id);
+  assert.equal(fakeGateway.calls.at(-1).metadata.userId, expert.id);
 
   const evaluation = await inject(app, 'POST', '/evaluation/retrieval', token, { topK: 3 });
   assert.equal(evaluation.statusCode, 200, evaluation.body);
@@ -954,8 +963,9 @@ test('HTTP gateway signs agentic and GraphRAG requests without trusting client t
     assert.ok(!request.body.includes('11111111-1111-1111-1111-111111111111'));
   }
 
-  assert.equal(AI_OPERATIONS.length, 45);
+  assert.equal(AI_OPERATIONS.length, 46);
   for (const operation of [
+    'listConversations',
     'runAgentic',
     'approveAgentic',
     'graphExtract',
@@ -994,6 +1004,36 @@ test('HTTP gateway signs agentic and GraphRAG requests without trusting client t
     secret: AI_SECRET,
   });
   assert.deepEqual(configured.describe().operations, [...AI_OPERATIONS]);
+});
+
+test('gateway GET calls do not pass a body to fetch', async () => {
+  let captured;
+  const gateway = new HttpAiGateway({
+    baseUrl: 'http://127.0.0.1:4100',
+    secret: AI_SECRET,
+    timestamp: '1700000300',
+    fetcher: async (url, init) => {
+      captured = { url, init };
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({ success: true, data: { ok: true } }),
+      };
+    },
+  });
+
+  const result = await gateway.describeAiCapabilities(
+    {},
+    {
+      requestId: REQUEST_ID,
+      organizationId: '11111111-1111-1111-1111-111111111111',
+      userId: '22222222-2222-2222-2222-222222222222',
+    },
+  );
+
+  assert.deepEqual(result, { ok: true });
+  assert.equal(captured.init.method, 'GET');
+  assert.ok(!Object.prototype.hasOwnProperty.call(captured.init, 'body'));
 });
 
 test('image and evaluation gateway operations sign dynamic paths and empty GET bodies', () => {

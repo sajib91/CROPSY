@@ -136,6 +136,7 @@ const PERMISSION_CATALOG = Object.freeze([
   ['ai.feedback', 'ai', 'feedback', 'Provide AI feedback'],
   ['subscriptions.manage', 'subscriptions', 'manage', 'Manage subscriptions'],
   ['notifications.read', 'notifications', 'read', 'View notifications'],
+  ['notifications.manage', 'notifications', 'manage', 'Inspect and retry notification delivery'],
 ]);
 
 const PERMISSION_CODES = Object.freeze(PERMISSION_CATALOG.map(([code]) => code));
@@ -259,6 +260,7 @@ const ROLE_PERMISSIONS = Object.freeze({
     'documents.manage',
     'sessions.read',
     'audit.read',
+    'notifications.manage',
     'farms.read',
     'farms.manage',
     'crops.read',

@@ -1,0 +1,18 @@
+export const SCREEN_NAMES = {
+  auth: 'Auth',
+  onboarding: 'Onboarding',
+  main: 'Main',
+  home: 'Home',
+  marketplace: 'Marketplace',
+  orders: 'Orders',
+  assistant: 'Assistant',
+  notifications: 'Notifications',
+  farms: 'Farms',
+  crops: 'Crops',
+  cart: 'Cart',
+  listingDetail: 'ListingDetail',
+  createListing: 'CreateListing',
+  delivery: 'Delivery',
+  profile: 'Profile',
+  settings: 'Settings',
+};

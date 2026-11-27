@@ -80,6 +80,9 @@ const NULL_AI_GATEWAY = Object.freeze({
   getAiConversation: () => {
     throw aiGatewayUnavailableError();
   },
+  listAiConversations: () => {
+    throw aiGatewayUnavailableError();
+  },
   evaluateRetrievalAi: () => {
     throw aiGatewayUnavailableError();
   },
@@ -202,12 +205,11 @@ function resolveAiArgs(args, source) {
   const wrapped =
     args && typeof args === 'object' && (hasOwn(args, 'input') || hasOwn(args, 'body'));
   const input = wrapped ? (args.input ?? args.body) : args;
-  const request =
-    source ||
-    (wrapped ? args.request : null) ||
-    (args && typeof args === 'object' && (hasOwn(args, 'requestId') || hasOwn(args, 'auth'))
-      ? args
-      : null);
+  let request = source || null;
+  if (!request && args && typeof args === 'object') {
+    if (wrapped || hasOwn(args, 'request')) request = args.request || null;
+    else if (hasOwn(args, 'requestId') || hasOwn(args, 'auth')) request = args;
+  }
   return { input, request };
 }
 
@@ -300,7 +302,9 @@ class IntelligenceService {
     // schemas forbid it, so the trusted context travels only as gateway headers.
     const call = includeMetadataInPayload ? { ...payload, ...metadata, metadata } : payload;
     try {
-      return await gateway[methodName](call, metadata);
+      const result = await gateway[methodName](call, metadata);
+      this.publishProcessingCompletion(operation, payload, metadata);
+      return result;
     } catch (error) {
       // Adapters that already declared 502/503 keep their status. A generic
       // infrastructure failure is normalized to a safe 502 at this boundary.
@@ -310,6 +314,23 @@ class IntelligenceService {
       if (isAppError(error)) throw error;
       throw gatewayFailure(error);
     }
+  }
+
+  publishProcessingCompletion(operation, payload, metadata) {
+    const notifiable = new Set(['ask', 'chat', 'recommend', 'analyzeImage']);
+    if (!notifiable.has(operation) || !metadata.userId || !this.eventBus?.publish) return;
+    this.eventBus.publish({
+      type: 'intelligence.processing.completed',
+      moduleId: MODULE_ID,
+      aggregateId: payload.conversationId || payload.assetId || metadata.userId,
+      payload: {
+        userId: metadata.userId,
+        organizationId: metadata.organizationId,
+        requestId: metadata.requestId,
+        operation,
+        title: 'AI processing complete',
+      },
+    });
   }
 
   async askAi(args, source) {
@@ -363,6 +384,13 @@ class IntelligenceService {
       'AI conversation id',
     );
     return this._callAi('getConversation', payload, request);
+  }
+
+  async listAiConversations(args, source) {
+    const { request } = resolveAiArgs(args || {}, source);
+    return this._callAi('listConversations', {}, request, {
+      includeMetadataInPayload: false,
+    });
   }
 
   async evaluateRetrievalAi(args, source) {
