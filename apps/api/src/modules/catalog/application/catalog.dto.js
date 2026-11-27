@@ -412,8 +412,12 @@ function toVarietyDto(record, related = {}) {
 }
 
 function toProductDto(record, related = {}) {
-  const category = related.categories?.find((item) => item.id === record.category_id);
-  const unit = related.units?.find((item) => item.id === record.unit_id);
+  const category =
+    related.categoryById?.get(record.category_id) ??
+    related.categories?.find((item) => item.id === record.category_id);
+  const unit =
+    related.unitById?.get(record.unit_id) ??
+    related.units?.find((item) => item.id === record.unit_id);
   const attributeDefinitions = related.attributeDefinitions || [];
   return {
     id: record.id,
@@ -434,7 +438,8 @@ function toProductDto(record, related = {}) {
     attributes: (related.attributeValues || []).map((item) =>
       toAttributeValueDto(
         item,
-        attributeDefinitions.find((definition) => definition.id === item.attribute_id),
+        related.attributeDefinitionById?.get(item.attribute_id) ??
+          attributeDefinitions.find((definition) => definition.id === item.attribute_id),
       ),
     ),
     images: (related.images || []).map(toImageDto),

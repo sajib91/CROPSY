@@ -34,8 +34,10 @@ function registerMarketplaceStore({ container }) {
     container.register(MarketplaceStoreToken, (resolver) => {
       const env = resolver.resolve(ConfigToken);
       if (env.MARKETPLACE_STORE === 'prisma') {
-        const { PrismaClient } = require('@prisma/client');
-        return new MarketplacePrismaStore({ prisma: new PrismaClient() });
+        const { getPrismaClient } = require('../../shared/database/prisma');
+        return new MarketplacePrismaStore({
+          prisma: getPrismaClient(resolver.resolve(ConfigToken)),
+        });
       }
       return new MarketplaceInMemoryStore();
     });

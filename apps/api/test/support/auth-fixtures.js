@@ -15,6 +15,7 @@ function authTestEnv(overrides = {}) {
     AUTH_STORE: 'memory',
     FARM_STORE: 'memory',
     AUTH_OTP_PROVIDER_MODE: 'preview',
+    AUTH_OTP_PREVIEW_CODE_IN_RESPONSE: 'true',
     AUTH_JWT_SECRET: TEST_SECRET,
     AUTH_RATE_LIMIT_MAX_ATTEMPTS: 1000,
     AUTH_OTP_RESEND_COOLDOWN_SECONDS: 1,
@@ -22,12 +23,13 @@ function authTestEnv(overrides = {}) {
   };
 }
 
-async function createApp(t, envOverrides = {}) {
+async function createApp(t, envOverrides = {}, buildOptions = {}) {
   const rateLimiter = new InMemoryRateLimiter({ maxAttempts: 1000, windowSeconds: 60 });
   const app = await buildServer({
     env: authTestEnv(envOverrides),
     logger: false,
     rateLimiter,
+    ...buildOptions,
   });
   t.after(() => app.close());
 
@@ -101,8 +103,8 @@ function cookieHeader(setCookie) {
     .join('; ');
 }
 
-async function createTenantFixture(t, envOverrides = {}) {
-  const fixture = await createApp(t, envOverrides);
+async function createTenantFixture(t, envOverrides = {}, buildOptions = {}) {
+  const fixture = await createApp(t, envOverrides, buildOptions);
   const { app, store } = fixture;
 
   const admin = await register(app, { email: 'admin@example.com', roles: ['FARMER'] });

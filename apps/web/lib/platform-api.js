@@ -1,9 +1,12 @@
+import { contractPath, requireApiOperation } from '@cropsy/api-contracts';
+
 import { getWebEnv } from './env';
 
 const { NEXT_PUBLIC_API_URL } = getWebEnv();
 const TIMEOUT_MS = 5000;
 
 async function fetchPublic(path) {
+  requireApiOperation('GET', path);
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), TIMEOUT_MS);
 
@@ -47,5 +50,5 @@ export function getPublicModules() {
 }
 
 export function getModuleInfo(moduleId) {
-  return fetchPublic(`/${encodeURIComponent(moduleId)}/info`);
+  return fetchPublic(contractPath('GET', '/{moduleId}/info', { moduleId }));
 }

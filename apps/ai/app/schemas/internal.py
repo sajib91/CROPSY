@@ -124,7 +124,6 @@ class GraphBuildRequest(BaseModel):
     model_config = {"extra": "forbid"}
 
     extraction: GraphExtractionRequest
-    approval: GraphApproval | None = None
 
 
 class GraphContextRequest(BaseModel):

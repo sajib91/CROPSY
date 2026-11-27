@@ -1,155 +1,232 @@
+import { contractPath } from '@cropsy/api-contracts';
+
 /**
- * Central map of `/api/v1` routes used by the mobile app. Business rules are
- * never duplicated here; these are only stable addresses of backend-owned
- * capabilities.
+ * Central map of `/api/v1` routes used by the mobile app.
+ *
+ * Every address is resolved against the checked-in OpenAPI 3.1 contract, so a
+ * renamed or removed backend route fails fast instead of silently drifting.
+ * Business rules are never duplicated here; these are only stable addresses of
+ * backend-owned capabilities.
  */
 export const endpoints = {
-  health: '/health',
-  version: '/version',
-  modules: '/modules',
+  health: contractPath('GET', '/health'),
+  version: contractPath('GET', '/version'),
+  modules: contractPath('GET', '/modules'),
 
   auth: {
-    registerEmail: '/iam/auth/register/email',
-    registerPhone: '/iam/auth/register/phone',
-    requestOtp: '/iam/auth/otp/request',
-    verifyOtp: '/iam/auth/otp/verify',
-    login: '/iam/auth/login',
-    loginOtp: '/iam/auth/login/otp',
-    refresh: '/iam/auth/refresh',
-    logout: '/iam/auth/logout',
-    me: '/iam/auth/me',
-    forgotPassword: '/iam/auth/forgot-password',
-    resetPassword: '/iam/auth/reset-password',
-    userSummary: (userId) => `/iam/auth/users/${userId}`,
-    accessCheck: '/iam/auth/access/check',
+    registerEmail: contractPath('POST', '/iam/auth/register/email'),
+    registerPhone: contractPath('POST', '/iam/auth/register/phone'),
+    requestOtp: contractPath('POST', '/iam/auth/otp/request'),
+    verifyOtp: contractPath('POST', '/iam/auth/otp/verify'),
+    login: contractPath('POST', '/iam/auth/login'),
+    loginOtp: contractPath('POST', '/iam/auth/login/otp'),
+    refresh: contractPath('POST', '/iam/auth/refresh'),
+    logout: contractPath('POST', '/iam/auth/logout'),
+    me: contractPath('GET', '/iam/auth/me'),
+    forgotPassword: contractPath('POST', '/iam/auth/forgot-password'),
+    resetPassword: contractPath('POST', '/iam/auth/reset-password'),
+    userSummary: (userId) => contractPath('GET', '/iam/auth/users/{userId}', { userId }),
+    accessCheck: contractPath('GET', '/iam/auth/access/check'),
   },
 
   users: {
-    me: '/users/me',
-    updateProfile: '/users/me/profile',
-    updateContact: '/users/me/contact',
-    addresses: '/users/me/addresses',
-    address: (addressId) => `/users/me/addresses/${addressId}`,
-    preferences: '/users/me/preferences',
-    roleProfiles: '/users/me/role-profiles',
-    roleProfile: (roleCode) => `/users/me/roles/${roleCode}/profile`,
-    farmerProfile: '/users/me/farmer-profile',
+    me: contractPath('GET', '/users/me'),
+    updateProfile: contractPath('PATCH', '/users/me/profile'),
+    updateContact: contractPath('PATCH', '/users/me/contact'),
+    addresses: contractPath('GET', '/users/me/addresses'),
+    address: (addressId) => contractPath('PATCH', '/users/me/addresses/{addressId}', { addressId }),
+    preferences: contractPath('GET', '/users/me/preferences'),
+    roleProfiles: contractPath('GET', '/users/me/role-profiles'),
+    roleProfile: (roleCode) =>
+      contractPath('PUT', '/users/me/roles/{roleCode}/profile', { roleCode }),
+    farmerProfile: contractPath('GET', '/users/me/farmer-profile'),
   },
 
   catalog: {
-    products: '/catalog/products',
-    product: (productId) => `/catalog/products/${productId}`,
-    categories: '/catalog/categories',
-    units: '/catalog/units',
-    qualityGrades: '/catalog/quality-grades',
+    products: contractPath('GET', '/catalog/products'),
+    product: (productId) => contractPath('GET', '/catalog/products/{productId}', { productId }),
+    categories: contractPath('GET', '/catalog/categories'),
+    units: contractPath('GET', '/catalog/units'),
+    qualityGrades: contractPath('GET', '/catalog/quality-grades'),
   },
 
   farmers: {
-    divisions: '/farmers/geo/divisions',
-    districts: (divisionId) => `/farmers/geo/divisions/${divisionId}/districts`,
-    upazilas: (districtId) => `/farmers/geo/districts/${districtId}/upazilas`,
-    unions: (upazilaId) => `/farmers/geo/upazilas/${upazilaId}/unions`,
-    farms: '/farmers/farms',
-    farm: (farmId) => `/farmers/farms/${farmId}`,
-    farmMap: '/farmers/farms/map',
-    farmSpatial: '/farmers/farms/spatial',
-    farmSoil: (farmId) => `/farmers/farms/${farmId}/soil`,
-    farmIrrigations: (farmId) => `/farmers/farms/${farmId}/irrigations`,
-    farmParcels: (farmId) => `/farmers/farms/${farmId}/parcels`,
-    groups: '/farmers/groups',
-    group: (groupId) => `/farmers/groups/${groupId}`,
-    earnings: '/farmers/earnings/me',
+    divisions: contractPath('GET', '/farmers/geo/divisions'),
+    districts: (divisionId) =>
+      contractPath('GET', '/farmers/geo/divisions/{divisionId}/districts', {
+        divisionId,
+      }),
+    upazilas: (districtId) =>
+      contractPath('GET', '/farmers/geo/districts/{districtId}/upazilas', {
+        districtId,
+      }),
+    unions: (upazilaId) =>
+      contractPath('GET', '/farmers/geo/upazilas/{upazilaId}/unions', {
+        upazilaId,
+      }),
+    farms: contractPath('GET', '/farmers/farms'),
+    farm: (farmId) => contractPath('GET', '/farmers/farms/{farmId}', { farmId }),
+    farmMap: contractPath('GET', '/farmers/farms/map'),
+    farmSpatial: contractPath('GET', '/farmers/farms/spatial'),
+    farmSoil: (farmId) => contractPath('GET', '/farmers/farms/{farmId}/soil', { farmId }),
+    farmIrrigations: (farmId) =>
+      contractPath('GET', '/farmers/farms/{farmId}/irrigations', { farmId }),
+    farmParcels: (farmId) => contractPath('GET', '/farmers/farms/{farmId}/parcels', { farmId }),
+    groups: contractPath('GET', '/farmers/groups'),
+    group: (groupId) => contractPath('GET', '/farmers/groups/{groupId}', { groupId }),
+    earnings: contractPath('GET', '/farmers/earnings/me'),
   },
 
   agriculture: {
-    crops: '/agriculture/crops',
-    crop: (cropId) => `/agriculture/crops/${cropId}`,
-    cropVarieties: (cropId) => `/agriculture/crops/${cropId}/varieties`,
-    varieties: '/agriculture/varieties',
-    seasons: '/agriculture/seasons',
-    calendars: '/agriculture/calendars',
-    cultivations: '/agriculture/cultivations',
-    cultivation: (cultivationId) => `/agriculture/cultivations/${cultivationId}`,
-    cultivationCost: (cultivationId) => `/agriculture/cultivations/${cultivationId}/cost`,
-    expenses: '/agriculture/expenses',
-    farmExpenses: (farmId) => `/agriculture/farms/${farmId}/expenses`,
-    farmHarvests: (farmId) => `/agriculture/farms/${farmId}/harvests`,
-    farmActivities: (farmId) => `/agriculture/farms/${farmId}/activities`,
-    recommendations: '/agriculture/recommendations',
+    crops: contractPath('GET', '/agriculture/crops'),
+    crop: (cropId) => contractPath('PATCH', '/agriculture/crops/{cropId}', { cropId }),
+    cropVarieties: (cropId) =>
+      contractPath('POST', '/agriculture/crops/{cropId}/varieties', { cropId }),
+    varieties: contractPath('GET', '/agriculture/varieties'),
+    seasons: contractPath('GET', '/agriculture/seasons'),
+    calendars: contractPath('GET', '/agriculture/calendars'),
+    cultivations: contractPath('GET', '/agriculture/cultivations'),
+    cultivation: (cultivationId) =>
+      contractPath('GET', '/agriculture/cultivations/{cultivationId}', {
+        cultivationId,
+      }),
+    cultivationCost: (cultivationId) =>
+      contractPath('GET', '/agriculture/cultivations/{cultivationId}/cost', {
+        cultivationId,
+      }),
+    expenses: contractPath('GET', '/agriculture/expenses'),
+    farmExpenses: (farmId) =>
+      contractPath('GET', '/agriculture/farms/{farmId}/expenses', { farmId }),
+    farmHarvests: (farmId) =>
+      contractPath('GET', '/agriculture/farms/{farmId}/harvests', { farmId }),
+    farmActivities: (farmId) =>
+      contractPath('GET', '/agriculture/farms/{farmId}/activities', { farmId }),
+    recommendations: contractPath('GET', '/agriculture/recommendations'),
   },
 
   marketplace: {
-    listings: '/marketplace/listings',
-    listing: (listingId) => `/marketplace/listings/${listingId}`,
-    deactivateListing: (listingId) => `/marketplace/listings/${listingId}/deactivate`,
-    favorites: '/marketplace/favorites',
-    favorite: (listingId) => `/marketplace/favorites/${listingId}`,
-    seller: (sellerId) => `/marketplace/sellers/${sellerId}`,
-    messages: '/marketplace/messages',
-    listingMessages: (listingId) => `/marketplace/listings/${listingId}/messages`,
-    markMessageRead: (messageId) => `/marketplace/messages/${messageId}/read`,
-    reports: '/marketplace/reports',
+    listings: contractPath('GET', '/marketplace/listings'),
+    listing: (listingId) => contractPath('GET', '/marketplace/listings/{listingId}', { listingId }),
+    deactivateListing: (listingId) =>
+      contractPath('POST', '/marketplace/listings/{listingId}/deactivate', {
+        listingId,
+      }),
+    favorites: contractPath('GET', '/marketplace/favorites'),
+    favorite: (listingId) =>
+      contractPath('POST', '/marketplace/favorites/{listingId}', { listingId }),
+    seller: (sellerId) => contractPath('GET', '/marketplace/sellers/{sellerId}', { sellerId }),
+    messages: contractPath('GET', '/marketplace/messages'),
+    listingMessages: (listingId) =>
+      contractPath('POST', '/marketplace/listings/{listingId}/messages', {
+        listingId,
+      }),
+    markMessageRead: (messageId) =>
+      contractPath('PATCH', '/marketplace/messages/{messageId}/read', {
+        messageId,
+      }),
+    reports: contractPath('GET', '/marketplace/reports'),
   },
 
   orders: {
-    cart: '/orders/cart',
-    cartItems: '/orders/cart/items',
-    cartItem: (listingId) => `/orders/cart/items/${listingId}`,
-    checkout: '/orders/checkout',
-    checkouts: '/orders/checkouts',
-    checkoutById: (checkoutId) => `/orders/checkouts/${checkoutId}`,
-    orders: '/orders/orders',
-    order: (orderId) => `/orders/orders/${orderId}`,
-    orderHistory: (orderId) => `/orders/orders/${orderId}/history`,
-    receipt: (orderId) => `/orders/orders/${orderId}/receipt`,
-    cancelOrder: (orderId) => `/orders/orders/${orderId}/cancel`,
-    transitionOrder: (orderId) => `/orders/orders/${orderId}/transitions`,
+    cart: contractPath('GET', '/orders/cart'),
+    cartItems: contractPath('POST', '/orders/cart/items'),
+    cartItem: (listingId) =>
+      contractPath('DELETE', '/orders/cart/items/{listingId}', { listingId }),
+    checkout: contractPath('POST', '/orders/checkout'),
+    checkouts: contractPath('GET', '/orders/checkouts'),
+    checkoutById: (checkoutId) =>
+      contractPath('GET', '/orders/checkouts/{checkoutId}', { checkoutId }),
+    orders: contractPath('GET', '/orders/orders'),
+    order: (orderId) => contractPath('GET', '/orders/orders/{orderId}', { orderId }),
+    orderHistory: (orderId) => contractPath('GET', '/orders/orders/{orderId}/history', { orderId }),
+    receipt: (orderId) => contractPath('GET', '/orders/orders/{orderId}/receipt', { orderId }),
+    cancelOrder: (orderId) => contractPath('POST', '/orders/orders/{orderId}/cancel', { orderId }),
+    transitionOrder: (orderId) =>
+      contractPath('POST', '/orders/orders/{orderId}/transitions', { orderId }),
   },
 
   logistics: {
-    providers: '/logistics/providers',
-    nearbyProviders: '/logistics/providers/nearby',
-    services: '/logistics/services',
-    shipments: '/logistics/shipments',
-    shipment: (shipmentId) => `/logistics/shipments/${shipmentId}`,
-    shipmentHistory: (shipmentId) => `/logistics/shipments/${shipmentId}/history`,
-    shipmentTracking: (shipmentId) => `/logistics/shipments/${shipmentId}/tracking`,
-    shipmentPickup: (shipmentId) => `/logistics/shipments/${shipmentId}/pickup`,
-    shipmentStatus: (shipmentId) => `/logistics/shipments/${shipmentId}/status`,
-    shipmentAssignment: (shipmentId) => `/logistics/shipments/${shipmentId}/assignment`,
-    deliveries: '/logistics/deliveries',
-    delivery: (deliveryId) => `/logistics/deliveries/${deliveryId}`,
-    deliveryProof: (deliveryId) => `/logistics/deliveries/${deliveryId}/proof`,
-    deliveryConfirm: (deliveryId) => `/logistics/deliveries/${deliveryId}/confirm`,
-    deliveryFailure: (deliveryId) => `/logistics/deliveries/${deliveryId}/failure`,
+    providers: contractPath('GET', '/logistics/providers'),
+    nearbyProviders: contractPath('GET', '/logistics/providers/nearby'),
+    services: contractPath('GET', '/logistics/services'),
+    shipments: contractPath('GET', '/logistics/shipments'),
+    shipment: (shipmentId) =>
+      contractPath('GET', '/logistics/shipments/{shipmentId}', { shipmentId }),
+    shipmentHistory: (shipmentId) =>
+      contractPath('GET', '/logistics/shipments/{shipmentId}/history', {
+        shipmentId,
+      }),
+    shipmentTracking: (shipmentId) =>
+      contractPath('GET', '/logistics/shipments/{shipmentId}/tracking', {
+        shipmentId,
+      }),
+    shipmentPickup: (shipmentId) =>
+      contractPath('POST', '/logistics/shipments/{shipmentId}/pickup', {
+        shipmentId,
+      }),
+    shipmentStatus: (shipmentId) =>
+      contractPath('POST', '/logistics/shipments/{shipmentId}/status', {
+        shipmentId,
+      }),
+    shipmentAssignment: (shipmentId) =>
+      contractPath('POST', '/logistics/shipments/{shipmentId}/assignment', {
+        shipmentId,
+      }),
+    deliveries: contractPath('GET', '/logistics/deliveries'),
+    delivery: (deliveryId) =>
+      contractPath('GET', '/logistics/deliveries/{deliveryId}', { deliveryId }),
+    deliveryProof: (deliveryId) =>
+      contractPath('POST', '/logistics/deliveries/{deliveryId}/proof', {
+        deliveryId,
+      }),
+    deliveryConfirm: (deliveryId) =>
+      contractPath('POST', '/logistics/deliveries/{deliveryId}/confirm', {
+        deliveryId,
+      }),
+    deliveryFailure: (deliveryId) =>
+      contractPath('POST', '/logistics/deliveries/{deliveryId}/failure', {
+        deliveryId,
+      }),
   },
 
   intelligence: {
-    capabilities: '/intelligence/ai/capabilities',
-    ask: '/intelligence/ai/ask',
-    retrieve: '/intelligence/ai/retrieve',
-    recommendations: '/intelligence/ai/recommendations',
-    feedback: '/intelligence/ai/feedback',
-    chat: '/intelligence/ai/chat',
-    conversations: '/intelligence/ai/conversations',
-    conversation: (conversationId) => `/intelligence/ai/conversations/${conversationId}`,
-    imageCapabilities: '/intelligence/ai/image-analysis/capabilities',
-    analyzeImage: '/intelligence/ai/image-analysis/analyze',
-    multimodalAssets: '/intelligence/ai/multimodal/assets',
-    marketForecast: '/intelligence/ai/market/forecast',
-    marketExplain: '/intelligence/ai/market/explain',
-    weatherAdvisory: '/intelligence/ai/weather/advisory',
+    capabilities: contractPath('GET', '/intelligence/ai/capabilities'),
+    ask: contractPath('POST', '/intelligence/ai/ask'),
+    retrieve: contractPath('POST', '/intelligence/ai/retrieve'),
+    recommendations: contractPath('POST', '/intelligence/ai/recommendations'),
+    feedback: contractPath('POST', '/intelligence/ai/feedback'),
+    chat: contractPath('POST', '/intelligence/ai/chat'),
+    conversations: contractPath('GET', '/intelligence/ai/conversations'),
+    conversation: (conversationId) =>
+      contractPath('GET', '/intelligence/ai/conversations/{conversationId}', {
+        conversationId,
+      }),
+    imageCapabilities: contractPath('GET', '/intelligence/ai/image-analysis/capabilities'),
+    analyzeImage: contractPath('POST', '/intelligence/ai/image-analysis/analyze'),
+    multimodalAssets: contractPath('POST', '/intelligence/ai/multimodal/assets'),
+    marketForecast: contractPath('POST', '/intelligence/ai/market/forecast'),
+    marketExplain: contractPath('POST', '/intelligence/ai/market/explain'),
+    weatherAdvisory: contractPath('POST', '/intelligence/ai/weather/advisory'),
   },
 
   notifications: {
-    list: '/notifications',
-    info: '/notifications/info',
-    readAll: '/notifications/read-all',
-    deviceTokens: '/notifications/device-tokens',
-    revokeDeviceToken: '/notifications/device-tokens/revoke',
-    failures: '/notifications/admin/failures',
-    retry: (notificationId) => `/notifications/admin/${notificationId}/retry`,
-    delivery: (notificationId) => `/notifications/${notificationId}/delivery`,
-    read: (notificationId) => `/notifications/${notificationId}/read`,
+    list: contractPath('GET', '/notifications'),
+    info: contractPath('GET', '/notifications/info'),
+    readAll: contractPath('POST', '/notifications/read-all'),
+    deviceTokens: contractPath('POST', '/notifications/device-tokens'),
+    revokeDeviceToken: contractPath('POST', '/notifications/device-tokens/revoke'),
+    failures: contractPath('GET', '/notifications/admin/failures'),
+    retry: (notificationId) =>
+      contractPath('POST', '/notifications/admin/{notificationId}/retry', {
+        notificationId,
+      }),
+    delivery: (notificationId) =>
+      contractPath('GET', '/notifications/{notificationId}/delivery', {
+        notificationId,
+      }),
+    read: (notificationId) =>
+      contractPath('PATCH', '/notifications/{notificationId}/read', {
+        notificationId,
+      }),
   },
 };

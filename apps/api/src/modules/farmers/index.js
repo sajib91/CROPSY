@@ -24,8 +24,8 @@ function registerFarmStore({ container }) {
   container.register(FarmStoreToken, (resolver) => {
     const env = resolver.resolve(ConfigToken);
     if (env.FARM_STORE === 'prisma') {
-      const { PrismaClient } = require('@prisma/client');
-      return new FarmPrismaStore({ prisma: new PrismaClient() });
+      const { getPrismaClient } = require('../../shared/database/prisma');
+      return new FarmPrismaStore({ prisma: getPrismaClient(resolver.resolve(ConfigToken)) });
     }
     return new FarmInMemoryStore();
   });

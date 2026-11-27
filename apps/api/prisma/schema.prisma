@@ -1432,6 +1432,7 @@ model Farm {
   farmer_profile_id String?          @db.Uuid
 
   @@index([organization_id, status])
+  @@index([organization_id, owner_user_id])
   @@index([owner_user_id])
   @@index([operator_user_id])
   @@index([farmer_profile_id])
@@ -1635,6 +1636,7 @@ model Cultivation {
 
   @@unique([farm_id, code])
   @@index([organization_id, status])
+  @@index([organization_id, harvested_at])
   @@index([farm_id, crop_variety_id])
   @@index([land_parcel_id])
   @@index([crop_variety_id])
@@ -1704,6 +1706,7 @@ model Harvest {
   traceability_batches TraceabilityBatch[]
 
   @@index([organization_id, status])
+  @@index([organization_id, harvested_at])
   @@index([cultivation_id, harvested_at])
   @@index([farm_id])
   @@map("harvests")
@@ -1818,6 +1821,7 @@ model FarmExpense {
   cultivation  Cultivation?  @relation(fields: [cultivation_id], references: [id], onDelete: SetNull)
 
   @@index([organization_id, expense_date])
+  @@index([organization_id, expense_date, category])
   @@index([farm_id, expense_date])
   @@index([farm_id, category])
   @@index([cultivation_id, expense_date])
@@ -1895,6 +1899,7 @@ model Product {
   traceability_batches      TraceabilityBatch[]
 
   @@index([organization_id, category_id])
+  @@index([organization_id, created_at])
   @@index([deleted_at])
   @@index([category_id])
   @@index([farmer_profile_id])
@@ -2047,6 +2052,7 @@ model ProductInventory {
 
   @@unique([product_id, scope_key])
   @@index([organization_id])
+  @@index([organization_id, available_quantity])
   @@index([warehouse_id])
   @@map("product_inventories")
 }
@@ -2088,6 +2094,7 @@ model ProductListing {
   order_items   OrderItem[]
 
   @@index([organization_id, status])
+  @@index([organization_id, created_at, status])
   @@index([product_id, status])
   @@index([seller_user_id])
   @@index([quality_grade_id])
@@ -2117,6 +2124,7 @@ model ListingLocation {
   union    Union?         @relation(fields: [union_id], references: [id], onDelete: SetNull)
 
   @@index([division_id, district_id, upazila_id])
+  @@index([division_id, district_id])
   @@index([listing_id])
   @@index([district_id])
   @@index([upazila_id])
@@ -2334,6 +2342,9 @@ model Order {
   shipments      Shipment[]
 
   @@index([organization_id, status])
+  @@index([organization_id, placed_at, status])
+  @@index([organization_id, buyer_user_id, placed_at])
+  @@index([organization_id, seller_user_id, placed_at])
   @@index([buyer_user_id, placed_at])
   @@index([seller_user_id, placed_at])
   @@index([cart_id])
@@ -2358,6 +2369,7 @@ model OrderItem {
   listing ProductListing? @relation(fields: [listing_id], references: [id], onDelete: SetNull)
 
   @@index([order_id])
+  @@index([order_id, product_id])
   @@index([product_id])
   @@index([listing_id])
   @@map("order_items")
@@ -2426,6 +2438,7 @@ model Payment {
 
   @@unique([provider_code, provider_reference])
   @@index([organization_id, status])
+  @@index([organization_id, captured_at, status])
   @@index([order_id])
   @@index([purchase_group_id])
   @@index([user_id, status])
@@ -2807,6 +2820,7 @@ model Shipment {
 
   @@unique([provider_id, tracking_number])
   @@index([organization_id, status])
+  @@index([organization_id, status, delivered_at])
   @@index([order_id])
   @@index([provider_id, status])
   @@index([delivery_service_id])
@@ -3033,6 +3047,7 @@ model WarehouseInventory {
 
   @@unique([warehouse_id, product_id, batch_code])
   @@index([product_id])
+  @@index([product_id, available_quantity])
   @@index([location_id])
   @@map("warehouse_inventories")
 }
@@ -3761,6 +3776,7 @@ model AIRecommendation {
   feedback AIFeedback[]
 
   @@index([organization_id, status])
+  @@index([organization_id, created_at])
   @@index([entity_type, entity_id])
   @@index([conversation_id])
   @@index([user_id])
@@ -3789,6 +3805,7 @@ model AgentExecution {
   feedback AIFeedback[]
 
   @@index([organization_id, status])
+  @@index([organization_id, created_at])
   @@index([conversation_id])
   @@index([initiated_by_user_id])
   @@map("agent_executions")
@@ -3811,6 +3828,7 @@ model AIFeedback {
   agent_execution AgentExecution?   @relation(fields: [agent_execution_id], references: [id], onDelete: SetNull)
 
   @@index([organization_id, user_id])
+  @@index([organization_id, created_at])
   @@index([recommendation_id])
   @@index([agent_execution_id])
   @@index([user_id])
@@ -3822,18 +3840,25 @@ model AIFeedback {
 // ---------------------------------------------------------------------------
 
 model SubscriptionPlan {
-  id               String          @id @default(uuid()) @db.Uuid
-  code             String          @unique @db.VarChar(80)
-  name             String          @db.VarChar(180)
-  description      String?         @db.Text
-  billing_interval BillingInterval @default(MONTHLY)
-  currency         String          @default("BDT") @db.Char(3)
+  id                   String          @id @default(uuid()) @db.Uuid
+  code                 String          @unique @db.VarChar(80)
+  name                 String          @db.VarChar(180)
+  description          String?         @db.Text
+  billing_interval     BillingInterval @default(MONTHLY)
+  currency             String          @default("BDT") @db.Char(3)
   // No plan prices are seeded; pricing is a business decision.
-  price_amount     Decimal         @db.Decimal(14, 2)
-  trial_days       Int             @default(0)
-  is_active        Boolean         @default(true)
-  created_at       DateTime        @default(now()) @db.Timestamp(6)
-  updated_at       DateTime        @updatedAt @db.Timestamp(6)
+  price_amount         Decimal         @db.Decimal(14, 2)
+  trial_days           Int             @default(0)
+  is_active            Boolean         @default(true)
+  // Plan policy is caller-supplied. No prices, entitlements, or limits are seeded.
+  segment_codes        String[]        @default([])
+  entitlements         Json            @default("{}")
+  usage_limits         Json            @default("{}")
+  provider_code        String?         @db.VarChar(80)
+  billing_cycle_months Int?
+  metadata             Json            @default("{}")
+  created_at           DateTime        @default(now()) @db.Timestamp(6)
+  updated_at           DateTime        @updatedAt @db.Timestamp(6)
 
   subscriptions Subscription[]
 
@@ -3849,6 +3874,9 @@ model Subscription {
   starts_at       DateTime           @db.Timestamp(6)
   ends_at         DateTime?          @db.Timestamp(6)
   cancelled_at    DateTime?          @db.Timestamp(6)
+  provider_code   String?            @db.VarChar(80)
+  cancel_reason   String?            @db.Text
+  metadata        Json               @default("{}")
   created_at      DateTime           @default(now()) @db.Timestamp(6)
   updated_at      DateTime           @updatedAt @db.Timestamp(6)
 
@@ -3874,6 +3902,10 @@ model SubscriptionInvoice {
   issued_at       DateTime      @default(now()) @db.Timestamp(6)
   due_at          DateTime?     @db.Timestamp(6)
   paid_at         DateTime?     @db.Timestamp(6)
+  provider_code   String?       @db.VarChar(80)
+  period_start    DateTime?     @db.Timestamp(6)
+  period_end      DateTime?     @db.Timestamp(6)
+  metadata        Json          @default("{}")
   created_at      DateTime      @default(now()) @db.Timestamp(6)
   updated_at      DateTime      @updatedAt @db.Timestamp(6)
 
@@ -3894,6 +3926,7 @@ model UsageRecord {
   period_start    DateTime @db.Timestamp(6)
   period_end      DateTime @db.Timestamp(6)
   recorded_at     DateTime @default(now()) @db.Timestamp(6)
+  metadata        Json     @default("{}")
   created_at      DateTime @default(now()) @db.Timestamp(6)
   updated_at      DateTime @updatedAt @db.Timestamp(6)
 

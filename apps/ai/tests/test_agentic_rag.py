@@ -18,6 +18,7 @@ def build_container() -> AiContainer:
         allow_mock_provider=True,
         graph_backend="memory",
         internal_service_secret=SecretStr("test-ai-service-secret-at-least-32"),
+        approval_reviewer_ids="user-own",
     )
     return AiContainer(settings)
 
@@ -101,12 +102,27 @@ def test_agentic_workflow_is_resumable_after_human_approval() -> None:
         assert pending.status == "awaiting_approval"
         assert pending.approvalId
 
+        # Reviewer identity is derived from signed context, never from the body.
         approval = GraphApproval(
             approvalId=pending.approvalId,
-            approvedBy="agronomist-1",
             decision="approved",
             scope=["response_generation"],
         )
+        with pytest.raises(UnauthorizedError):
+            await container.agentic.resume(
+                approval,
+                trace_id="trace-agentic-approval",
+                organization_id="org-own",
+                user_id="user-other",
+            )
+        with pytest.raises(UnauthorizedError):
+            await container.agentic.resume(
+                approval,
+                trace_id="trace-agentic-approval",
+                organization_id="org-other",
+                user_id="user-own",
+            )
+
         approved = await container.agentic.resume(
             approval,
             trace_id="trace-agentic-approval",
@@ -115,6 +131,7 @@ def test_agentic_workflow_is_resumable_after_human_approval() -> None:
         )
         assert approved.status in {"ok", "insufficient_evidence"}
         assert approved.approval is not None
+        assert approved.approval["approvedBy"] == "user-own"
 
         with pytest.raises(NotFoundError):
             await container.agentic.resume(

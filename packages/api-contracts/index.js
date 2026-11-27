@@ -1,6 +1,9 @@
 const { z } = require('zod');
 const { isoDateTime, nonEmptyString } = require('@cropsy/validation');
 
+const openApiSpec = require('./openapi.json');
+const generatedClient = require('./generated/client');
+
 const healthDataSchema = z.object({
   status: z.enum(['ok', 'ready']),
   service: nonEmptyString,
@@ -115,4 +118,15 @@ module.exports = {
   notificationListResponseSchema,
   notificationPreferenceSchema,
   notificationPreferenceListResponseSchema,
+
+  // OpenAPI 3.1 is the canonical contract. These helpers are generated from it
+  // and are the only supported way for clients to resolve API paths.
+  openApiSpec,
+  apiOperations: generatedClient.operations,
+  apiOperationIds: generatedClient.operationIds,
+  getApiOperation: generatedClient.getOperation,
+  requireApiOperation: generatedClient.requireOperation,
+  requireApiPath: generatedClient.requireOperationByPath,
+  contractPath: generatedClient.contractPath,
+  contractPathForOperation: generatedClient.contractPathForOperation,
 };

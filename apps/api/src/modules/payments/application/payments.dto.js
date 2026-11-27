@@ -3,7 +3,16 @@ const { z, isoDateTime } = require('@cropsy/validation');
 const nonEmptyString = z.string().trim().min(1);
 const uuid = z.string().uuid();
 const amount = z.coerce.number().positive().finite();
-const currency = z.string().trim().length(3).toUpperCase().default('BDT');
+const SUPPORTED_PAYMENT_CURRENCIES = new Set(['BDT', 'USD']);
+const currencyCode = z
+  .string()
+  .trim()
+  .length(3)
+  .toUpperCase()
+  .refine((value) => /^[A-Z]{3}$/.test(value) && SUPPORTED_PAYMENT_CURRENCIES.has(value), {
+    message: 'Unsupported payment currency.',
+  });
+const currency = currencyCode.default('BDT');
 
 const moduleInfoSchema = z.object({
   id: z.string().uuid(),
@@ -103,7 +112,7 @@ const webhookSchema = z
     paymentReference: nonEmptyString.max(255),
     status: z.enum(['INITIATED', 'AUTHORIZED', 'CAPTURED', 'FAILED', 'CANCELLED']),
     amount: z.coerce.number().positive().finite().optional(),
-    currency: z.string().trim().length(3).optional(),
+    currency: currencyCode.optional(),
     failureCode: nonEmptyString.max(120).optional(),
   })
   .strict();

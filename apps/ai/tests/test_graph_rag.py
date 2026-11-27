@@ -7,7 +7,6 @@ from app.config import Settings
 from app.errors import UnauthorizedError
 from app.infrastructure.graph_store import InMemoryGraphStore
 from app.modules.graph_rag import (
-    GraphApproval,
     GraphExtractionRequest,
     GraphRAGService,
     GraphRetrievalRequest,
@@ -42,51 +41,40 @@ def extraction() -> GraphExtractionRequest:
         ),
         source="Ministry agriculture note",
         sourceReference="agr-note-v1",
-        documentStatus="verified",
-        licenseVerified=True,
         organizationId="org-own",
     )
 
 
-def test_graph_build_keeps_llm_extractions_unverified_until_human_approval() -> None:
+def test_graph_build_never_promotes_caller_claimed_verification() -> None:
     service = build_service()
 
     async def scenario() -> None:
+        # Caller verification flags are rejected by the DTO; direct internal
+        # callers have no field with which to self-certify source status.
         result = await service.build(value=extraction(), trusted_organization_id="org-own")
-        assert result.status == "awaiting_approval"
+        assert result.status == "built"
         assert result.nodesWritten >= 3
         assert result.relationshipsWritten >= 1
         assert result.verifiedRelationships == 0
-        assert result.validation.requiresApproval is True
+        assert result.validation.requiresApproval is False
         classes = {item["evidenceClass"] for item in result.validation.accepted}
-        assert "verified_relationship" not in classes
-        assert "validated_extraction" in classes
+        assert classes == {"candidate_extraction"}
 
+        # Candidate-only graph edges are opt-in for retrieval, but they are
+        # always labelled unverified and never validated by this build path.
         retrieval = await service.retrieve(
             GraphRetrievalRequest(
                 query="rice blast",
                 organizationIds=["org-own"],
                 includeGlobal=False,
+                includeCandidates=True,
             ),
             trusted_organization_id="org-own",
         )
         assert retrieval.evidence
         assert all(not item.verified for item in retrieval.evidence)
-        assert "not scientific facts" in " ".join(retrieval.limitations)
+        assert all(not item.validated for item in retrieval.evidence)
 
-        approval = GraphApproval(
-            approvalId="approval-graph-1",
-            approvedBy="agronomist-1",
-            decision="approved",
-            scope=[str(item["id"]) for item in result.validation.accepted],
-        )
-        approved = await service.build(
-            value=extraction(),
-            approval=approval,
-            trusted_organization_id="org-own",
-        )
-        assert approved.status == "built"
-        assert approved.verifiedRelationships >= 1
         verified = await service.retrieve(
             GraphRetrievalRequest(
                 query="rice blast",
@@ -96,8 +84,7 @@ def test_graph_build_keeps_llm_extractions_unverified_until_human_approval() -> 
             ),
             trusted_organization_id="org-own",
         )
-        assert verified.evidence
-        assert all(item.verified for item in verified.evidence)
+        assert verified.evidence == []
 
     asyncio.run(scenario())
 

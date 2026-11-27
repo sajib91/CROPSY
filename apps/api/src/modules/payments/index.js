@@ -56,8 +56,8 @@ function registerPaymentsInfrastructure({ container }) {
     container.register(PaymentsStoreToken, (resolver) => {
       const env = resolver.resolve(ConfigToken);
       if (env.PAYMENTS_STORE === 'prisma') {
-        const { PrismaClient } = require('@prisma/client');
-        return new PaymentsPrismaStore({ prisma: new PrismaClient() });
+        const { getPrismaClient } = require('../../shared/database/prisma');
+        return new PaymentsPrismaStore({ prisma: getPrismaClient(resolver.resolve(ConfigToken)) });
       }
       return new PaymentsInMemoryStore();
     });

@@ -3,11 +3,29 @@ const { defineRepositoryToken } = require('../../../shared/domain/repository');
 const BillingRepositoryToken = defineRepositoryToken('billing');
 
 /**
- * Repository port for Subscription and SaaS Billing.
- * @typedef {object} BillingRepositoryContract
- * @property {(id: string) => Promise<object|null>} get
- * @property {(entity: object) => Promise<object>} save
- * @property {() => Promise<object[]>} list
+ * Persistence port for configurable plans, tenant subscriptions, invoices,
+ * and usage records. Implementations must be adapters only; pricing and
+ * policy decisions stay in the application service.
  */
+const BillingStoreToken = defineRepositoryToken('billing.store');
 
-module.exports = { BillingRepositoryToken };
+const BILLING_STORE_METHODS = Object.freeze([
+  'createPlan',
+  'findPlanById',
+  'findPlanByCode',
+  'listPlans',
+  'updatePlan',
+  'createSubscription',
+  'findSubscriptionById',
+  'findActiveSubscription',
+  'listSubscriptions',
+  'updateSubscription',
+  'createInvoice',
+  'findInvoiceById',
+  'listInvoices',
+  'updateInvoice',
+  'recordUsage',
+  'listUsage',
+]);
+
+module.exports = { BillingRepositoryToken, BillingStoreToken, BILLING_STORE_METHODS };

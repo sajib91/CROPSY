@@ -48,8 +48,6 @@ class GraphExtractionRequest(BaseModel):
     sourceUrl: str = Field(default="", max_length=1000)
     documentId: str = Field(default="", max_length=128)
     chunkId: str = Field(default="", max_length=128)
-    licenseVerified: bool = False
-    documentStatus: Literal["verified", "pending", "unverified"] = "unverified"
     organizationId: str | None = Field(default=None, max_length=128)
     modelKey: str | None = Field(default=None, max_length=100)
     entityTypes: list[EntityLabel] = Field(default_factory=list)
@@ -81,7 +79,9 @@ class GraphApproval(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     approvalId: str = Field(min_length=1, max_length=128)
-    approvedBy: str = Field(min_length=1, max_length=128)
+    # Populated by the approval route from signed internal context; never from
+    # the request body.
+    approvedBy: str = Field(default="", max_length=128)
     decision: Literal["approved", "rejected"]
     scope: list[str] = Field(default_factory=list, max_length=100)
     approvedAt: str = Field(default="", max_length=50)

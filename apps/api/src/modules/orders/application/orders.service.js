@@ -530,6 +530,10 @@ class OrdersService {
     }
 
     const currency = cart.currency;
+    // Discounts and delivery fees are business policy. They must come from a
+    // trusted server-side source; accepting them from the buyer lets any
+    // checkout reduce its own total to zero.
+    const pricingRules = [];
     const sellerOrders = new Map();
     for (const item of cart.items) {
       const { listing } = await this.requireAvailableListing({
@@ -563,8 +567,8 @@ class OrdersService {
     let groupDiscount = 0;
     let groupDelivery = 0;
     for (const sellerOrder of sellerOrders.values()) {
-      const deliveryRule = ruleFor(value.pricingRules, 'DELIVERY', sellerOrder.seller_user_id);
-      const discountRule = ruleFor(value.pricingRules, 'DISCOUNT', sellerOrder.seller_user_id);
+      const deliveryRule = ruleFor(pricingRules, 'DELIVERY', sellerOrder.seller_user_id);
+      const discountRule = ruleFor(pricingRules, 'DISCOUNT', sellerOrder.seller_user_id);
       const discountAmount = ruleAmount(discountRule, sellerOrder.subtotal_amount, currency);
       if (discountAmount > sellerOrder.subtotal_amount) {
         throw new ValidationError({ message: 'Discount exceeds the seller subtotal.' });
@@ -600,7 +604,7 @@ class OrdersService {
     }
     const groupTotal = roundMoney(groupSubtotal - groupDiscount + groupDelivery);
     const pricingSnapshot = {
-      rules: value.pricingRules,
+      rules: pricingRules,
       computed: {
         subtotalAmount: groupSubtotal,
         discountAmount: groupDiscount,

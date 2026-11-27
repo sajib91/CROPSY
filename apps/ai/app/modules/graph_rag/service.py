@@ -14,7 +14,6 @@ from app.modules.graph_rag.construction import GraphConstructionService
 from app.modules.graph_rag.extraction import extract_graph
 from app.modules.graph_rag.models import (
     CombinedGraphContext,
-    GraphApproval,
     GraphBuildResult,
     GraphContext,
     GraphExtractionRequest,
@@ -78,7 +77,6 @@ class GraphRAGService:
         self,
         *,
         value: GraphExtractionRequest,
-        approval: GraphApproval | None = None,
         trusted_organization_id: str = "system",
     ) -> GraphBuildResult:
         if value.organizationId and value.organizationId != trusted_organization_id:
@@ -98,7 +96,6 @@ class GraphRAGService:
             value=value,
             resolutions=mapping,
             scope=scope,
-            approval=approval,
         )
 
     async def retrieve(

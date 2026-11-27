@@ -20,8 +20,8 @@ function registerLedgerInfrastructure({ container }) {
     container.register(LedgerStoreToken, (resolver) => {
       const env = resolver.resolve(ConfigToken);
       if (env.LEDGER_STORE === 'prisma') {
-        const { PrismaClient } = require('@prisma/client');
-        return new LedgerPrismaStore({ prisma: new PrismaClient() });
+        const { getPrismaClient } = require('../../shared/database/prisma');
+        return new LedgerPrismaStore({ prisma: getPrismaClient(resolver.resolve(ConfigToken)) });
       }
       return new LedgerInMemoryStore();
     });

@@ -8,7 +8,6 @@ from app.config import Settings, get_settings
 from app.infrastructure.graph_store import GraphEdge, GraphNode, GraphProvenance, GraphScope, GraphStore
 from app.modules.graph_rag.models import (
     EntityResolution,
-    GraphApproval,
     GraphBuildResult,
     GraphExtractionRequest,
     GraphExtractionResult,
@@ -29,15 +28,11 @@ class GraphConstructionService:
         value: GraphExtractionRequest,
         resolutions: dict[str, EntityResolution],
         scope: GraphScope,
-        approval: GraphApproval | None = None,
     ) -> GraphBuildResult:
         validation = validate_relationships(
             extraction.relationships,
-            source_status=value.documentStatus,
-            license_verified=value.licenseVerified,
             source_text=value.text,
             confidence_threshold=self.settings.graph_confidence_threshold,
-            approval=approval,
             settings=self.settings,
         )
         limitations = [*extraction.limitations]

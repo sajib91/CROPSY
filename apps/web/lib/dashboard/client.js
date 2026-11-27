@@ -1,3 +1,5 @@
+import { requireApiOperation } from '@cropsy/api-contracts';
+
 import { refreshSession } from '../auth/client';
 
 const DASHBOARD_BASE = '/api/dashboard';
@@ -42,6 +44,10 @@ async function parseBody(response) {
 }
 
 async function request(path, { method = 'GET', body, retry = true } = {}) {
+  // Every browser request is checked against the canonical OpenAPI operation
+  // inventory before it reaches the same-origin proxy. A removed or renamed
+  // backend route therefore fails immediately instead of drifting silently.
+  requireApiOperation(method, path);
   const response = await fetch(`${DASHBOARD_BASE}${path}`, {
     method,
     credentials: 'same-origin',

@@ -1,8 +1,13 @@
 const { z } = require('@cropsy/validation');
 const { ok } = require('@cropsy/shared');
 
+const { RateLimiterToken } = require('../../../shared/di/tokens');
 const { requireAuthenticated } = require('../../../shared/http/authorization');
-const { NotFoundError, ValidationError } = require('../../../shared/kernel/errors');
+const {
+  NotFoundError,
+  TooManyRequestsError,
+  ValidationError,
+} = require('../../../shared/kernel/errors');
 const { validate } = require('../../../shared/validation/validate');
 const { PaymentsServiceToken } = require('../application/payments.service');
 const { MODULE_ID } = require('../domain/payments.entity');
@@ -40,6 +45,40 @@ function withIdempotencyKey(request, body) {
 
 module.exports = async function paymentsRoutes(fastify) {
   const service = fastify.cropsyContainer.resolve(PaymentsServiceToken);
+  const rateLimiter = fastify.cropsyContainer.resolve(RateLimiterToken);
+
+  // Provider callbacks are authenticated by HMAC over the exact request bytes.
+  // Fastify's default JSON parser discards those bytes, so this module parses
+  // JSON from a buffer and preserves the raw payload for signature checks.
+  fastify.removeContentTypeParser('application/json');
+  fastify.addContentTypeParser('application/json', { parseAs: 'buffer' }, (request, body, done) => {
+    try {
+      request.rawBody = body;
+      done(null, JSON.parse(body.toString('utf8')));
+    } catch (error) {
+      done(error);
+    }
+  });
+
+  fastify.addHook('preHandler', async (request) => {
+    if (request.method !== 'POST') return;
+    const path = request.url.split('?')[0];
+    const moneyOperation =
+      path.endsWith('/payments') ||
+      path.endsWith('/refunds') ||
+      path.endsWith('/verify') ||
+      path.includes('/webhooks/');
+    if (!moneyOperation) return;
+    const auth = request.auth || {};
+    const key = `payments:${request.method}:${auth.organizationId || 'global'}:${auth.user?.id || 'anonymous'}`;
+    const result = rateLimiter.consume(key, { maxAttempts: 100, windowSeconds: 60 });
+    if (!result.allowed) {
+      throw new TooManyRequestsError({
+        message: 'Too many payment operations. Try again later.',
+        details: { retryAfterSeconds: result.retryAfterSeconds },
+      });
+    }
+  });
 
   fastify.get('/info', async (request) => ok(await service.describe(), meta(request)));
 
@@ -130,6 +169,7 @@ module.exports = async function paymentsRoutes(fastify) {
       providerCode,
       input: request.body,
       headers: request.headers,
+      rawBody: request.rawBody,
       request,
     });
     return ok(result, meta(request));

@@ -100,7 +100,7 @@ function SellerListingsBody({ locale, dictionary }) {
     { sellerUserId: sellerId, limit: 50 },
     { enabled: Boolean(sellerId) },
   );
-  const productsQuery = useDashboardQuery('/catalog/products', { limit: 100 });
+  const productsQuery = useDashboardQuery('/catalog/products', {});
   const gradesQuery = useDashboardQuery('/catalog/quality-grades', { isActive: 'true' });
 
   useEffect(() => {

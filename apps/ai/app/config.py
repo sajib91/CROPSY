@@ -119,6 +119,10 @@ class Settings(BaseSettings):
     agentic_max_agent_attempts: int = Field(default=2, ge=1, le=5)
     agentic_max_tool_calls: int = Field(default=12, ge=1, le=50)
     agentic_max_context_chars: int = Field(default=12000, ge=2000, le=60000)
+    # Comma-separated trusted reviewer user ids. Promotion through the approval
+    # route is denied when empty; reviewer identity always comes from signed
+    # internal context, never from the request body.
+    approval_reviewer_ids: str = Field(default="", max_length=2000)
     graph_backend: Literal["memory", "none", "neo4j"] = "memory"
     graph_extraction_provider: Literal["deterministic", "llm"] = "deterministic"
     graph_confidence_threshold: float = Field(default=0.6, ge=0.0, le=1.0)
@@ -176,6 +180,7 @@ class Settings(BaseSettings):
 
     # Request protection and observability.
     rate_limit_max_requests: int = Field(default=120, ge=1, le=10000)
+    rate_limit_org_max_requests: int = Field(default=600, ge=1, le=10000)
     rate_limit_window_seconds: int = Field(default=60, ge=1, le=3600)
     max_trace_history: int = Field(default=500, ge=10, le=5000)
 
@@ -249,6 +254,13 @@ class Settings(BaseSettings):
             if self.graph_extraction_provider == "llm" and self.llm_provider != "http":
                 raise ValueError("LLM graph extraction requires CROPSY_AI_LLM_PROVIDER=http")
         return self
+
+    def allowed_approval_reviewers(self) -> frozenset[str]:
+        return frozenset(
+            item.strip()
+            for item in self.approval_reviewer_ids.split(",")
+            if item.strip()
+        )
 
     def parsed_model_configs(self) -> list[dict[str, Any]]:
         if not self.model_configs_json.strip():

@@ -7,6 +7,7 @@ const {
   routeAuthConfig,
 } = require('../../../shared/http/authorization');
 const { ForbiddenError, UnauthorizedError } = require('../../../shared/kernel/errors');
+const { SubscriptionEntitlementPortToken } = require('../../../shared/di/tokens');
 const { AuthorizationServiceToken } = require('../application/tokens');
 
 const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
@@ -75,7 +76,11 @@ function registerHttpAuthorization(app) {
       for (const permission of policy.anyPermissions) {
         const decision = await service.checkPermission(request.auth, permission);
         decisions.push(decision);
-        if (decision.allowed) allowed = true;
+        if (decision.allowed) {
+          allowed = true;
+          // Any one grant is sufficient; avoid extra audit writes and lookups.
+          break;
+        }
       }
       if (!allowed) {
         throw new ForbiddenError({
@@ -87,6 +92,18 @@ function registerHttpAuthorization(app) {
 
     if (policy.organizationScope) {
       requireOrganizationScope(request);
+    }
+
+    // Feature gates are opt-in. Routes that do not declare a feature remain
+    // available regardless of subscription state, because not every role
+    // requires a paid plan.
+    for (const featureCode of policy.features || []) {
+      const entitlements = app.cropsyContainer.resolve(SubscriptionEntitlementPortToken);
+      await entitlements.assertFeature({
+        context: request.auth,
+        featureCode,
+        organizationId: request.auth.organizationId,
+      });
     }
   });
 }

@@ -94,8 +94,8 @@ function layerOf(file, moduleKey) {
 const moduleIds = modules.map((module) => module.id);
 const modulePaths = modules.map((module) => module.path);
 
-if (modules.length !== 21) {
-  addError(`Expected 21 module definitions, found ${modules.length}.`);
+if (modules.length !== 22) {
+  addError(`Expected 22 module definitions, found ${modules.length}.`);
 }
 
 if (new Set(moduleIds).size !== moduleIds.length) {

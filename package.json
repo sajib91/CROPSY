@@ -22,7 +22,7 @@
     "start:web": "npm run start -w @cropsy/web",
     "start:ai": "bash scripts/dev-ai.sh",
     "build": "npm run build:contracts && npm run build:api && npm run build:web && npm run build:mobile && npm run build:ai",
-    "build:contracts": "node scripts/check-syntax.mjs packages",
+    "build:contracts": "npm run contracts:check && npm run contracts:breaking && npm run contracts:clients && node scripts/check-syntax.mjs packages",
     "build:api": "npm run build -w @cropsy/api",
     "build:web": "npm run build -w @cropsy/web",
     "build:mobile": "node scripts/check-mobile-syntax.mjs apps/mobile",
@@ -42,6 +42,13 @@
     "db:seed": "node apps/api/prisma/seed.js",
     "db:test": "bash scripts/test-database.sh",
     "db:studio": "prisma studio --schema apps/api/prisma/schema.prisma",
+    "test:load": "node scripts/load-test.mjs",
+    "contracts:generate": "node scripts/generate-api-contracts.js",
+    "contracts:check": "node scripts/generate-api-contracts.js --check",
+    "contracts:breaking": "node scripts/check-api-contract-breaking.js",
+    "contracts:clients": "node scripts/check-client-contracts.mjs",
+    "contracts:baseline": "node scripts/accept-api-contract-baseline.js",
+    "test:contracts": "node --test apps/api/test/contract.test.js",
     "verify": "bash scripts/verify.sh"
   },
   "devDependencies": {
@@ -53,6 +60,12 @@
   },
   "overrides": {
     "react-native": "0.74.5",
-    "react-native-reanimated": "3.15.5"
+    "react-native-reanimated": "3.15.5",
+    "next": {
+      "postcss": "8.5.33"
+    },
+    "@expo/metro-config": {
+      "postcss": "8.5.33"
+    }
   }
 }

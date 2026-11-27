@@ -15,7 +15,7 @@ configured default policy.
 
 Catalog and marketplace reuse the existing `products.read`, `products.manage`,
 `listings.read`, and `listings.manage` codes; neither module introduced a new
-permission or changed the 50-permission / 479-assignment seed totals. Warehouse
+permission. The current seed has 56 permissions and 531 role-to-permission assignments. Warehouse
 routes reuse `warehouses.read`/`warehouses.manage`, and cooperative routes reuse
 `farms.read`/`farms.manage` plus `orders.read`/`orders.manage` for group purchase
 requests. Cart, checkout, order lifecycle, cancellation, history, and receipt
@@ -27,8 +27,11 @@ private reads reuse `traceability.read`, while its mutations accept any of the
 existing manage permissions `farms.manage`, `harvests.manage`, `quality.manage`,
 `warehouses.manage`, `shipments.manage`, or `organizations.manage`. The expanded
 warehouse operations continue to reuse `warehouses.read`/`warehouses.manage`.
-These additions introduce no permissions and keep the stable 22-role /
-50-permission / 479-assignment seed state.
+Billing adds tenant-scoped `subscriptions.read`, `subscriptions.manage`, and
+`invoices.read` grants for organization administrators. Only the super admin
+receives `plans.manage`; plan configuration is never a tenant capability.
+Analytics gives every authenticated role `analytics.read` for organization-scoped
+reports; `analytics.platform.read` is reserved for `CROPSY_SUPER_ADMIN`.
 
 ## Canonical role metadata
 
@@ -107,7 +110,12 @@ organizations. `ORGANIZATION_ADMIN` adds tenant management permissions.
 | `traceability.read` | — | — | ✓ | — | — | — | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
 | `ai.read` | ✓ | ✓ | ✓ | — | ✓ | — | — | ✓ | — | ✓ | ✓ | ✓ |
 | `ai.feedback` | ✓ | — | — | — | — | — | — | ✓ | — | — | — | ✓ |
-| `subscriptions.manage` | — | — | — | — | — | — | — | — | — | — | — | ✓ |
+| `analytics.read` | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| `analytics.platform.read` | — | — | — | — | — | — | — | — | — | — | — | ✓ |
+| `subscriptions.read` | — | — | — | — | — | — | — | — | — | — | ✓ | ✓ |
+| `subscriptions.manage` | — | — | — | — | — | — | — | — | — | — | ✓ | ✓ |
+| `plans.manage` | — | — | — | — | — | — | — | — | — | — | — | ✓ |
+| `invoices.read` | — | — | — | — | — | — | — | — | — | — | ✓ | ✓ |
 | `notifications.read` | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
 
 ## Legacy role aliases
@@ -180,6 +188,6 @@ idempotency, append-only movement, and final-consistency checks live in
 append-only order status history, tenant guards, and listing availability helpers
 live in `apps/api/test/database/orders.test.js`.
 
-The generated matrix contains 50 permissions and 12 canonical roles; the seed
-creates 22 role rows (12 canonical plus 10 legacy aliases) and 479
+The generated matrix contains 51 permissions and 12 canonical roles; the seed
+creates 22 role rows (12 canonical plus 10 legacy aliases) and 486
 role-permission assignments.

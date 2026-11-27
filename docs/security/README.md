@@ -2,7 +2,8 @@
 
 CROPSY now has an implemented authentication and authorization layer in the IAM
 module. This document summarizes the controls; the client contracts and policy
-detail live in the API docs.
+detail live in the API docs. The independent assessment and verified remediation
+record is in [`application-security-assessment.md`](./application-security-assessment.md).
 
 - Environment variables are validated at startup through `@cropsy/config` for the business API and
   `pydantic-settings` for the AI service. Web and mobile use local URL validators.
@@ -26,7 +27,7 @@ detail live in the API docs.
 - Web clients receive HttpOnly `cropsy_access` and `cropsy_refresh` cookies with `SameSite=Lax` and
   `Secure` in production/HTTPS. Cookie-authenticated mutations require a matching `x-csrf-token`;
   mobile clients use bearer tokens returned in the JSON body.
-- Production requires `AUTH_STORE=prisma`, `FARM_STORE=prisma`, `AGRICULTURE_STORE=prisma`, `CATALOG_STORE=prisma`, `MARKETPLACE_STORE=prisma`, `WAREHOUSE_STORE=prisma`, `ORDERS_STORE=prisma`, `PAYMENTS_STORE=prisma`, `LEDGER_STORE=prisma`, a strong `AUTH_JWT_SECRET`, and HTTP OTP provider URLs.
+- Production requires `AUTH_STORE=prisma`, `FARM_STORE=prisma`, `AGRICULTURE_STORE=prisma`, `CATALOG_STORE=prisma`, `MARKETPLACE_STORE=prisma`, `WAREHOUSE_STORE=prisma`, `ORDERS_STORE=prisma`, `PAYMENTS_STORE=prisma`, `LEDGER_STORE=prisma`, `BILLING_STORE=prisma`, `ANALYTICS_STORE=prisma`, a strong `AUTH_JWT_SECRET`, and HTTP OTP provider URLs.
   It also requires `PAYMENT_PROVIDER_MODE=configured` and a non-empty `PAYMENT_PROVIDERS_JSON`
   whose entries define a code, supported methods, and a webhook secret. The preview OTP provider
   and mock payment adapter exist only for local/test use and are disabled by production config;
@@ -35,7 +36,7 @@ detail live in the API docs.
 ## Authorization
 
 - Twelve canonical user categories (including organization-scoped member and admin roles),
-  multiple roles per user, multiple organizations per user, and 50 granular permissions are
+  multiple roles per user, multiple organizations per user, and 54 granular permissions are
   supported. The matrix is documented in [`permission-matrix.md`](./permission-matrix.md) and
   exposed at `GET /api/v1/iam/auth/matrix`.
 - Every non-public route is default-deny. Route handlers receive a verified context built from the
@@ -90,6 +91,13 @@ detail live in the API docs.
   `${eventId}.${JSON.stringify(payload)}` using the configured webhook secret. Duplicate provider
   event ids are stored, flagged, and skipped without a second status or ledger posting; secret
   material is never returned by `GET /payments/providers`.
+- Billing adds tenant-scoped `subscriptions.read`, `subscriptions.manage`, and `invoices.read` for
+  organization administrators, while `plans.manage` is reserved for `CROPSY_SUPER_ADMIN`. Plan
+  prices, entitlements, limits, provider codes, and cycle overrides are caller-supplied and stored;
+  no commercial policy or paid-plan requirement is seeded. Subscription, invoice, and usage access
+  is restricted to the active tenant unless the caller is a super admin. Provider codes are checked
+  against deployment configuration, and feature gating is opt-in through `auth.features` so ordinary
+  roles and routes remain usable without a subscription.
 - Ledger routes are default-deny and reuse `ledger.read`/`ledger.manage`; no permission was added.
   Journals require positive balanced lines and a unique idempotency key, posted journals/lines/
   audits are append-only by database trigger, and duplicate keys return the original journal
@@ -138,5 +146,5 @@ balances, expectations/reconciliation, settlements, adjustments, and audit event
 suites check amount bounds, unique references/idempotency keys, append-only status history, and
 unique/tenant-safe webhook events. Ledger database suites check deferred balance enforcement,
 unique journal keys, append-only journals/lines/audits, tenant consistency, settlement invariants,
-and expectation uniqueness. Database verification runs all ten migrations, checks drift, and runs
-the seed twice with stable 22/50/479/13 counts.
+and expectation uniqueness. Database verification runs all eleven migrations, checks drift, and runs
+the seed twice with stable 22/51/486/13 counts.

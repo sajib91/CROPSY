@@ -30,11 +30,20 @@ function relativePath(request, apiPrefix) {
   return pathname;
 }
 
+function isPublicRoutePath(path, apiPrefix) {
+  const normalized =
+    path === apiPrefix
+      ? '/'
+      : path.startsWith(`${apiPrefix}/`)
+        ? path.slice(apiPrefix.length)
+        : path;
+  return PUBLIC_ROUTE_PATTERNS.some((pattern) => pattern.test(normalized));
+}
+
 function isPublicRoute(request, apiPrefix) {
   const config = routeAuthConfig(request);
   if (config === false || config === 'public') return true;
-  const path = relativePath(request, apiPrefix);
-  return PUBLIC_ROUTE_PATTERNS.some((pattern) => pattern.test(path));
+  return isPublicRoutePath(relativePath(request, apiPrefix), '');
 }
 
 function bearerToken(request) {
@@ -158,6 +167,7 @@ module.exports = {
   bearerToken,
   hasPermission,
   isPublicRoute,
+  isPublicRoutePath,
   refreshTokenFromRequest,
   relativePath,
   requestCredentials,

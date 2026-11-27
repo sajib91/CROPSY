@@ -27,6 +27,18 @@ function balanceAmount(value) {
   return amount;
 }
 
+function assertSameJournal(existing, input) {
+  const currency = input.currency || 'BDT';
+  if (
+    existing.reference_type !== input.reference_type ||
+    (existing.reference_id ?? null) !== (input.reference_id ?? null) ||
+    String(existing.currency).toUpperCase() !== String(currency).toUpperCase() ||
+    (existing.organization_id ?? null) !== (input.organization_id ?? null)
+  ) {
+    throw new ConflictError({ message: 'Ledger idempotency key is already in use.' });
+  }
+}
+
 function matches(record, filters = {}) {
   return Object.entries(filters).every(([key, value]) => {
     if (['limit', 'offset'].includes(key)) return true;
@@ -154,7 +166,10 @@ class LedgerInMemoryStore {
     const existing = [...this.journals.values()].find(
       (journal) => journal.idempotency_key === input.idempotency_key,
     );
-    if (existing) return Promise.resolve(clone(existing));
+    if (existing) {
+      assertSameJournal(existing, input);
+      return Promise.resolve(clone(existing));
+    }
 
     assertBalanced(input.lines);
     const currency = input.currency || 'BDT';
@@ -315,8 +330,18 @@ class LedgerInMemoryStore {
     if (duplicate) throw new ConflictError({ message: 'Settlement idempotency key is in use.' });
 
     const now = new Date();
+    const settlementId = input.id || randomUUID();
+    // Post the journal before committing the settlement row. If the journal is
+    // invalid the settlement must not survive, matching the Prisma transaction.
+    const journal = await this.postJournal({
+      ...input.journal,
+      reference_type: 'SETTLEMENT',
+      reference_id: settlementId,
+      organization_id: input.organization_id ?? null,
+      currency: input.currency || 'BDT',
+    });
     const settlement = {
-      id: input.id || randomUUID(),
+      id: settlementId,
       organization_id: input.organization_id ?? null,
       seller_user_id: input.seller_user_id,
       rule_key: input.rule_key ?? null,
@@ -329,21 +354,13 @@ class LedgerInMemoryStore {
       currency: input.currency || 'BDT',
       status: 'PAID',
       allocation_snapshot: clone(input.allocation_snapshot || {}),
-      journal_id: null,
+      journal_id: journal.id,
       paid_at: now,
       created_at: now,
       updated_at: now,
     };
     this.settlements.set(settlement.id, settlement);
 
-    const journal = await this.postJournal({
-      ...input.journal,
-      reference_type: 'SETTLEMENT',
-      reference_id: settlement.id,
-      organization_id: settlement.organization_id,
-      currency: settlement.currency,
-    });
-    settlement.journal_id = journal.id;
     this.appendAudit({
       organization_id: settlement.organization_id,
       action: 'ledger.settlement.recorded',

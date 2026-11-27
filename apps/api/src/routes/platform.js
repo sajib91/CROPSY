@@ -52,15 +52,17 @@ module.exports = async function platformRoutes(fastify) {
   });
 
   fastify.get('/observability', async (request) => {
-    const { limit } = validate(observabilityQuerySchema, request.query, 'observability query');
+    validate(observabilityQuerySchema, request.query, 'observability query');
     return ok(
       {
         uptimeSeconds: Math.max(0, (Date.now() - fastify.startedAt) / 1000),
         modules: modules.length,
         requestId: request.requestId,
+        // This route is intentionally public. Expose only an aggregate count;
+        // domain-event payloads can contain audit/PII/financial metadata and
+        // must remain behind authorized audit endpoints.
         events: {
           recorded: eventBus.history.length,
-          recent: eventBus.recent(limit),
         },
       },
       { apiVersion: apiVersion.version },

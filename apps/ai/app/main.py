@@ -33,6 +33,7 @@ app.add_middleware(
     RequestContextMiddleware,
     settings=settings,
     rate_limiter=container.rate_limiter,
+    org_rate_limiter=container.org_rate_limiter,
 )
 
 

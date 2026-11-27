@@ -53,8 +53,10 @@ function registerAuthComponents({ container }) {
     container.register(AuthStoreToken, (resolver) => {
       const env = resolver.resolve(ConfigToken);
       if (env.AUTH_STORE === 'prisma') {
-        const { PrismaClient } = require('@prisma/client');
-        return new IamAuthPrismaRepository({ prisma: new PrismaClient() });
+        const { getPrismaClient } = require('../../shared/database/prisma');
+        return new IamAuthPrismaRepository({
+          prisma: getPrismaClient(resolver.resolve(ConfigToken)),
+        });
       }
       return new IamAuthInMemoryRepository({ policy: resolver.resolve(RbacPolicyToken) });
     });

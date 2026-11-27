@@ -28,8 +28,10 @@ function registerAgricultureStore({ container }) {
     container.register(AgricultureStoreToken, (resolver) => {
       const env = resolver.resolve(ConfigToken);
       if (env.AGRICULTURE_STORE === 'prisma') {
-        const { PrismaClient } = require('@prisma/client');
-        return new AgriculturePrismaStore({ prisma: new PrismaClient() });
+        const { getPrismaClient } = require('../../shared/database/prisma');
+        return new AgriculturePrismaStore({
+          prisma: getPrismaClient(resolver.resolve(ConfigToken)),
+        });
       }
       return new AgricultureInMemoryStore();
     });

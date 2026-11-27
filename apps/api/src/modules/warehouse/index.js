@@ -30,8 +30,8 @@ function registerWarehouseInfrastructure({ container }) {
     container.register(WarehouseStoreToken, (resolver) => {
       const env = resolver.resolve(ConfigToken);
       if (env.WAREHOUSE_STORE === 'prisma') {
-        const { PrismaClient } = require('@prisma/client');
-        return new WarehousePrismaStore({ prisma: new PrismaClient() });
+        const { getPrismaClient } = require('../../shared/database/prisma');
+        return new WarehousePrismaStore({ prisma: getPrismaClient(resolver.resolve(ConfigToken)) });
       }
       return new WarehouseInMemoryStore();
     });

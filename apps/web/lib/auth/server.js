@@ -1,4 +1,6 @@
 import { NextResponse } from 'next/server';
+import { requireApiOperation } from '@cropsy/api-contracts';
+
 import { getWebEnv } from '../env';
 
 const { NEXT_PUBLIC_API_URL } = getWebEnv();
@@ -272,6 +274,9 @@ export async function proxyApiRequest(
   request,
   { path, search = '', injectBody, setPurposeCookies = true },
 ) {
+  // The proxy never forwards a path the backend no longer publishes. This is
+  // the last web-side boundary before the canonical API route is invoked.
+  requireApiOperation(request.method, path);
   const url = `${API_PROXY_URL}${path}${search}`;
   const headers = buildHeaders(request);
   let body;

@@ -1,0 +1,105 @@
+{
+  "meta": {
+    "environment": {
+      "generatedAt": "2026-11-27T05:42:19.635Z",
+      "platform": "darwin",
+      "release": "25.3.0",
+      "architecture": "arm64",
+      "cpuModel": "Apple M4",
+      "logicalCpuCount": 10,
+      "totalMemoryBytes": 17179869184,
+      "freeMemoryBytes": 1508458496,
+      "nodeVersion": "v25.9.0",
+      "npmVersion": "npm/11.13.0 node/v25.9.0 darwin arm64 workspaces/false",
+      "workingDirectory": "/Users/md.khayrulislamsajib/Downloads/7th-semester/CROPSY"
+    },
+    "options": {
+      "scenario": "auth",
+      "concurrency": 8,
+      "durationMs": 5000,
+      "warmupMs": 1000,
+      "seedCount": 200,
+      "out": "/private/var/folders/2l/bbcttp_514v5yslfrv3x7dlh0000gn/T/cropsy-load-auth-repeat-1.json"
+    },
+    "measurementNotes": [
+      "Latencies were measured around real HTTP fetch calls to a local Fastify listener.",
+      "Warmup samples are reported separately and excluded from measured statistics.",
+      "Percentiles use linear interpolation over sorted observed latencies.",
+      "In-memory stores and fake AI gateway isolate API-layer cost; no Postgres, Redis, or external AI provider was exercised.",
+      "Documented product targets are p95 < 500 ms for standard APIs and < 1 s for listing search."
+    ]
+  },
+  "scenarios": [
+    {
+      "name": "auth",
+      "setupMs": 1075.904708,
+      "warmup": {
+        "requests": 164,
+        "successes": 164,
+        "errors": 0,
+        "errorRate": 0,
+        "elapsedMs": 1045.0116249999999,
+        "requestsPerSecond": 156.9360532233314,
+        "minMs": 27.277499999999918,
+        "meanMs": 50.03728355487805,
+        "p50Ms": 50.276875500000074,
+        "p95Ms": 53.5356518,
+        "p99Ms": 54.58793783000007,
+        "maxMs": 55.143583000000035,
+        "statusHistogram": {
+          "200": 164
+        },
+        "errorSamples": []
+      },
+      "measured": {
+        "requests": 758,
+        "successes": 758,
+        "errors": 0,
+        "errorRate": 0,
+        "elapsedMs": 5042.855875,
+        "requestsPerSecond": 150.31165252169734,
+        "minMs": 26.406582999999955,
+        "meanMs": 53.009983514511845,
+        "p50Ms": 50.448645999999826,
+        "p95Ms": 65.86384820000039,
+        "p99Ms": 93.42200930999857,
+        "maxMs": 131.8961250000002,
+        "statusHistogram": {
+          "200": 758
+        },
+        "errorSamples": []
+      },
+      "byLabel": {
+        "login": {
+          "requests": 758,
+          "successes": 758,
+          "errors": 0,
+          "errorRate": 0,
+          "elapsedMs": 5042.855875,
+          "requestsPerSecond": 150.31165252169734,
+          "minMs": 26.406582999999955,
+          "meanMs": 53.009983514511845,
+          "p50Ms": 50.448645999999826,
+          "p95Ms": 65.86384820000039,
+          "p99Ms": 93.42200930999857,
+          "maxMs": 131.8961250000002,
+          "statusHistogram": {
+            "200": 758
+          },
+          "errorSamples": []
+        }
+      },
+      "config": {
+        "concurrency": 8,
+        "durationMs": 5000,
+        "warmupMs": 1000,
+        "seedCount": 200,
+        "maxRequests": null,
+        "stores": "memory",
+        "queueDriver": "memory",
+        "aiGateway": "in-process fake",
+        "baseUrl": "loopback HTTP socket"
+      }
+    }
+  ]
+}

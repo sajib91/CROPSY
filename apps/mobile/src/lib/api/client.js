@@ -1,7 +1,9 @@
 import {
   apiErrorEnvelopeSchema,
   apiSuccessEnvelopeSchema,
+  contractPath,
   refreshResponseSchema,
+  requireApiOperation,
 } from '@cropsy/api-contracts';
 
 import { clearSession, readSession, updateSessionTokens } from '../auth/session';
@@ -82,17 +84,20 @@ export function createApiClient({
         const session = await getSession();
         if (!session?.refreshToken) throw new Error('No refresh token is available.');
 
-        const response = await doFetch(buildUrl(baseUrl, '/iam/auth/refresh'), {
-          method: 'POST',
-          headers: {
-            accept: 'application/json',
-            'content-type': 'application/json',
+        const response = await doFetch(
+          buildUrl(baseUrl, contractPath('POST', '/iam/auth/refresh')),
+          {
+            method: 'POST',
+            headers: {
+              accept: 'application/json',
+              'content-type': 'application/json',
+            },
+            body: JSON.stringify({
+              refreshToken: session.refreshToken,
+              client: MOBILE_CLIENT,
+            }),
           },
-          body: JSON.stringify({
-            refreshToken: session.refreshToken,
-            client: MOBILE_CLIENT,
-          }),
-        });
+        );
         const body = await response.json().catch(() => null);
         if (!response.ok) throw new Error('The session could not be refreshed.');
 
@@ -121,6 +126,10 @@ export function createApiClient({
       timeoutMs: requestTimeout = timeoutMs,
       signal,
     } = options || {};
+
+    // Resolve against the generated contract before building the URL so stale
+    // mobile paths cannot silently diverge from the backend route registry.
+    requireApiOperation(method, path);
 
     const session = auth ? await getSession() : null;
     const requestHeaders = {

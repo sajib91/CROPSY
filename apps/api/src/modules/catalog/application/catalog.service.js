@@ -707,6 +707,11 @@ class CatalogService {
     }
 
     const related = await this.relatedFor(rows);
+    related.categoryById = new Map(related.categories.map((category) => [category.id, category]));
+    related.unitById = new Map(related.units.map((unit) => [unit.id, unit]));
+    related.attributeDefinitionById = new Map(
+      related.attributeDefinitions.map((definition) => [definition.id, definition]),
+    );
     if (value.search || value.attributeCode) {
       const categoriesById = new Map(related.categories.map((category) => [category.id, category]));
       const definitionsById = new Map(

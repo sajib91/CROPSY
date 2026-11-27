@@ -188,22 +188,8 @@ class PaymentsService {
       throw new ValidationError({ message: 'An idempotency key is required.' });
     }
 
-    const existing = await this.store.findPaymentByIdempotency(idempotencyKey);
-    if (existing) {
-      this.assertCanView(context, existing);
-      return existing;
-    }
-
     const provider = this.providerRegistry.assertMethod(body.providerCode, body.method);
     const paymentId = randomUUID();
-    await this.ledger.recordExpectation({
-      expectation_key: `payment:${paymentId}`,
-      reference_type: 'PAYMENT',
-      reference_id: paymentId,
-      amount: body.amount,
-      currency: body.currency || 'BDT',
-      organization_id: organizationId,
-    });
 
     const base = {
       id: paymentId,
@@ -221,6 +207,24 @@ class PaymentsService {
       commission_rule_snapshot: body.commissionRule,
     };
 
+    // Claim the idempotency key before the provider call. Concurrent requests
+    // with the same key either observe the same row or conflict; they can never
+    // both create a provider payment from the same application request.
+    const claimed = await this.store.claimPayment(base);
+    if (!claimed.claimed) {
+      this.assertCanView(context, claimed.payment);
+      return claimed.payment;
+    }
+
+    await this.ledger.recordExpectation({
+      expectation_key: `payment:${claimed.payment.id}`,
+      reference_type: 'PAYMENT',
+      reference_id: claimed.payment.id,
+      amount: body.amount,
+      currency: body.currency || 'BDT',
+      organization_id: organizationId,
+    });
+
     let providerResult;
     try {
       providerResult = await provider.adapter.initiate({
@@ -228,17 +232,19 @@ class PaymentsService {
         providerOptions: body.providerOptions,
       });
     } catch (error) {
-      const payment = await this.store.initializePayment({
-        ...base,
+      const failed = await this.store.finalizePayment({
+        payment_id: claimed.payment.id,
         status: 'FAILED',
         captured_amount: 0,
-        metadata: { ...base.metadata, failureCode: 'PROVIDER_INITIATION_FAILED' },
+        reason: 'provider_initiation_failed',
+        organization_id: organizationId,
+        metadata: { failureCode: 'PROVIDER_INITIATION_FAILED' },
       });
       await this.audit(
         {
           action: EVENTS.FAILED,
           entityType: 'payment',
-          entityId: payment.id,
+          entityId: failed.id,
           organizationId,
           metadata: { idempotencyKey, providerCode: body.providerCode },
           severity: 'ERROR',
@@ -246,24 +252,38 @@ class PaymentsService {
         request,
       );
       this.logger?.warn(
-        { paymentId: payment.id, providerCode: body.providerCode },
+        { paymentId: failed.id, providerCode: body.providerCode },
         'Payment initiation failed at provider',
       );
-      return payment;
+      return failed;
     }
 
     const status = normalizeStatus(providerResult.status);
-    const payment = await this.store.initializePayment({
-      ...base,
-      provider_reference: providerResult.providerReference ?? null,
-      status,
-      captured_amount: status === 'CAPTURED' ? body.amount : 0,
-      metadata: {
-        ...base.metadata,
-        redirectUrl: providerResult.redirectUrl ?? null,
-        instruction: providerResult.instruction ?? null,
-      },
-    });
+    let payment;
+    try {
+      payment = await this.store.finalizePayment({
+        payment_id: claimed.payment.id,
+        provider_reference: providerResult.providerReference ?? null,
+        status,
+        captured_amount: status === 'CAPTURED' ? body.amount : 0,
+        reason: 'provider_response',
+        organization_id: organizationId,
+        metadata: {
+          redirectUrl: providerResult.redirectUrl ?? null,
+          instruction: providerResult.instruction ?? null,
+        },
+      });
+    } catch (error) {
+      await this.store.finalizePayment({
+        payment_id: claimed.payment.id,
+        status: 'FAILED',
+        captured_amount: 0,
+        reason: 'payment_finalization_failed',
+        organization_id: organizationId,
+        metadata: { failureCode: 'PAYMENT_FINALIZATION_FAILED' },
+      });
+      throw error;
+    }
 
     if (status === 'CAPTURED') await this.postCaptureJournal(payment, request);
     await this.audit(
@@ -382,13 +402,14 @@ class PaymentsService {
     return payment;
   }
 
-  async handleWebhook({ providerCode, input, headers, request }) {
+  async handleWebhook({ providerCode, input, headers, rawBody, request }) {
     const body = validate(webhookSchema, input || {}, 'payment webhook');
     const provider = this.providerRegistry.get(providerCode);
     provider.adapter.verifyWebhook({
       headers,
       eventId: body.eventId,
       payload: body,
+      rawBody,
     });
 
     const existingEvent = await this.store.findWebhookEvent(providerCode, body.eventId);
@@ -428,59 +449,66 @@ class PaymentsService {
       request,
     );
 
-    if (!payment) {
-      await this.store.failWebhookEvent({
-        event_id: registered.event.id,
-        error: 'Payment reference was not found.',
-      });
-      throw new NotFoundError({ message: 'Webhook payment reference was not found.' });
-    }
+    try {
+      if (!payment) {
+        throw new NotFoundError({ message: 'Webhook payment reference was not found.' });
+      }
+      if (
+        normalized.currency &&
+        String(normalized.currency).toUpperCase() !== String(payment.currency).toUpperCase()
+      ) {
+        throw new ConflictError({ message: 'Webhook currency does not match the payment.' });
+      }
+      if (normalized.amount !== undefined && money(normalized.amount) !== money(payment.amount)) {
+        throw new ConflictError({ message: 'Webhook amount does not match the payment.' });
+      }
 
-    const status = normalizeStatus(normalized.status, payment.status);
-    if (!canTransition(payment.status, status)) {
+      const status = normalizeStatus(normalized.status, payment.status);
+      if (!canTransition(payment.status, status)) {
+        const completed = await this.store.completeWebhookEvent({
+          event_id: registered.event.id,
+          payment_id: payment.id,
+          skip_status: true,
+          reason: 'duplicate_or_terminal_state',
+        });
+        return { ...completed.event, payment, duplicate: true };
+      }
+
+      if (status === 'CAPTURED') await this.postCaptureJournal(payment, request);
+
       const completed = await this.store.completeWebhookEvent({
         event_id: registered.event.id,
         payment_id: payment.id,
-        skip_status: true,
-        reason: 'duplicate_or_terminal_state',
+        expected_from_status: payment.status,
+        to_status: status,
+        captured_amount: status === 'CAPTURED' ? payment.amount : payment.captured_amount,
+        reason: normalized.failureCode || 'provider_webhook',
+        provider_event_id: body.eventId,
+        metadata: { failureCode: normalized.failureCode ?? null },
       });
-      return { ...completed.event, payment, duplicate: true };
-    }
-
-    if (status === 'CAPTURED') {
-      const amount = money(normalized.amount ?? payment.amount);
-      if (amount !== money(payment.amount)) {
-        await this.store.failWebhookEvent({
-          event_id: registered.event.id,
-          error: 'Webhook amount does not match the payment.',
-        });
-        throw new ConflictError({ message: 'Webhook amount does not match the payment.' });
+      // A concurrent callback already applied this transition.
+      if (completed.skipped)
+        return { ...completed.event, payment: completed.payment, duplicate: true };
+      if (status === 'CAPTURED') {
+        await this.audit(
+          {
+            action: EVENTS.CAPTURED,
+            entityType: 'payment',
+            entityId: payment.id,
+            organizationId: payment.organization_id,
+            metadata: { source: 'webhook', eventId: body.eventId },
+          },
+          request,
+        );
       }
-      await this.postCaptureJournal(payment, request);
+      return { ...completed.event, payment: completed.payment, duplicate: false };
+    } catch (error) {
+      await this.store.failWebhookEvent({
+        event_id: registered.event.id,
+        error: error?.message || 'Webhook processing failed.',
+      });
+      throw error;
     }
-
-    const completed = await this.store.completeWebhookEvent({
-      event_id: registered.event.id,
-      payment_id: payment.id,
-      to_status: status,
-      captured_amount: status === 'CAPTURED' ? payment.amount : payment.captured_amount,
-      reason: normalized.failureCode || 'provider_webhook',
-      provider_event_id: body.eventId,
-      metadata: { failureCode: normalized.failureCode ?? null },
-    });
-    if (status === 'CAPTURED') {
-      await this.audit(
-        {
-          action: EVENTS.CAPTURED,
-          entityType: 'payment',
-          entityId: payment.id,
-          organizationId: payment.organization_id,
-          metadata: { source: 'webhook', eventId: body.eventId },
-        },
-        request,
-      );
-    }
-    return { ...completed.event, payment: completed.payment, duplicate: false };
   }
 
   async refund({ context, input, request }) {
@@ -499,24 +527,9 @@ class PaymentsService {
     if (!body.idempotencyKey) {
       throw new ValidationError({ message: 'An idempotency key is required.' });
     }
-    const existing = await this.store.findRefundByIdempotency(body.idempotencyKey);
-    if (existing) {
-      this.assertCanManage(context, payment);
-      return existing;
-    }
-
     const organizationId = await this.resolveTenantId(context);
     const provider = this.providerRegistry.get(payment.provider_code);
-    const result = await provider.adapter.refund({
-      providerReference: payment.provider_reference,
-      amount: body.amount,
-      currency: payment.currency,
-      reason: body.reason,
-      idempotencyKey: body.idempotencyKey,
-      providerOptions: body.providerOptions,
-    });
-    const status = String(result.status || '').toUpperCase() === 'FAILED' ? 'FAILED' : 'PROCESSED';
-    const refund = await this.store.recordRefund({
+    const reservationInput = {
       id: randomUUID(),
       organization_id: organizationId,
       payment_id: payment.id,
@@ -524,11 +537,53 @@ class PaymentsService {
       amount: body.amount,
       currency: payment.currency,
       reason: body.reason,
-      status,
-      provider_reference: result.providerReference ?? null,
       idempotency_key: body.idempotencyKey,
       actor_user_id: context.user.id,
       allocation_snapshot: body.allocation,
+    };
+
+    // Reserve the refundable amount before calling the provider so concurrent
+    // requests cannot each spend the same balance with different keys.
+    const reservation = await this.store.reserveRefund(reservationInput);
+    if (!reservation.claimed) return reservation.refund;
+
+    let result;
+    try {
+      result = await provider.adapter.refund({
+        providerReference: payment.provider_reference,
+        amount: body.amount,
+        currency: payment.currency,
+        reason: body.reason,
+        idempotencyKey: body.idempotencyKey,
+        providerOptions: body.providerOptions,
+      });
+    } catch (error) {
+      const failed = await this.store.finalizeRefund({
+        refund_id: reservation.refund.id,
+        status: 'FAILED',
+        reason: 'provider_refund_failed',
+        actor_user_id: context.user.id,
+      });
+      await this.audit(
+        {
+          action: EVENTS.REFUNDED,
+          entityType: 'payment_refund',
+          entityId: failed.id,
+          organizationId,
+          metadata: { paymentId: payment.id, amount: failed.amount, status: failed.status },
+          severity: 'ERROR',
+        },
+        request,
+      );
+      return failed;
+    }
+    const status = String(result.status || '').toUpperCase() === 'FAILED' ? 'FAILED' : 'PROCESSED';
+    const refund = await this.store.finalizeRefund({
+      refund_id: reservation.refund.id,
+      status,
+      provider_reference: result.providerReference ?? null,
+      reason: result.failureCode || result.failureMessage || 'provider_response',
+      actor_user_id: context.user.id,
     });
 
     if (status === 'PROCESSED') {

@@ -190,10 +190,11 @@ const aiWeatherAdvisorySchema = aiWeatherLookupSchema.extend({
 // Agentic RAG and GraphRAG request bodies are deliberately strict: they never
 // accept farmer/organization identifiers or business record identifiers. The
 // trusted organization comes from the authenticated gateway metadata only.
+// Reviewer identity is populated by the AI service from signed internal
+// context; callers may never assert who approved a pending candidate.
 const aiGraphApprovalSchema = z
   .object({
     approvalId: nonEmptyString.max(128),
-    approvedBy: nonEmptyString.max(128),
     decision: z.enum(['approved', 'rejected']),
     scope: z.array(nonEmptyString.max(300)).max(100).default([]),
     approvedAt: z.string().trim().max(50).default(''),
@@ -224,6 +225,8 @@ const aiAgenticApprovalSchema = z
   })
   .strict();
 
+// Verification assertions are never accepted: graph evidence classes are
+// derived only from server-side state.
 const aiGraphExtractionSchema = z
   .object({
     text: nonEmptyString.max(30000),
@@ -232,8 +235,6 @@ const aiGraphExtractionSchema = z
     sourceUrl: z.string().trim().max(1000).default(''),
     documentId: z.string().trim().max(128).default(''),
     chunkId: z.string().trim().max(128).default(''),
-    licenseVerified: z.boolean().default(false),
-    documentStatus: z.enum(['verified', 'pending', 'unverified']).default('unverified'),
     modelKey: nonEmptyString.max(100).optional(),
     entityTypes: z.array(z.enum(AI_GRAPH_ENTITY_TYPES)).max(12).default([]),
     relationTypes: z.array(z.enum(AI_GRAPH_PREDICATES)).max(9).default([]),
@@ -243,7 +244,6 @@ const aiGraphExtractionSchema = z
 const aiGraphBuildSchema = z
   .object({
     extraction: aiGraphExtractionSchema,
-    approval: aiGraphApprovalSchema.optional(),
   })
   .strict();
 
@@ -275,6 +275,9 @@ const aiGraphContextSchema = z
 
 // Multimodal RAG and unified orchestration bodies are strict. Authenticated
 // organization/user context travels only in signed internal headers.
+// Provenance authority, jurisdiction, and verification are asserted only by
+// trusted server-side registries. Callers may describe a source but may not
+// claim that it is authoritative or licensed.
 const aiSourceMetadataSchema = z
   .object({
     name: nonEmptyString.max(300),
@@ -282,8 +285,6 @@ const aiSourceMetadataSchema = z
     publisher: z.string().trim().max(300).default(''),
     publishedAt: z.string().trim().max(50).default(''),
     authors: z.array(nonEmptyString.max(300)).max(50).default([]),
-    authority: z.string().trim().max(200).default(''),
-    jurisdiction: z.string().trim().max(200).default(''),
   })
   .strict();
 
@@ -292,7 +293,6 @@ const aiLicenseMetadataSchema = z
     code: nonEmptyString.max(100),
     url: nonEmptyString.max(1000),
     attributionRequired: z.boolean().default(false),
-    verified: z.boolean().default(false),
   })
   .strict();
 
@@ -305,7 +305,6 @@ const aiMultimodalAssetSchema = z
     documentType: z.enum(AI_DOCUMENT_TYPES).default('other'),
     language: aiLanguageSchema,
     version: nonEmptyString.max(100).default('v1'),
-    status: z.enum(['VERIFIED', 'DRAFT', 'UNVERIFIED']).default('UNVERIFIED'),
     source: aiSourceMetadataSchema,
     license: aiLicenseMetadataSchema,
     sourceVersion: z.string().trim().max(100).default(''),

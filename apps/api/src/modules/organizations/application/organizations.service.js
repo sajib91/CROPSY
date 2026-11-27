@@ -40,11 +40,8 @@ function normalizeEmail(value) {
 }
 
 function requestMeta(request) {
-  const forwarded = request?.headers?.['x-forwarded-for'];
-  const raw = Array.isArray(forwarded) ? forwarded[0] : forwarded;
   return {
-    ipAddress: String(raw || request?.ip || 'unknown')
-      .split(',')[0]
+    ipAddress: String(request?.ip || 'unknown')
       .trim()
       .slice(0, 64),
     userAgent: request?.headers?.['user-agent']
@@ -391,17 +388,19 @@ class OrganizationsService {
       await this.store.updateOrganizationInvitation(invitation.id, { status: 'EXPIRED' });
       throw new ConflictError({ message: 'Invitation has expired.' });
     }
-    if (email && normalizeEmail(email) !== normalizeEmail(invitation.email)) {
+    const invitedEmail = normalizeEmail(invitation.email);
+    const callerEmail = normalizeEmail(context.user.email);
+    if ((email && normalizeEmail(email) !== invitedEmail) || callerEmail !== invitedEmail) {
       throw new ForbiddenError({
-        message: 'Invitation email does not match the supplied address.',
+        message: 'Invitation email does not match the authenticated caller.',
         details: { code: 'invitation_email_mismatch' },
       });
     }
 
-    const user = await this.store.findUserByIdentifier(invitation.email);
+    const user = await this.store.findUserById(context.user.id);
     if (!user) {
       throw new ValidationError({
-        message: 'Register the invited email address before accepting the invitation.',
+        message: 'The authenticated account was not found.',
       });
     }
 

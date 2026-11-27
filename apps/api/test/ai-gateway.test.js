@@ -30,6 +30,7 @@ const BASE_ENV = {
   AUTH_JWT_SECRET: 'test-secret-at-least-32-characters-long',
   AUTH_RATE_LIMIT_MAX_ATTEMPTS: 1000,
   AUTH_OTP_PROVIDER_MODE: 'preview',
+  AUTH_OTP_PREVIEW_CODE_IN_RESPONSE: 'true',
   AI_SERVICE_SECRET: AI_SECRET,
 };
 
@@ -439,7 +440,6 @@ test('AI agentic and GraphRAG routes forward strict advisory requests with tenan
     traceId: 'trace-agentic-node',
     approval: {
       approvalId: 'approval-node-1',
-      approvedBy: 'agronomist-node',
       decision: 'approved',
       scope: ['response_generation'],
     },
@@ -448,7 +448,7 @@ test('AI agentic and GraphRAG routes forward strict advisory requests with tenan
   const approveCall = fakeGateway.calls.at(-1);
   assert.equal(approveCall.operation, 'approveAgentic');
   assert.equal(approveCall.input.traceId, 'trace-agentic-node');
-  assert.equal(approveCall.input.approval.approvedBy, 'agronomist-node');
+  assert.ok(!('approvedBy' in approveCall.input.approval));
   assert.equal(approveCall.input.approval.decision, 'approved');
   assert.equal(approveCall.metadata.organizationId, organization.id);
 
@@ -456,8 +456,6 @@ test('AI agentic and GraphRAG routes forward strict advisory requests with tenan
     text: 'Rice blast affects rice. Agricultural research has evidence for rice blast.',
     source: 'Node gateway test note',
     sourceReference: 'node-graph-v1',
-    documentStatus: 'verified',
-    licenseVerified: true,
   };
 
   const extract = await inject(app, 'POST', '/graph/extract', token, extractionBody);
@@ -465,7 +463,8 @@ test('AI agentic and GraphRAG routes forward strict advisory requests with tenan
   const extractCall = fakeGateway.calls.at(-1);
   assert.equal(extractCall.operation, 'graphExtract');
   assert.equal(extractCall.input.sourceReference, 'node-graph-v1');
-  assert.equal(extractCall.input.licenseVerified, true);
+  assert.ok(!('licenseVerified' in extractCall.input));
+  assert.ok(!('documentStatus' in extractCall.input));
   assert.deepEqual(extractCall.input.entityTypes, []);
   assert.ok(!('organizationId' in extractCall.input));
 
@@ -552,7 +551,6 @@ test('AI multimodal and unified orchestration routes forward advisory requests w
     license: {
       code: 'CC-BY-4.0',
       url: 'https://creativecommons.org/licenses/by/4.0/',
-      verified: true,
     },
     text: 'Alternate wetting and drying was observed in a rice irrigation trial.',
     isPlantImage: false,
@@ -565,6 +563,10 @@ test('AI multimodal and unified orchestration routes forward advisory requests w
   assert.equal(ingestCall.input.assetId, 'asset-node-1');
   assert.equal(ingestCall.input.language, 'en');
   assert.equal(ingestCall.input.isPlantImage, false);
+  assert.ok(!('status' in ingestCall.input));
+  assert.ok(!('authority' in ingestCall.input.source));
+  assert.ok(!('jurisdiction' in ingestCall.input.source));
+  assert.ok(!('verified' in ingestCall.input.license));
   assert.equal(ingestCall.metadata.organizationId, organization.id);
   assert.equal(ingestCall.metadata.userId, expert.id);
   assert.ok(!('organizationId' in ingestCall.input));
@@ -827,7 +829,6 @@ test('agentic approval and graph build require feedback permission', async (t) =
     traceId: 'trace-buyer-approval',
     approval: {
       approvalId: 'approval-buyer',
-      approvedBy: 'buyer',
       decision: 'approved',
     },
   });
@@ -840,7 +841,7 @@ test('agentic approval and graph build require feedback permission', async (t) =
   );
 });
 
-test('agentic and graph inputs reject tenant and business record identifiers', async (t) => {
+test('AI inputs reject tenant, business, approval, and verification assertions', async (t) => {
   const fakeGateway = createFakeGateway();
   const app = await createApp(t, fakeGateway);
   await createUser(app, 'validator-agentic-ai@example.com', 'AGRICULTURAL_EXPERT');
@@ -869,12 +870,62 @@ test('agentic and graph inputs reject tenant and business record identifiers', a
   assert.equal(organizationId.statusCode, 400);
   assert.equal(organizationId.json().error, 'validation_error');
 
-  const missingApprover = await inject(app, 'POST', '/agentic/approve', token, {
+  // approvedBy is now forbidden, so invalid approvals are exercised through
+  // the decision enum instead of a missing reviewer field.
+  const invalidDecision = await inject(app, 'POST', '/agentic/approve', token, {
     traceId: 'trace-invalid-approval',
-    approval: { approvalId: 'approval-invalid', decision: 'approved' },
+    approval: { approvalId: 'approval-invalid', decision: 'maybe' },
   });
-  assert.equal(missingApprover.statusCode, 400);
-  assert.equal(missingApprover.json().error, 'validation_error');
+  assert.equal(invalidDecision.statusCode, 400);
+  assert.equal(invalidDecision.json().error, 'validation_error');
+
+  const claimedApprover = await inject(app, 'POST', '/agentic/approve', token, {
+    traceId: 'trace-invalid-approval',
+    approval: {
+      approvalId: 'approval-invalid',
+      approvedBy: 'self-appointed-reviewer',
+      decision: 'approved',
+    },
+  });
+  assert.equal(claimedApprover.statusCode, 400);
+  assert.equal(claimedApprover.json().error, 'validation_error');
+
+  const claimedGraphStatus = await inject(app, 'POST', '/graph/extract', token, {
+    text: 'Rice blast affects rice.',
+    source: 'Node validator note',
+    sourceReference: 'node-validation-v1',
+    documentStatus: 'verified',
+    licenseVerified: true,
+  });
+  assert.equal(claimedGraphStatus.statusCode, 400);
+  assert.equal(claimedGraphStatus.json().error, 'validation_error');
+
+  const inlineApproval = await inject(app, 'POST', '/graph/build', token, {
+    extraction: {
+      text: 'Rice blast affects rice.',
+      source: 'Node validator note',
+      sourceReference: 'node-validation-v1',
+    },
+    approval: {
+      approvalId: 'approval-graph-invalid',
+      decision: 'approved',
+      scope: ['edge-1'],
+    },
+  });
+  assert.equal(inlineApproval.statusCode, 400);
+  assert.equal(inlineApproval.json().error, 'validation_error');
+
+  const claimedAssetProvenance = await inject(app, 'POST', '/multimodal/assets', token, {
+    assetId: 'asset-invalid',
+    title: 'Caller-certified note',
+    mimeType: 'text/plain',
+    source: { name: 'Unknown source', authority: 'Government registry' },
+    license: { code: 'CC-BY-4.0', url: 'https://example.test/license', verified: true },
+    text: 'Caller claims this is verified.',
+    status: 'VERIFIED',
+  });
+  assert.equal(claimedAssetProvenance.statusCode, 400);
+  assert.equal(claimedAssetProvenance.json().error, 'validation_error');
 
   assert.equal(fakeGateway.calls.length, 0);
 });

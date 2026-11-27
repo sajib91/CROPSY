@@ -25,11 +25,26 @@ function normalizePhone(value) {
   return match ? `+88${match[1]}` : null;
 }
 
+function selfRegisterableRoleCodes(env) {
+  return new Set(
+    String(env?.AUTH_SELF_REGISTERABLE_ROLE_CODES || '')
+      .split(',')
+      .map(normalizeRoleCode)
+      .filter(Boolean),
+  );
+}
+
+function previewCodeForResponse(env, delivery) {
+  if (env?.NODE_ENV !== 'test' || env?.AUTH_OTP_PREVIEW_CODE_IN_RESPONSE !== 'true') {
+    return undefined;
+  }
+  return delivery?.previewCode || undefined;
+}
+
 function clientIp(request) {
-  const forwarded = request.headers['x-forwarded-for'];
-  const value = Array.isArray(forwarded) ? forwarded[0] : forwarded;
-  return String(value || request.ip || 'unknown')
-    .split(',')[0]
+  // `request.ip` is derived by Fastify from the trusted socket hop. Client-supplied
+  // forwarding headers must never select a rate-limit or audit bucket.
+  return String(request?.ip || 'unknown')
     .trim()
     .slice(0, 64);
 }
@@ -247,16 +262,13 @@ class AuthService {
       request,
     );
 
-    const previewCode =
-      this.env.NODE_ENV === 'production' || !delivery.previewCode
-        ? undefined
-        : { previewCode: delivery.previewCode };
+    const code = previewCodeForResponse(this.env, delivery);
     return {
       delivered: Boolean(delivery.delivered),
       channel,
       purpose,
       expiresAt: expiresAt.toISOString(),
-      ...previewCode,
+      ...(code ? { previewCode: code } : {}),
     };
   }
 
@@ -321,7 +333,16 @@ class AuthService {
     const user = await this.store.findUserByIdentifier(normalized);
     const requiresUser = ['EMAIL_VERIFICATION', 'PHONE_VERIFICATION'].includes(input.purpose);
     if (requiresUser && !user) {
-      throw new ValidationError({ message: 'No matching account was found.' });
+      // Do not disclose whether the destination belongs to an account. Keep the
+      // response and the observable work close to the account-exists path.
+      await this.passwordHasher.verifyDummyPassword('otp-account-enumeration-dummy');
+      return {
+        accepted: true,
+        delivered: true,
+        channel,
+        purpose: input.purpose,
+        expiresAt: new Date(Date.now() + this.env.AUTH_OTP_TTL_SECONDS * 1000).toISOString(),
+      };
     }
 
     const result = await this.createAndSendOtp({
@@ -800,7 +821,9 @@ class AuthService {
     return {
       accepted: true,
       message: 'If the account exists, a reset OTP has been sent.',
-      ...(delivery?.previewCode ? { previewCode: delivery.previewCode } : {}),
+      ...(previewCodeForResponse(this.env, delivery)
+        ? { previewCode: previewCodeForResponse(this.env, delivery) }
+        : {}),
     };
   }
 
@@ -863,7 +886,9 @@ class AuthService {
     return {
       accepted: true,
       message: 'If the account is recoverable, an OTP has been sent.',
-      ...(delivery?.previewCode ? { previewCode: delivery.previewCode } : {}),
+      ...(previewCodeForResponse(this.env, delivery)
+        ? { previewCode: previewCodeForResponse(this.env, delivery) }
+        : {}),
     };
   }
 
@@ -930,6 +955,20 @@ class AuthService {
     const role = await this.store.findRoleByCode(roleCode);
     if (!role) throw new NotFoundError({ message: `Role '${roleCode}' was not found.` });
 
+    // Organization administrators may manage tenant-scoped grants, but only a
+    // super admin may grant privileged platform roles such as CROPSY_SUPER_ADMIN.
+    // Otherwise an org admin can create an org and escalate themselves globally.
+    if (
+      role.scope === 'PLATFORM' &&
+      !selfRegisterableRoleCodes(this.env).has(role.code) &&
+      !context.isSuperAdmin
+    ) {
+      throw new ForbiddenError({
+        message: 'Only a super admin may assign this platform role.',
+        details: { code: 'privileged_role_assignment_denied' },
+      });
+    }
+
     let scopedOrganizationId = organizationId || null;
     if (role.scope === 'ORGANIZATION') {
       if (!scopedOrganizationId) {
@@ -973,6 +1012,14 @@ class AuthService {
 
   async updateRolePermissions({ context, roleCode, permissionCodes, request }) {
     await this.authorization.assertPermission(context, 'roles.manage');
+    // This endpoint mutates the global permission catalog. Tenant-scoped admins
+    // must not be able to rewrite permissions for every user of the platform.
+    if (!context.isSuperAdmin) {
+      throw new ForbiddenError({
+        message: 'Only a super admin may change global role permissions.',
+        details: { code: 'global_role_mutation_denied' },
+      });
+    }
     const code = normalizeRoleCode(roleCode);
     const role = await this.store.findRoleByCode(code);
     if (!role) throw new NotFoundError({ message: `Role '${roleCode}' was not found.` });

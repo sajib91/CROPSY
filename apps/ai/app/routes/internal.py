@@ -596,7 +596,6 @@ async def graph_build(
     value.extraction.organizationId = context.organization_id
     result = await container.graph.build(
         value=value.extraction,
-        approval=value.approval,
         trusted_organization_id=context.organization_id,
     )
     return {"success": True, "data": result.model_dump(mode="json"), "meta": _meta(context)}

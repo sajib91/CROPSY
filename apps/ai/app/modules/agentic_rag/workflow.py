@@ -204,9 +204,26 @@ class AgenticRAGService:
                 "The approval trace does not match the pending run.",
                 details={"reason": "approval_trace_mismatch"},
             )
-        if pending.userId != user_id and not approval.approvedBy:
-            raise UnauthorizedError("The approval must identify an approver.")
-        request = pending.request.model_copy(update={"approval": approval})
+        if pending.userId != user_id:
+            raise UnauthorizedError(
+                "Only the user who requested this run may approve it.",
+                details={"reason": "cross_user_approval_denied"},
+            )
+        reviewers = self.settings.allowed_approval_reviewers()
+        if user_id not in reviewers:
+            raise UnauthorizedError(
+                "The authenticated user is not an authorized reviewer.",
+                details={"reason": "reviewer_not_allowed"},
+            )
+        # Reviewer identity and timestamp come from trusted internal context,
+        # not from the caller-supplied approval body.
+        reviewed = approval.model_copy(
+            update={
+                "approvedBy": user_id,
+                "approvedAt": datetime.now(timezone.utc).isoformat(),
+            }
+        )
+        request = pending.request.model_copy(update={"approval": reviewed})
         state = AgentState(**dict(pending.state))
         state["request"] = request
         state["traceId"] = trace_id

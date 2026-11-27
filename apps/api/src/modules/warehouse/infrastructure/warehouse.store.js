@@ -39,6 +39,7 @@ class WarehouseInMemoryStore {
     this.staffAssignments = new Map();
     this.movementReferences = new Set();
     this.reservationReferences = new Set();
+    this.reservationByReference = new Map();
     assertRepository(this, WAREHOUSE_STORE_METHODS, WarehouseStoreToken);
   }
 
@@ -305,6 +306,7 @@ class WarehouseInMemoryStore {
       status: 'ACTIVE',
     });
     this.reservationReferences.add(input.reference_key);
+    this.reservationByReference.set(input.reference_key, reservation.id);
     return Promise.resolve({ reservation: clone(reservation), movement: clone(movement) });
   }
 
@@ -313,9 +315,8 @@ class WarehouseInMemoryStore {
   }
 
   findReservationByReference(referenceKey) {
-    const record = [...this.reservations.values()].find(
-      (item) => item.reference_key === referenceKey,
-    );
+    const reservationId = this.reservationByReference.get(referenceKey);
+    const record = reservationId ? this.reservations.get(reservationId) : null;
     return Promise.resolve(clone(record || null));
   }
 

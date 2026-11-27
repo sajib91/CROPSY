@@ -44,6 +44,7 @@ function matches(record, filters = {}) {
 class OrdersInMemoryStore {
   constructor({ listingStock } = {}) {
     for (const name of COLLECTIONS) this[name] = new Map();
+    this.purchaseGroupByReference = new Map();
     this.listingStock = listingStock;
     if (listingStock) {
       assertRepository(
@@ -185,9 +186,8 @@ class OrdersInMemoryStore {
   }
 
   findPurchaseGroupByReference(referenceKey) {
-    const group = [...this.purchaseGroups.values()].find(
-      (candidate) => candidate.reference_key === referenceKey,
-    );
+    const groupId = this.purchaseGroupByReference.get(referenceKey);
+    const group = groupId ? this.purchaseGroups.get(groupId) : null;
     return Promise.resolve(this._groupWithOrders(group));
   }
 
@@ -206,9 +206,8 @@ class OrdersInMemoryStore {
   }
 
   async createCheckout(input) {
-    const duplicate = [...this.purchaseGroups.values()].find(
-      (group) => group.reference_key === input.reference_key,
-    );
+    const duplicateId = this.purchaseGroupByReference.get(input.reference_key);
+    const duplicate = duplicateId ? this.purchaseGroups.get(duplicateId) : null;
     if (duplicate) {
       if (
         duplicate.buyer_user_id !== input.buyer_user_id ||
@@ -250,6 +249,7 @@ class OrdersInMemoryStore {
         updated_at: now(),
       };
       this.purchaseGroups.set(group.id, group);
+      this.purchaseGroupByReference.set(group.reference_key, group.id);
 
       for (const source of input.orders) {
         const order = {

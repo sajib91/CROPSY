@@ -458,3 +458,44 @@ test('only authorized verifiers can change verification and status', async (t) =
   assert.ok((await store.listAudit({ action: 'organizations.verification.updated' })).length >= 1);
   assert.ok((await store.listAudit({ action: 'organizations.status.updated' })).length >= 1);
 });
+
+test('invitation acceptance is bound to the authenticated invitee', async (t) => {
+  const fixture = await createTenantFixture(t);
+  const { app, adminToken, orgA } = fixture;
+  const email = 'bound-invitee@example.com';
+  const invited = await register(app, { email, roles: ['BUYER'] });
+  assert.equal(invited.response.statusCode, 201);
+  const inviteeToken = await login(app, email);
+
+  const created = await app.inject({
+    method: 'POST',
+    url: `${BASE}/${orgA.id}/invitations`,
+    headers: bearer(adminToken),
+    payload: { email, roleCode: 'ORGANIZATION_MEMBER' },
+  });
+  assert.equal(created.statusCode, 201, created.body);
+  const invitationToken = created.json().data.token;
+
+  const wrongCaller = await app.inject({
+    method: 'POST',
+    url: `${BASE}/invitations/accept`,
+    headers: bearer(adminToken),
+    payload: { token: invitationToken, email },
+  });
+  assert.equal(wrongCaller.statusCode, 403);
+  assert.equal(wrongCaller.json().meta.details.code, 'invitation_email_mismatch');
+
+  const accepted = await app.inject({
+    method: 'POST',
+    url: `${BASE}/invitations/accept`,
+    headers: bearer(inviteeToken),
+    payload: { token: invitationToken },
+  });
+  assert.equal(accepted.statusCode, 200, accepted.body);
+  assert.equal(accepted.json().data.userId, invited.user.id);
+
+  const audit = await fixture.store.listAudit({ action: 'organizations.invitation.accepted' });
+  const entry = audit.find((event) => event.entity_id === created.json().data.invitation.id);
+  assert.equal(entry.actor_user_id, invited.user.id);
+  assert.equal(entry.after.userId, invited.user.id);
+});

@@ -2,14 +2,11 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
 from typing import Any
 
 from app.config import Settings, get_settings
 from app.infrastructure.graph_store import edge_id
 from app.modules.graph_rag.models import (
-    SOURCE_GROUNDED,
-    GraphApproval,
     GraphValidationResult,
     RelationshipMention,
 )
@@ -30,22 +27,25 @@ def _issue(code: str, message: str, relationship: RelationshipMention) -> dict[s
 def validate_relationships(
     relationships: list[RelationshipMention],
     *,
-    source_status: str,
-    license_verified: bool,
     source_text: str,
     confidence_threshold: float | None = None,
-    approval: GraphApproval | None = None,
     settings: Settings | None = None,
 ) -> GraphValidationResult:
+    """Validate grounding only.
+
+    There is no server-side source registry for caller-supplied graph text, so
+    relationships can never be promoted to validated or verified evidence here.
+    Verification assertions from request bodies are deliberately not accepted.
+    """
+
     active = settings or get_settings()
-    threshold = active.graph_confidence_threshold if confidence_threshold is None else confidence_threshold
+    threshold = (
+        active.graph_confidence_threshold if confidence_threshold is None else confidence_threshold
+    )
     accepted: list[dict[str, Any]] = []
     rejected: list[dict[str, Any]] = []
     issues: list[dict[str, Any]] = []
-    required_approval_ids: set[str] = set()
-    source_grounded = normalize = source_text.strip() != ""
-    approval_scopes = {str(item) for item in approval.scope} if approval else set()
-    approved = approval is not None and approval.decision == "approved"
+    source_grounded = source_text.strip() != ""
 
     for relationship in relationships:
         snippet = relationship.evidenceSnippet.strip()
@@ -58,72 +58,48 @@ def validate_relationships(
                     "reason": "evidence_not_grounded_in_source",
                 }
             )
-            issues.append(_issue("evidence_not_grounded", "Evidence snippet is not in the source text.", relationship))
-            continue
-
-        edge_id_value = edge_id(
-            relationship.subject,
-            relationship.predicate,
-            relationship.object,
-            relationship.sourceReference,
-        )
-        evidence_class = "candidate_extraction"
-        validated = False
-        verified = False
-        validation_method = ""
-        verified_by = ""
-        verified_at = ""
-        confidence = relationship.confidence
-
-        if not license_verified or source_status != "verified":
             issues.append(
                 _issue(
-                    "source_not_verified",
-                    "Source status or license does not permit evidence validation.",
+                    "evidence_not_grounded",
+                    "Evidence snippet is not in the source text.",
                     relationship,
                 )
             )
-        elif confidence < threshold:
+            continue
+        if relationship.confidence < threshold:
             issues.append(
                 _issue(
                     "below_confidence_threshold",
-                    f"Extraction confidence {confidence:.2f} is below {threshold:.2f}.",
+                    f"Extraction confidence {relationship.confidence:.2f} is below {threshold:.2f}.",
                     relationship,
                 )
             )
-        else:
-            evidence_class = "validated_extraction"
-            validated = True
-            validation_method = SOURCE_GROUNDED
-            required_approval_ids.add(edge_id_value)
-            if approved and edge_id_value in approval_scopes:
-                evidence_class = "verified_relationship"
-                verified = True
-                verified_by = approval.approvedBy
-                verified_at = approval.approvedAt or datetime.now(timezone.utc).isoformat()
-            else:
-                issues.append(
-                    _issue(
-                        "human_approval_required",
-                        "Relationship may be used only as validated extraction until a human approves it.",
-                        relationship,
-                    )
-                )
-
+        issues.append(
+            _issue(
+                "source_not_verified",
+                "The source was not verified by a trusted registry; only candidate extractions are allowed.",
+                relationship,
+            )
+        )
         accepted.append(
             {
-                "id": edge_id_value,
+                "id": edge_id(
+                    relationship.subject,
+                    relationship.predicate,
+                    relationship.object,
+                    relationship.sourceReference,
+                ),
                 "subject": relationship.subject,
                 "predicate": relationship.predicate,
                 "object": relationship.object,
                 "organizationId": None,
-                "confidence": confidence,
-                "evidenceClass": evidence_class,
-                "validated": validated,
-                "verified": verified,
-                "validationMethod": validation_method,
-                "verifiedBy": verified_by,
-                "verifiedAt": verified_at,
+                "confidence": relationship.confidence,
+                "evidenceClass": "candidate_extraction",
+                "validated": False,
+                "verified": False,
+                "validationMethod": "",
+                "verifiedBy": "",
+                "verifiedAt": "",
                 "source": relationship.source,
                 "sourceReference": relationship.sourceReference,
                 "extractionMethod": relationship.extractionMethod,
@@ -135,9 +111,9 @@ def validate_relationships(
         accepted=accepted,
         rejected=rejected,
         issues=issues,
-        requiresApproval=bool(required_approval_ids - approval_scopes) if relationships else False,
-        verifiedCount=sum(1 for item in accepted if item["verified"]),
-        validatedCount=sum(1 for item in accepted if item["validated"]),
+        requiresApproval=False,
+        verifiedCount=0,
+        validatedCount=0,
     )
 
 

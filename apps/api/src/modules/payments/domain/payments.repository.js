@@ -19,6 +19,8 @@ const PaymentsStoreToken = defineRepositoryToken('payments.store');
  */
 const PAYMENT_STORE_METHODS = Object.freeze([
   'initializePayment',
+  'claimPayment',
+  'finalizePayment',
   'findPayment',
   'findPaymentByIdempotency',
   'findPaymentByReference',
@@ -30,6 +32,8 @@ const PAYMENT_STORE_METHODS = Object.freeze([
   'completeWebhookEvent',
   'failWebhookEvent',
   'recordRefund',
+  'reserveRefund',
+  'finalizeRefund',
   'findRefundByIdempotency',
   'listRefunds',
 ]);

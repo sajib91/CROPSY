@@ -142,7 +142,7 @@ Architecture endpoints:
 - `http://localhost:4000/api/v1/version`
 - `http://localhost:4000/api/v1/modules`
 - `http://localhost:4000/api/v1/observability`
-- `http://localhost:4000/api/v1/iam/info` — example module DTO; all 21 modules are mounted
+- `http://localhost:4000/api/v1/iam/info` — example module DTO; all 22 modules are mounted
 
 See [`docs/architecture`](docs/architecture/README.md) for the module dependency matrix, layer
 rules, and decision records. `npm run check:boundaries` rejects direct cross-module imports and

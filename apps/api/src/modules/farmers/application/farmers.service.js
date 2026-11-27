@@ -63,11 +63,8 @@ const FARMER_EVENTS = Object.freeze({
 const EVENTS = Object.freeze({ ...FARMER_EVENTS, ...COOPERATIVE_EVENTS });
 
 function requestMeta(request) {
-  const forwarded = request?.headers?.['x-forwarded-for'];
-  const raw = Array.isArray(forwarded) ? forwarded[0] : forwarded;
   return {
-    ipAddress: String(raw || request?.ip || 'unknown')
-      .split(',')[0]
+    ipAddress: String(request?.ip || 'unknown')
       .trim()
       .slice(0, 64),
     userAgent: request?.headers?.['user-agent']

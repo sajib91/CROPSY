@@ -45,11 +45,10 @@ function assignmentRoleCode(assignment) {
 }
 
 function requestMeta(request) {
-  const forwarded = request?.headers?.['x-forwarded-for'];
-  const raw = Array.isArray(forwarded) ? forwarded[0] : forwarded;
+  // Security-relevant audit metadata must use the socket peer address. Fastify
+  // is configured with trustProxy: false, so forwarding headers are untrusted.
   return {
-    ipAddress: String(raw || request?.ip || 'unknown')
-      .split(',')[0]
+    ipAddress: String(request?.ip || 'unknown')
       .trim()
       .slice(0, 64),
     userAgent: request?.headers?.['user-agent']

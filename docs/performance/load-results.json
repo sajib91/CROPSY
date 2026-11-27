@@ -1,0 +1,478 @@
+{
+  "meta": {
+    "environment": {
+      "generatedAt": "2026-11-27T05:41:21.929Z",
+      "platform": "darwin",
+      "release": "25.3.0",
+      "architecture": "arm64",
+      "cpuModel": "Apple M4",
+      "logicalCpuCount": 10,
+      "totalMemoryBytes": 17179869184,
+      "freeMemoryBytes": 745193472,
+      "nodeVersion": "v25.9.0",
+      "npmVersion": "npm/11.13.0 node/v25.9.0 darwin arm64 workspaces/false",
+      "workingDirectory": "/Users/md.khayrulislamsajib/Downloads/7th-semester/CROPSY"
+    },
+    "options": {
+      "scenario": "all",
+      "concurrency": 8,
+      "durationMs": 5000,
+      "warmupMs": 1000,
+      "seedCount": 200,
+      "out": "/Users/md.khayrulislamsajib/Downloads/7th-semester/CROPSY/docs/performance/load-results.json"
+    },
+    "measurementNotes": [
+      "Latencies were measured around real HTTP fetch calls to a local Fastify listener.",
+      "Warmup samples are reported separately and excluded from measured statistics.",
+      "Percentiles use linear interpolation over sorted observed latencies.",
+      "In-memory stores and fake AI gateway isolate API-layer cost; no Postgres, Redis, or external AI provider was exercised.",
+      "Documented product targets are p95 < 500 ms for standard APIs and < 1 s for listing search."
+    ]
+  },
+  "scenarios": [
+    {
+      "name": "auth",
+      "setupMs": 1100.470166,
+      "warmup": {
+        "requests": 147,
+        "successes": 147,
+        "errors": 0,
+        "errorRate": 0,
+        "elapsedMs": 1048.8405,
+        "requestsPerSecond": 140.15477091130634,
+        "minMs": 26.710583000000042,
+        "meanMs": 56.00918282312923,
+        "p50Ms": 55.83262500000001,
+        "p95Ms": 64.05943729999993,
+        "p99Ms": 66.27458364,
+        "maxMs": 70.82850000000008,
+        "statusHistogram": {
+          "200": 147
+        },
+        "errorSamples": []
+      },
+      "measured": {
+        "requests": 690,
+        "successes": 690,
+        "errors": 0,
+        "errorRate": 0,
+        "elapsedMs": 5055.160167,
+        "requestsPerSecond": 136.4941915202427,
+        "minMs": 26.474334,
+        "meanMs": 58.33003450000003,
+        "p50Ms": 58.13872899999956,
+        "p95Ms": 64.70818315000028,
+        "p99Ms": 69.05979060999975,
+        "maxMs": 71.71408400000018,
+        "statusHistogram": {
+          "200": 690
+        },
+        "errorSamples": []
+      },
+      "byLabel": {
+        "login": {
+          "requests": 690,
+          "successes": 690,
+          "errors": 0,
+          "errorRate": 0,
+          "elapsedMs": 5055.160167,
+          "requestsPerSecond": 136.4941915202427,
+          "minMs": 26.474334,
+          "meanMs": 58.33003450000003,
+          "p50Ms": 58.13872899999956,
+          "p95Ms": 64.70818315000028,
+          "p99Ms": 69.05979060999975,
+          "maxMs": 71.71408400000018,
+          "statusHistogram": {
+            "200": 690
+          },
+          "errorSamples": []
+        }
+      },
+      "config": {
+        "concurrency": 8,
+        "durationMs": 5000,
+        "warmupMs": 1000,
+        "seedCount": 200,
+        "maxRequests": null,
+        "stores": "memory",
+        "queueDriver": "memory",
+        "aiGateway": "in-process fake",
+        "baseUrl": "loopback HTTP socket"
+      }
+    },
+    {
+      "name": "marketplace",
+      "setupMs": 183.566417,
+      "warmup": {
+        "requests": 579,
+        "successes": 579,
+        "errors": 0,
+        "errorRate": 0,
+        "elapsedMs": 1006.5102920000008,
+        "requestsPerSecond": 575.2549224802159,
+        "minMs": 3.853374999999687,
+        "meanMs": 13.881900823834192,
+        "p50Ms": 13.489875000000211,
+        "p95Ms": 14.897058599999946,
+        "p99Ms": 22.90102424000014,
+        "maxMs": 41.73004200000014,
+        "statusHistogram": {
+          "200": 579
+        },
+        "errorSamples": []
+      },
+      "measured": {
+        "requests": 3022,
+        "successes": 3022,
+        "errors": 0,
+        "errorRate": 0,
+        "elapsedMs": 5007.166459,
+        "requestsPerSecond": 603.5349582932648,
+        "minMs": 10.391332999999577,
+        "meanMs": 13.253013178358671,
+        "p50Ms": 12.933791999999812,
+        "p95Ms": 14.492168100000436,
+        "p99Ms": 19.69273924999963,
+        "maxMs": 24.267499999999927,
+        "statusHistogram": {
+          "200": 3022
+        },
+        "errorSamples": []
+      },
+      "byLabel": {
+        "marketplace-search": {
+          "requests": 3022,
+          "successes": 3022,
+          "errors": 0,
+          "errorRate": 0,
+          "elapsedMs": 5007.166459,
+          "requestsPerSecond": 603.5349582932648,
+          "minMs": 10.391332999999577,
+          "meanMs": 13.253013178358671,
+          "p50Ms": 12.933791999999812,
+          "p95Ms": 14.492168100000436,
+          "p99Ms": 19.69273924999963,
+          "maxMs": 24.267499999999927,
+          "statusHistogram": {
+            "200": 3022
+          },
+          "errorSamples": []
+        }
+      },
+      "config": {
+        "concurrency": 8,
+        "durationMs": 5000,
+        "warmupMs": 1000,
+        "seedCount": 200,
+        "maxRequests": null,
+        "stores": "memory",
+        "queueDriver": "memory",
+        "aiGateway": "in-process fake",
+        "baseUrl": "loopback HTTP socket"
+      }
+    },
+    {
+      "name": "products",
+      "setupMs": 170.93087500000001,
+      "warmup": {
+        "requests": 923,
+        "successes": 923,
+        "errors": 0,
+        "errorRate": 0,
+        "elapsedMs": 1004.2498749999995,
+        "requestsPerSecond": 919.0939655332298,
+        "minMs": 2.0106250000008004,
+        "meanMs": 8.685637292524389,
+        "p50Ms": 8.253749999999854,
+        "p95Ms": 10.997470199998679,
+        "p99Ms": 17.520495000000043,
+        "maxMs": 19.641458000000057,
+        "statusHistogram": {
+          "200": 923
+        },
+        "errorSamples": []
+      },
+      "measured": {
+        "requests": 4727,
+        "successes": 4727,
+        "errors": 0,
+        "errorRate": 0,
+        "elapsedMs": 5004.761792000001,
+        "requestsPerSecond": 944.5004970178607,
+        "minMs": 7.668583000000581,
+        "meanMs": 8.465750426063053,
+        "p50Ms": 8.142708000001221,
+        "p95Ms": 10.807545700000627,
+        "p99Ms": 12.021540320002458,
+        "maxMs": 18.372957999999926,
+        "statusHistogram": {
+          "200": 4727
+        },
+        "errorSamples": []
+      },
+      "byLabel": {
+        "product-list": {
+          "requests": 4727,
+          "successes": 4727,
+          "errors": 0,
+          "errorRate": 0,
+          "elapsedMs": 5004.761792000001,
+          "requestsPerSecond": 944.5004970178607,
+          "minMs": 7.668583000000581,
+          "meanMs": 8.465750426063053,
+          "p50Ms": 8.142708000001221,
+          "p95Ms": 10.807545700000627,
+          "p99Ms": 12.021540320002458,
+          "maxMs": 18.372957999999926,
+          "statusHistogram": {
+            "200": 4727
+          },
+          "errorSamples": []
+        }
+      },
+      "config": {
+        "concurrency": 8,
+        "durationMs": 5000,
+        "warmupMs": 1000,
+        "seedCount": 200,
+        "maxRequests": null,
+        "stores": "memory",
+        "queueDriver": "memory",
+        "aiGateway": "in-process fake",
+        "baseUrl": "loopback HTTP socket"
+      }
+    },
+    {
+      "name": "orders",
+      "setupMs": 432.9874170000003,
+      "warmup": {
+        "requests": 4122,
+        "successes": 4122,
+        "errors": 0,
+        "errorRate": 0,
+        "elapsedMs": 1004.0480830000015,
+        "requestsPerSecond": 4105.381076655065,
+        "minMs": 0.9100829999988491,
+        "meanMs": 1.9448491858321497,
+        "p50Ms": 1.799750000000131,
+        "p95Ms": 3.419362499999614,
+        "p99Ms": 4.5052101099979325,
+        "maxMs": 19.11370900000111,
+        "statusHistogram": {
+          "201": 4122
+        },
+        "errorSamples": []
+      },
+      "measured": {
+        "requests": 11788,
+        "successes": 11788,
+        "errors": 0,
+        "errorRate": 0,
+        "elapsedMs": 5004.464250000001,
+        "requestsPerSecond": 2355.4968945976584,
+        "minMs": 0.837708000002749,
+        "meanMs": 3.3950540854258144,
+        "p50Ms": 3.221937499998603,
+        "p95Ms": 5.195150000001558,
+        "p99Ms": 6.753791249999226,
+        "maxMs": 31.006084000000556,
+        "statusHistogram": {
+          "201": 11788
+        },
+        "errorSamples": []
+      },
+      "byLabel": {
+        "cart-add": {
+          "requests": 5894,
+          "successes": 5894,
+          "errors": 0,
+          "errorRate": 0,
+          "elapsedMs": 5004.464250000001,
+          "requestsPerSecond": 1177.7484472988292,
+          "minMs": 1.6252500000009604,
+          "meanMs": 3.329873306582911,
+          "p50Ms": 3.165187500000684,
+          "p95Ms": 5.091572700000324,
+          "p99Ms": 6.550881379999225,
+          "maxMs": 31.006084000000556,
+          "statusHistogram": {
+            "201": 5894
+          },
+          "errorSamples": []
+        },
+        "checkout": {
+          "requests": 5894,
+          "successes": 5894,
+          "errors": 0,
+          "errorRate": 0,
+          "elapsedMs": 5004.464250000001,
+          "requestsPerSecond": 1177.7484472988292,
+          "minMs": 0.837708000002749,
+          "meanMs": 3.460234864268737,
+          "p50Ms": 3.2825625000004948,
+          "p95Ms": 5.254862700000194,
+          "p99Ms": 6.81902686999936,
+          "maxMs": 23.936957999998413,
+          "statusHistogram": {
+            "201": 5894
+          },
+          "errorSamples": []
+        }
+      },
+      "config": {
+        "concurrency": 8,
+        "durationMs": 5000,
+        "warmupMs": 1000,
+        "seedCount": 200,
+        "maxRequests": null,
+        "stores": "memory",
+        "queueDriver": "memory",
+        "aiGateway": "in-process fake",
+        "baseUrl": "loopback HTTP socket"
+      }
+    },
+    {
+      "name": "inventory",
+      "setupMs": 98.28595900000073,
+      "warmup": {
+        "requests": 4975,
+        "successes": 4975,
+        "errors": 0,
+        "errorRate": 0,
+        "elapsedMs": 1003.9284590000025,
+        "requestsPerSecond": 4955.532394166333,
+        "minMs": 0.5999160000028496,
+        "meanMs": 1.6134134128643172,
+        "p50Ms": 1.4702499999984866,
+        "p95Ms": 2.189029499997924,
+        "p99Ms": 4.438119999998527,
+        "maxMs": 5.088959000000614,
+        "statusHistogram": {
+          "201": 4975
+        },
+        "errorSamples": []
+      },
+      "measured": {
+        "requests": 11791,
+        "successes": 11791,
+        "errors": 0,
+        "errorRate": 0,
+        "elapsedMs": 5007.347791,
+        "requestsPerSecond": 2354.7395731514107,
+        "minMs": 0.9589999999989232,
+        "meanMs": 3.3966828306335226,
+        "p50Ms": 3.194374999999127,
+        "p95Ms": 5.41064600000027,
+        "p99Ms": 7.505350599999658,
+        "maxMs": 68.80991700000232,
+        "statusHistogram": {
+          "201": 11791
+        },
+        "errorSamples": []
+      },
+      "byLabel": {
+        "reservation": {
+          "requests": 11791,
+          "successes": 11791,
+          "errors": 0,
+          "errorRate": 0,
+          "elapsedMs": 5007.347791,
+          "requestsPerSecond": 2354.7395731514107,
+          "minMs": 0.9589999999989232,
+          "meanMs": 3.3966828306335226,
+          "p50Ms": 3.194374999999127,
+          "p95Ms": 5.41064600000027,
+          "p99Ms": 7.505350599999658,
+          "maxMs": 68.80991700000232,
+          "statusHistogram": {
+            "201": 11791
+          },
+          "errorSamples": []
+        }
+      },
+      "config": {
+        "concurrency": 8,
+        "durationMs": 5000,
+        "warmupMs": 1000,
+        "seedCount": 200,
+        "maxRequests": null,
+        "stores": "memory",
+        "queueDriver": "memory",
+        "aiGateway": "in-process fake",
+        "baseUrl": "loopback HTTP socket"
+      }
+    },
+    {
+      "name": "ai",
+      "setupMs": 95.09870800000135,
+      "warmup": {
+        "requests": 6965,
+        "successes": 6965,
+        "errors": 0,
+        "errorRate": 0,
+        "elapsedMs": 1000.3385420000013,
+        "requestsPerSecond": 6962.642852963262,
+        "minMs": 0.42387500000040745,
+        "meanMs": 1.148200684278552,
+        "p50Ms": 1.0479579999991984,
+        "p95Ms": 1.2668499999999763,
+        "p99Ms": 3.428486239999765,
+        "maxMs": 4.115624999998545,
+        "statusHistogram": {
+          "200": 6965
+        },
+        "errorSamples": []
+      },
+      "measured": {
+        "requests": 32712,
+        "successes": 32712,
+        "errors": 0,
+        "errorRate": 0,
+        "elapsedMs": 5000.567416999998,
+        "requestsPerSecond": 6541.657630450462,
+        "minMs": 0.959499999997206,
+        "meanMs": 1.2224715982514114,
+        "p50Ms": 1.042833999999857,
+        "p95Ms": 1.6185171499993822,
+        "p99Ms": 4.225140750002028,
+        "maxMs": 62.338292000000365,
+        "statusHistogram": {
+          "200": 32712
+        },
+        "errorSamples": []
+      },
+      "byLabel": {
+        "ai-ask": {
+          "requests": 32712,
+          "successes": 32712,
+          "errors": 0,
+          "errorRate": 0,
+          "elapsedMs": 5000.567416999998,
+          "requestsPerSecond": 6541.657630450462,
+          "minMs": 0.959499999997206,
+          "meanMs": 1.2224715982514114,
+          "p50Ms": 1.042833999999857,
+          "p95Ms": 1.6185171499993822,
+          "p99Ms": 4.225140750002028,
+          "maxMs": 62.338292000000365,
+          "statusHistogram": {
+            "200": 32712
+          },
+          "errorSamples": []
+        }
+      },
+      "config": {
+        "concurrency": 8,
+        "durationMs": 5000,
+        "warmupMs": 1000,
+        "seedCount": 200,
+        "maxRequests": null,
+        "stores": "memory",
+        "queueDriver": "memory",
+        "aiGateway": "in-process fake",
+        "baseUrl": "loopback HTTP socket"
+      }
+    }
+  ]
+}

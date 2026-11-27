@@ -59,6 +59,10 @@ class AiContainer:
         self.tracer = Tracer(self.settings.max_trace_history)
         self.monitoring = EvaluationMonitoringService(self.settings.max_trace_history)
         self.rate_limiter = build_rate_limiter(self.settings)
+        self.org_rate_limiter = SlidingWindowRateLimiter(
+            max_requests=self.settings.rate_limit_org_max_requests,
+            window_seconds=self.settings.rate_limit_window_seconds,
+        )
 
         # Evaluation framework. Runs and reports exist only after real executions.
         self.evaluation_framework = EvaluationFrameworkService(self.settings)

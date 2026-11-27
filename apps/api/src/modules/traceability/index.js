@@ -35,8 +35,10 @@ function registerTraceabilityInfrastructure({ container }) {
     container.register(TraceabilityStoreToken, (resolver) => {
       const env = resolver.resolve(ConfigToken);
       if (env.TRACEABILITY_STORE === 'prisma') {
-        const { PrismaClient } = require('@prisma/client');
-        return new TraceabilityPrismaStore({ prisma: new PrismaClient() });
+        const { getPrismaClient } = require('../../shared/database/prisma');
+        return new TraceabilityPrismaStore({
+          prisma: getPrismaClient(resolver.resolve(ConfigToken)),
+        });
       }
       return new TraceabilityInMemoryStore();
     });

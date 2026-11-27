@@ -6,6 +6,7 @@ from fastapi.testclient import TestClient
 
 from app.config import get_settings
 from app.main import app
+from app.modules.multimodal_rag import MultimodalRAGService
 from app.modules.orchestration.evidence import EvidenceFusion
 from app.modules.orchestration.query_router import QueryRouteInput, QueryRouter
 from app.security import sign_internal_request
@@ -140,6 +141,9 @@ def test_multimodal_ingestion_retrieval_and_unified_question_answering() -> None
         "mimeType": "text/plain",
         "documentType": "research_paper",
         "language": "en",
+        # These self-certification claims are deliberately still sent: the AI
+        # service must strip/override them, and no caller-claimed evidence may
+        # become citable or attributed in unified orchestration.
         "status": "VERIFIED",
         "source": {
             "name": "Test Agricultural Research Institute",
@@ -163,15 +167,23 @@ def test_multimodal_ingestion_retrieval_and_unified_question_answering() -> None
     response, payload = post("/api/v1/internal/multimodal/assets", asset_body)
     assert response.status_code == 200, payload
     assert payload["data"]["assetKind"] == "research_material"
-    assert payload["data"]["citationEligible"] is True
+    assert payload["data"]["status"] == "UNVERIFIED"
+    assert payload["data"]["citationEligible"] is False
+    assert payload["data"]["citationEligibilityReason"] == "document_status_not_verified"
     assert payload["data"]["vision"]["status"] == "unavailable"
+
+    namespaced_id = MultimodalRAGService._namespaced_id(
+        "org-ai-test", "eval-unified-doc", "v1"
+    )
+    assert namespaced_id != "eval-unified-doc"
 
     response, payload = post(
         "/api/v1/internal/multimodal/retrieve",
         {"query": "What does the rice irrigation research say?", "topK": 3},
     )
     assert response.status_code == 200, payload
-    assert payload["data"]["evidence"]
+    # Unverified uploads produce candidates but no citable evidence.
+    assert payload["data"]["evidence"] == []
     assert payload["data"]["diagnostics"]["organizationScoped"] is True
 
     response, payload = post(
@@ -187,9 +199,20 @@ def test_multimodal_ingestion_retrieval_and_unified_question_answering() -> None
     assert data["advisory"] is True
     assert data["route"]["strategy"] == "multimodal"
     assert "agentic" in data["strategiesAttempted"] or "hybrid" in data["strategiesAttempted"]
-    assert data["evidence"]
-    assert data["citations"]
-    assert data["sourceAttribution"][0]["assetId"] == "eval-unified-doc"
+    multimodal_step = next(
+        step for step in data["executedStrategies"] if step["strategy"] == "multimodal"
+    )
+    assert multimodal_step["resultCount"] == 0
+    # Hybrid fallback may supply other verified corpus evidence; it must never
+    # promote or attribute the unverified multimodal upload.
+    assert all(item["documentId"] != namespaced_id for item in data["evidence"])
+    assert all(
+        citation["documentId"] != namespaced_id for citation in data["citations"]
+    )
+    assert all(
+        item.get("assetId") not in {"eval-unified-doc", namespaced_id}
+        for item in data["sourceAttribution"]
+    )
     assert data["confidence"]["basis"] == "rule_based_retrieval_evidence"
     assert "not scientifically validated" in " ".join(data["confidence"]["limitations"]).lower()
 

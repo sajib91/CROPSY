@@ -25,8 +25,8 @@ function registerLogisticsInfrastructure({ container }) {
     container.register(LogisticsStoreToken, (resolver) => {
       const env = resolver.resolve(ConfigToken);
       if (env.LOGISTICS_STORE === 'prisma') {
-        const { PrismaClient } = require('@prisma/client');
-        return new LogisticsPrismaStore({ prisma: new PrismaClient() });
+        const { getPrismaClient } = require('../../shared/database/prisma');
+        return new LogisticsPrismaStore({ prisma: getPrismaClient(resolver.resolve(ConfigToken)) });
       }
       return new LogisticsInMemoryStore();
     });

@@ -269,12 +269,12 @@ class MarketplaceService {
     return dto.toSellerDto({ user, profile, organization, farmerProfile });
   }
 
-  async relatedForMany(listings, distanceById = new Map()) {
+  async relatedForMany(listings, distanceById = new Map(), preloaded = {}) {
     const [allProducts, allCategories, allLocations, allImages] = await Promise.all([
-      this.catalog.listProducts(),
-      this.catalog.listCategories(),
-      this.store.listLocations(),
-      this.store.listImages(),
+      preloaded.products ?? this.catalog.listProducts(),
+      preloaded.categories ?? this.catalog.listCategories(),
+      preloaded.locations ?? this.store.listLocations(),
+      preloaded.images ?? this.store.listImages(),
     ]);
     const productById = new Map(allProducts.map((item) => [item.id, item]));
     const categoryById = new Map(allCategories.map((item) => [item.id, item]));
@@ -389,9 +389,10 @@ class MarketplaceService {
       listings = listings.filter((listing) => listing.seller_user_id === value.sellerUserId);
     }
 
-    const [products, categories] = await Promise.all([
+    const [products, categories, locationRows] = await Promise.all([
       this.catalog.listProducts(),
       this.catalog.listCategories(),
+      this.store.listLocations(),
     ]);
     const productById = new Map(products.map((item) => [item.id, item]));
     const categoryById = new Map(categories.map((item) => [item.id, item]));
@@ -423,7 +424,6 @@ class MarketplaceService {
     }
 
     if (value.search || value.location) {
-      const locationRows = await this.store.listLocations();
       const labelsByListing = new Map();
       for (const location of locationRows) {
         if (!labelsByListing.has(location.listing_id)) labelsByListing.set(location.listing_id, []);
@@ -489,7 +489,11 @@ class MarketplaceService {
     });
 
     const page = listings.slice(value.offset, value.offset + value.limit);
-    return this.relatedForMany(page, distanceById);
+    return this.relatedForMany(page, distanceById, {
+      products,
+      categories,
+      locations: locationRows,
+    });
   }
 
   async getListing({ context, listingId }) {

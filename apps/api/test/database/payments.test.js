@@ -1,6 +1,9 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const { PrismaClient } = require('@prisma/client');
+const {
+  PaymentsPrismaStore,
+} = require('../../src/modules/payments/infrastructure/payments-prisma.store');
 
 const hasDatabase = Boolean(process.env.DATABASE_URL);
 const describeDatabase = hasDatabase ? test.describe : test.describe.skip;
@@ -223,6 +226,100 @@ describeDatabase('payment database invariants', () => {
                 'CAPTURED', 'CAPTURED', NOW())
       `;
     });
+  });
+
+  test('payment store claims and refund reservations are atomic', async () => {
+    const store = new PaymentsPrismaStore({ prisma });
+    const claim = {
+      id: uuid(9110),
+      organization_id: ID.orgA,
+      order_id: ID.order,
+      purchase_group_id: ID.group,
+      user_id: ID.buyer,
+      provider_code: 'DBTEST_CLAIM_PROVIDER',
+      idempotency_key: 'DBTEST-PAYMENT-CLAIM-1',
+      method: 'CARD',
+      amount: 50,
+      currency: 'BDT',
+      metadata: { source: 'dbtest' },
+      allocation_snapshot: {},
+      commission_rule_snapshot: {},
+    };
+
+    const claimed = await store.claimPayment(claim);
+    assert.equal(claimed.claimed, true);
+    assert.equal(claimed.payment.status, 'INITIATED');
+    assert.equal(claimed.payment.metadata.claimPending, true);
+
+    await assert.rejects(
+      () => store.claimPayment(claim),
+      /payment initiation is already in progress/i,
+    );
+
+    const finalized = await store.finalizePayment({
+      payment_id: claimed.payment.id,
+      status: 'AUTHORIZED',
+      provider_reference: 'dbtest-claim-ref-1',
+      captured_amount: 0,
+      reason: 'provider_response',
+      organization_id: ID.orgA,
+      metadata: { redirectUrl: null },
+    });
+    assert.equal(finalized.status, 'AUTHORIZED');
+    assert.equal(finalized.metadata.claimPending, false);
+
+    const replay = await store.claimPayment(claim);
+    assert.equal(replay.claimed, false);
+    assert.equal(replay.payment.id, claimed.payment.id);
+
+    await assert.rejects(
+      () => store.claimPayment({ ...claim, id: uuid(9111), amount: 60 }),
+      /idempotency key is already in use/i,
+    );
+
+    const reservation = await store.reserveRefund({
+      id: uuid(9120),
+      organization_id: ID.orgA,
+      payment_id: ID.payment,
+      order_id: ID.order,
+      amount: 20,
+      currency: 'BDT',
+      reason: 'OTHER',
+      idempotency_key: 'DBTEST-REFUND-RESERVE-1',
+      actor_user_id: ID.buyer,
+      allocation_snapshot: {},
+    });
+    assert.equal(reservation.claimed, true);
+    assert.equal(reservation.refund.status, 'REQUESTED');
+
+    await assert.rejects(
+      () =>
+        store.reserveRefund({
+          id: uuid(9121),
+          organization_id: ID.orgA,
+          payment_id: ID.payment,
+          order_id: ID.order,
+          amount: 90,
+          currency: 'BDT',
+          reason: 'OTHER',
+          idempotency_key: 'DBTEST-REFUND-RESERVE-2',
+          actor_user_id: ID.buyer,
+          allocation_snapshot: {},
+        }),
+      /refundable balance/i,
+    );
+
+    const refunded = await store.finalizeRefund({
+      refund_id: reservation.refund.id,
+      status: 'PROCESSED',
+      provider_reference: 'dbtest-refund-ref-1',
+      reason: 'provider_response',
+      actor_user_id: ID.buyer,
+    });
+    assert.equal(refunded.status, 'PROCESSED');
+    const updatedPayment = await store.findPayment({ id: ID.payment });
+    assert.equal(updatedPayment.refunded_amount, 20);
+    assert.equal(updatedPayment.status, 'PARTIALLY_REFUNDED');
   });
 
   test('webhook callbacks are unique and tenant consistent', async () => {

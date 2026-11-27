@@ -61,6 +61,8 @@ const apiSchema = sharedSchema
     LOGISTICS_STORE: z.enum(['memory', 'prisma']).default('memory'),
     QUALITY_STORE: z.enum(['memory', 'prisma']).default('memory'),
     TRACEABILITY_STORE: z.enum(['memory', 'prisma']).default('memory'),
+    BILLING_STORE: z.enum(['memory', 'prisma']).default('memory'),
+    ANALYTICS_STORE: z.enum(['memory', 'prisma']).default('memory'),
     // Provider metadata is environment-supplied. The mock adapter is enabled
     // only by automated tests and is rejected in production configuration.
     PAYMENT_PROVIDER_MODE: z.enum(['configured', 'mock']).default('configured'),
@@ -79,6 +81,8 @@ const apiSchema = sharedSchema
     AUTH_OTP_MAX_ATTEMPTS: z.coerce.number().int().min(3).max(20).default(5),
     AUTH_OTP_RESEND_COOLDOWN_SECONDS: z.coerce.number().int().min(1).max(3600).default(60),
     AUTH_OTP_PROVIDER_MODE: z.enum(['http', 'preview']).default('preview'),
+    // Preview codes in API responses are an explicit, test-only escape hatch.
+    AUTH_OTP_PREVIEW_CODE_IN_RESPONSE: z.enum(['true', 'false']).default('false'),
     AUTH_SMS_PROVIDER_URL: z.string().trim().default(''),
     AUTH_SMS_PROVIDER_TOKEN: z.string().trim().default(''),
     AUTH_EMAIL_PROVIDER_URL: z.string().trim().default(''),
@@ -218,6 +222,20 @@ const apiSchema = sharedSchema
           message: 'Production must use the Prisma traceability store',
         });
       }
+      if (value.BILLING_STORE !== 'prisma') {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['BILLING_STORE'],
+          message: 'Production must use the Prisma billing store',
+        });
+      }
+      if (value.ANALYTICS_STORE !== 'prisma') {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['ANALYTICS_STORE'],
+          message: 'Production must use the Prisma analytics store',
+        });
+      }
       if (value.PAYMENT_PROVIDER_MODE !== 'configured') {
         context.addIssue({
           code: z.ZodIssueCode.custom,
@@ -252,6 +270,13 @@ const apiSchema = sharedSchema
           code: z.ZodIssueCode.custom,
           path: ['AUTH_OTP_PROVIDER_MODE'],
           message: 'Production must use a real HTTP OTP provider, not preview mode',
+        });
+      }
+      if (value.AUTH_OTP_PREVIEW_CODE_IN_RESPONSE === 'true') {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['AUTH_OTP_PREVIEW_CODE_IN_RESPONSE'],
+          message: 'Production must never return OTP preview codes',
         });
       }
       if (value.AUTH_COOKIE_SECURE === 'false') {

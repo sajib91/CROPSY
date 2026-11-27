@@ -134,7 +134,17 @@ const PERMISSION_CATALOG = Object.freeze([
   ['traceability.read', 'traceability', 'read', 'View traceability records'],
   ['ai.read', 'ai', 'read', 'View AI recommendations'],
   ['ai.feedback', 'ai', 'feedback', 'Provide AI feedback'],
-  ['subscriptions.manage', 'subscriptions', 'manage', 'Manage subscriptions'],
+  ['analytics.read', 'analytics', 'read', 'View organization-scoped analytics reports'],
+  ['analytics.platform.read', 'analytics', 'read', 'View platform-wide analytics reports'],
+  ['subscriptions.read', 'subscriptions', 'read', 'View subscription, invoice, and usage state'],
+  [
+    'subscriptions.manage',
+    'subscriptions',
+    'manage',
+    'Manage an organization subscription lifecycle',
+  ],
+  ['plans.manage', 'plans', 'manage', 'Configure subscription plans and entitlements'],
+  ['invoices.read', 'invoices', 'read', 'View subscription invoices'],
   ['notifications.read', 'notifications', 'read', 'View notifications'],
   ['notifications.manage', 'notifications', 'manage', 'Inspect and retry notification delivery'],
 ]);
@@ -146,7 +156,7 @@ const PROFILE_PERMISSIONS = ['profile.read', 'profile.manage', 'notifications.re
 // Every authenticated user category may register an organization they will
 // administer. Management of an existing tenant still requires an explicit
 // organization-scoped grant.
-const SELF_SERVICE_PERMISSIONS = [...PROFILE_PERMISSIONS, 'organizations.create'];
+const SELF_SERVICE_PERMISSIONS = [...PROFILE_PERMISSIONS, 'organizations.create', 'analytics.read'];
 
 const MARKETPLACE_READ_PERMISSIONS = [
   'products.read',
@@ -260,6 +270,9 @@ const ROLE_PERMISSIONS = Object.freeze({
     'documents.manage',
     'sessions.read',
     'audit.read',
+    'subscriptions.read',
+    'subscriptions.manage',
+    'invoices.read',
     'notifications.manage',
     'farms.read',
     'farms.manage',

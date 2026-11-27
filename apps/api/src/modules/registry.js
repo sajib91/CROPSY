@@ -18,6 +18,7 @@ const { definition: marketIntelligence } = require('./market-intelligence');
 const { definition: knowledge } = require('./knowledge');
 const { definition: notifications } = require('./notifications');
 const { definition: billing } = require('./billing');
+const { definition: analytics } = require('./analytics');
 const { definition: administration } = require('./administration');
 
 const modules = Object.freeze([
@@ -41,6 +42,7 @@ const modules = Object.freeze([
   knowledge,
   notifications,
   billing,
+  analytics,
   administration,
 ]);
 
@@ -74,6 +76,7 @@ module.exports = {
     'knowledge',
     'notifications',
     'billing',
+    'analytics',
     'administration',
   ]),
 };

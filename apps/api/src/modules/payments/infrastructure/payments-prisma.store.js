@@ -55,10 +55,25 @@ function assertDuplicateOwner(payment, input) {
   if (
     payment.user_id !== input.user_id ||
     payment.organization_id !== (input.organization_id ?? null) ||
+    payment.order_id !== input.order_id ||
+    (payment.purchase_group_id ?? null) !== (input.purchase_group_id ?? null) ||
+    payment.provider_code !== input.provider_code ||
+    payment.method !== input.method ||
+    String(payment.currency).toUpperCase() !== String(input.currency || 'BDT').toUpperCase() ||
     money(payment.amount) !== money(input.amount)
   ) {
     throw new ConflictError({ message: 'Payment idempotency key is already in use.' });
   }
+}
+
+async function lockPayment(transaction, paymentId) {
+  const rows = await transaction.$queryRaw`
+    SELECT id, organization_id, status, captured_amount, refunded_amount, captured_at
+    FROM payments
+    WHERE id = CAST(${paymentId} AS uuid)
+    FOR UPDATE
+  `;
+  return rows[0] || null;
 }
 
 class PaymentsPrismaStore {
@@ -111,6 +126,117 @@ class PaymentsPrismaStore {
           },
         });
         return normalize(payment);
+      });
+    } catch (error) {
+      throw translateError(error);
+    }
+  }
+
+  async claimPayment(input) {
+    try {
+      return await this.prisma.$transaction(async (transaction) => {
+        const existing = await transaction.payment.findUnique({
+          where: { idempotency_key: input.idempotency_key },
+        });
+        if (existing) {
+          assertDuplicateOwner(existing, input);
+          if (existing.metadata?.claimPending === true) {
+            throw new ConflictError({ message: 'Payment initiation is already in progress.' });
+          }
+          return { payment: normalize(existing), claimed: false };
+        }
+        const payment = await transaction.payment.create({
+          data: {
+            id: input.id,
+            organization_id: input.organization_id ?? null,
+            order_id: input.order_id,
+            purchase_group_id: input.purchase_group_id ?? null,
+            user_id: input.user_id,
+            provider_code: input.provider_code,
+            idempotency_key: input.idempotency_key,
+            method: input.method,
+            status: 'INITIATED',
+            amount: input.amount,
+            captured_amount: 0,
+            currency: input.currency || 'BDT',
+            metadata: { ...(input.metadata || {}), claimPending: true },
+            allocation_snapshot: input.allocation_snapshot || {},
+            commission_rule_snapshot: input.commission_rule_snapshot || {},
+            statusChanges: {
+              create: {
+                organization_id: input.organization_id ?? null,
+                from_status: null,
+                to_status: 'INITIATED',
+                reason: 'payment_claimed',
+                actor_user_id: input.user_id,
+                metadata: {},
+              },
+            },
+          },
+        });
+        return { payment: normalize(payment), claimed: true };
+      });
+    } catch (error) {
+      if (error?.code === 'P2002') {
+        const existing = await this.prisma.payment.findUnique({
+          where: { idempotency_key: input.idempotency_key },
+        });
+        if (existing) {
+          assertDuplicateOwner(existing, input);
+          if (existing.metadata?.claimPending === true) {
+            throw new ConflictError({ message: 'Payment initiation is already in progress.' });
+          }
+          return { payment: normalize(existing), claimed: false };
+        }
+      }
+      throw translateError(error);
+    }
+  }
+
+  async finalizePayment(input) {
+    try {
+      return await this.prisma.$transaction(async (transaction) => {
+        const payment = await transaction.payment.findUnique({ where: { id: input.payment_id } });
+        if (!payment) throw new NotFoundError({ message: 'Payment was not found.' });
+        if (payment.metadata?.claimPending !== true && payment.status === input.status) {
+          return normalize(payment);
+        }
+        const changed = payment.status !== input.status;
+        const now = new Date();
+        const updated = await transaction.payment.update({
+          where: { id: input.payment_id },
+          data: {
+            status: input.status,
+            ...(input.provider_reference === undefined
+              ? {}
+              : { provider_reference: input.provider_reference }),
+            ...(input.captured_amount === undefined
+              ? {}
+              : { captured_amount: input.captured_amount }),
+            metadata: {
+              ...(payment.metadata || {}),
+              ...(input.metadata || {}),
+              claimPending: false,
+            },
+            ...(input.status === 'CAPTURED' && !payment.captured_at ? { captured_at: now } : {}),
+            ...(input.status === 'FAILED' && !payment.failed_at ? { failed_at: now } : {}),
+            ...(changed
+              ? {
+                  statusChanges: {
+                    create: {
+                      organization_id: input.organization_id ?? payment.organization_id,
+                      from_status: payment.status,
+                      to_status: input.status,
+                      reason: input.reason || 'provider_response',
+                      actor_user_id: input.actor_user_id ?? null,
+                      metadata: {},
+                    },
+                  },
+                }
+              : {}),
+          },
+        });
+        return normalize(updated);
       });
     } catch (error) {
       throw translateError(error);
@@ -276,31 +402,40 @@ class PaymentsPrismaStore {
     try {
       return await this.prisma.$transaction(async (transaction) => {
         let payment = null;
+        let skipped = false;
         if (!input.skip_status) {
-          const current = await transaction.payment.findUnique({ where: { id: input.payment_id } });
+          const current = await lockPayment(transaction, input.payment_id);
           if (!current) throw new NotFoundError({ message: 'Payment was not found.' });
-          payment = await transaction.payment.update({
-            where: { id: input.payment_id },
-            data: {
-              status: input.to_status,
-              ...(input.captured_amount === undefined
-                ? {}
-                : { captured_amount: input.captured_amount }),
-              ...(input.to_status === 'CAPTURED' && !current.captured_at
-                ? { captured_at: new Date() }
-                : {}),
-              statusChanges: {
-                create: {
-                  organization_id: input.organization_id ?? current.organization_id,
-                  from_status: current.status,
-                  to_status: input.to_status,
-                  reason: input.reason ?? 'webhook',
-                  provider_event_id: input.provider_event_id ?? null,
-                  metadata: input.metadata || {},
+          if (
+            input.expected_from_status !== undefined &&
+            current.status !== input.expected_from_status
+          ) {
+            skipped = true;
+            payment = await transaction.payment.findUnique({ where: { id: input.payment_id } });
+          } else {
+            payment = await transaction.payment.update({
+              where: { id: input.payment_id },
+              data: {
+                status: input.to_status,
+                ...(input.captured_amount === undefined
+                  ? {}
+                  : { captured_amount: input.captured_amount }),
+                ...(input.to_status === 'CAPTURED' && !current.captured_at
+                  ? { captured_at: new Date() }
+                  : {}),
+                statusChanges: {
+                  create: {
+                    organization_id: input.organization_id ?? current.organization_id,
+                    from_status: current.status,
+                    to_status: input.to_status,
+                    reason: input.reason ?? 'webhook',
+                    provider_event_id: input.provider_event_id ?? null,
+                    metadata: input.metadata || {},
+                  },
                 },
               },
-            },
-          });
+            });
+          }
         } else {
           payment = await transaction.payment.findUnique({ where: { id: input.payment_id } });
         }
@@ -313,7 +448,7 @@ class PaymentsPrismaStore {
             error: null,
           },
         });
-        return { event: normalize(event), payment: normalize(payment) };
+        return { event: normalize(event), payment: normalize(payment), skipped };
       });
     } catch (error) {
       throw translateError(error);
@@ -388,6 +523,126 @@ class PaymentsPrismaStore {
           },
         });
         return normalize(refund);
+      });
+    } catch (error) {
+      throw translateError(error);
+    }
+  }
+
+  async reserveRefund(input) {
+    try {
+      return await this.prisma.$transaction(async (transaction) => {
+        const existing = await transaction.refund.findUnique({
+          where: { idempotency_key: input.idempotency_key },
+        });
+        if (existing) {
+          if (
+            existing.payment_id !== input.payment_id ||
+            money(existing.amount) !== money(input.amount) ||
+            existing.organization_id !== (input.organization_id ?? null) ||
+            String(existing.currency).toUpperCase() !==
+              String(input.currency || 'BDT').toUpperCase()
+          ) {
+            throw new ConflictError({ message: 'Refund idempotency key is already in use.' });
+          }
+          return { refund: normalize(existing), claimed: false };
+        }
+
+        const payment = await lockPayment(transaction, input.payment_id);
+        if (!payment) throw new NotFoundError({ message: 'Payment was not found.' });
+        if (!['CAPTURED', 'PARTIALLY_REFUNDED'].includes(payment.status)) {
+          throw new ConflictError({ message: 'Only captured payments can be refunded.' });
+        }
+        const pending = await transaction.refund.aggregate({
+          where: { payment_id: input.payment_id, status: { in: ['REQUESTED', 'APPROVED'] } },
+          _sum: { amount: true },
+        });
+        const available = money(
+          money(payment.captured_amount) -
+            money(payment.refunded_amount) -
+            money(pending._sum.amount),
+        );
+        if (money(input.amount) > available) {
+          throw new ConflictError({ message: 'Refund amount exceeds the refundable balance.' });
+        }
+
+        const refund = await transaction.refund.create({
+          data: {
+            id: input.id,
+            organization_id: input.organization_id ?? null,
+            payment_id: payment.id,
+            order_id: input.order_id,
+            amount: input.amount,
+            currency: input.currency || 'BDT',
+            reason: input.reason || 'OTHER',
+            status: 'REQUESTED',
+            idempotency_key: input.idempotency_key,
+            allocation_snapshot: input.allocation_snapshot || {},
+          },
+        });
+        return { refund: normalize(refund), claimed: true };
+      });
+    } catch (error) {
+      if (error?.code === 'P2002') {
+        const existing = await this.prisma.refund.findUnique({
+          where: { idempotency_key: input.idempotency_key },
+        });
+        if (existing) return { refund: normalize(existing), claimed: false };
+      }
+      throw translateError(error);
+    }
+  }
+
+  async finalizeRefund(input) {
+    try {
+      return await this.prisma.$transaction(async (transaction) => {
+        const refund = await transaction.refund.findUnique({ where: { id: input.refund_id } });
+        if (!refund) throw new NotFoundError({ message: 'Refund was not found.' });
+        if (refund.status !== 'REQUESTED') return normalize(refund);
+
+        const payment = await lockPayment(transaction, refund.payment_id);
+        if (!payment) throw new NotFoundError({ message: 'Payment was not found.' });
+        const status = input.status || 'PROCESSED';
+        const updated = await transaction.refund.update({
+          where: { id: refund.id },
+          data: {
+            status,
+            ...(input.provider_reference === undefined
+              ? {}
+              : { provider_reference: input.provider_reference }),
+            processed_at: new Date(),
+          },
+        });
+        if (status === 'PROCESSED') {
+          const total = money(money(payment.refunded_amount) + money(refund.amount));
+          if (total > money(payment.captured_amount)) {
+            await transaction.refund.update({
+              where: { id: refund.id },
+              data: { status: 'FAILED' },
+            });
+            throw new ConflictError({ message: 'Refund amount exceeds the refundable balance.' });
+          }
+          const paymentStatus =
+            total >= money(payment.captured_amount) ? 'REFUNDED' : 'PARTIALLY_REFUNDED';
+          await transaction.payment.update({
+            where: { id: payment.id },
+            data: {
+              refunded_amount: total,
+              status: paymentStatus,
+              statusChanges: {
+                create: {
+                  organization_id: payment.organization_id,
+                  from_status: payment.status,
+                  to_status: paymentStatus,
+                  reason: input.reason || 'refund',
+                  actor_user_id: input.actor_user_id ?? null,
+                  metadata: { refundId: refund.id },
+                },
+              },
+            },
+          });
+        }
+        return normalize(updated);
       });
     } catch (error) {
       throw translateError(error);

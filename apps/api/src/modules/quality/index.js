@@ -28,8 +28,8 @@ function registerQualityInfrastructure({ container }) {
     container.register(QualityStoreToken, (resolver) => {
       const env = resolver.resolve(ConfigToken);
       if (env.QUALITY_STORE === 'prisma') {
-        const { PrismaClient } = require('@prisma/client');
-        return new QualityPrismaStore({ prisma: new PrismaClient() });
+        const { getPrismaClient } = require('../../shared/database/prisma');
+        return new QualityPrismaStore({ prisma: getPrismaClient(resolver.resolve(ConfigToken)) });
       }
       return new QualityInMemoryStore();
     });

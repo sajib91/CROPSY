@@ -51,6 +51,18 @@ function money(value) {
   return amount;
 }
 
+function assertSameJournal(existing, input) {
+  const currency = input.currency || 'BDT';
+  if (
+    existing.reference_type !== input.reference_type ||
+    (existing.reference_id ?? null) !== (input.reference_id ?? null) ||
+    String(existing.currency).toUpperCase() !== String(currency).toUpperCase() ||
+    (existing.organization_id ?? null) !== (input.organization_id ?? null)
+  ) {
+    throw new ConflictError({ message: 'Ledger idempotency key is already in use.' });
+  }
+}
+
 function whereFrom(filters = {}) {
   const where = {};
   for (const [key, value] of Object.entries(filters)) {
@@ -131,7 +143,7 @@ class LedgerPrismaStore {
     }
   }
 
-  async _resolveAccounts(client, codes) {
+  async _resolveAccounts(client, codes, currency) {
     const uniqueCodes = [...new Set(codes)];
     const accounts = await client.ledgerAccount.findMany({
       where: { code: { in: uniqueCodes } },
@@ -143,6 +155,9 @@ class LedgerPrismaStore {
       if (!account.is_active) {
         throw new DomainError({ message: `Ledger account '${code}' is inactive.` });
       }
+      if (String(account.currency).toUpperCase() !== String(currency).toUpperCase()) {
+        throw new DomainError({ message: 'Journal currency does not match its accounts.' });
+      }
     }
     return byCode;
   }
@@ -151,7 +166,10 @@ class LedgerPrismaStore {
     const existing = await client.ledgerJournal.findUnique({
       where: { idempotency_key: input.idempotency_key },
     });
-    if (existing) return normalize(existing);
+    if (existing) {
+      assertSameJournal(existing, input);
+      return normalize(existing);
+    }
 
     assertBalanced(input.lines);
     if (input.lines.some((line) => !BALANCE_BUCKETS.includes(line.bucket))) {
@@ -161,6 +179,7 @@ class LedgerPrismaStore {
     const accounts = await this._resolveAccounts(
       client,
       input.lines.map((line) => line.account_code),
+      currency,
     );
     const journal = await client.ledgerJournal.create({
       data: {

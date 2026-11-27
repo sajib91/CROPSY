@@ -167,7 +167,7 @@ auth/RBAC layer. The initial and review-hardening migrations remain immutable.
   `AUTH_STORE=prisma`; development/tests can use the in-memory adapter. Role,
   permission, organization membership, and audit rows are read on every
   authorization decision so policy changes take effect without redeploying.
-- The seed maps 12 canonical categories and 10 legacy aliases to 50 permissions.
+- The seed maps 12 canonical categories and 10 legacy aliases to 51 permissions.
   See [`../security/permission-matrix.md`](../security/permission-matrix.md)
   for the effective grid.
 
@@ -426,12 +426,12 @@ checks, functions, constraint triggers, and tenant triggers are raw SQL.
   inconsistent legacy rows. Unique keys also prevent duplicate payment ids, webhook events,
   journal posts, expectations, refunds, and settlements.
 
-`PAYMENTS_STORE` and `LEDGER_STORE` select their modules' persistence adapters: `memory` is the
-local/test default and production requires `prisma`. The Prisma stores write status changes,
-journals, lines, and balances in transactions; the in-memory stores mirror the same contracts for
-local tests. Provider adapters are configured outside the database through
-`PAYMENT_PROVIDER_MODE`/`PAYMENT_PROVIDERS_JSON`, and structural chart-of-account overrides come
-from `LEDGER_ACCOUNTS_JSON`.
+`PAYMENTS_STORE`, `LEDGER_STORE`, `BILLING_STORE`, and `ANALYTICS_STORE` select their modules' persistence adapters:
+`memory` is the local/test default and production requires `prisma`. The Prisma stores write status
+changes, journals, lines, balances, subscriptions, invoices, and usage in transactions; the
+in-memory stores mirror the same contracts for local tests. Provider adapters are configured
+outside the database through `PAYMENT_PROVIDER_MODE`/`PAYMENT_PROVIDERS_JSON`, and structural
+chart-of-account overrides come from `LEDGER_ACCOUNTS_JSON`.
 
 ## Logistics, warehouse, quality, and traceability follow-up
 
@@ -474,8 +474,9 @@ existing raw-SQL constraints and triggers continue to protect the inventory/ledg
   unverified claims are never presented as certified. `TraceabilityEventType` gains `FARM_ORIGIN`,
   `CULTIVATION`, `WAREHOUSE_ENTRY`, `STORAGE_HISTORY`, `BUYER_CONFIRMED`, and `SELLER`.
 
-`LOGISTICS_STORE`, `QUALITY_STORE`, and `TRACEABILITY_STORE` select the corresponding modules'
-persistence adapters: `memory` is the local/test default and production requires `prisma`. Traceability
+`LOGISTICS_STORE`, `QUALITY_STORE`, `TRACEABILITY_STORE`, `BILLING_STORE`, and `ANALYTICS_STORE`
+select the corresponding modules' persistence adapters: `memory` is the local/test default and
+production requires `prisma`. Traceability
 QR URLs use `WEB_PUBLIC_URL` (default `http://localhost:3000`) plus `/verify/<token>`; no external QR
 service or provider credential is introduced.
 
@@ -536,7 +537,7 @@ private-coordinate policy before serializing any geometry.
 | Data | Contents |
 | --- | --- |
 | Geography | 1 country (`BD`), 8 divisions, 64 districts, 64 upazilas, 64 unions |
-| Access control | 22 roles (12 canonical categories + 10 legacy aliases), 50 permissions, and 479 role-to-permission assignments |
+| Access control | 22 roles (12 canonical categories + 10 legacy aliases), 54 permissions, and 507 role-to-permission assignments |
 | Catalog | 13 reference product categories |
 | Ledger skeleton | 10 chart-of-accounts entries (assets, liabilities, equity, revenue, expense) |
 | Platform settings | `currency.default` (`BDT`, scale 2) and `geography.default_country` (`BD`) |
@@ -545,7 +546,7 @@ It deliberately does **not** seed users, organizations, farms, products, listing
 
 - No commission rates: `commissions.rule_key`/`rate` are left to application policy and `basis` defaults to `EXTERNAL_RULE`.
 - No payment providers: `payments.provider_code` is nullable and no provider rows are inserted; `PaymentMethod` is only an enum of method types.
-- No subscription prices: no `subscription_plans` rows are inserted even though `price_amount` is required by the schema.
+- No subscription prices, entitlements, or limits: no `subscription_plans` rows are inserted even though `price_amount` is required by the schema. Plan segment codes, entitlements, usage limits, provider codes, and cycle overrides are caller-supplied policy, never seeded.
 - No settlement rules: `settlements.rule_key` is left to application policy.
 - No taxes, refund policies, or fees are defined. `orders.tax_amount`/`delivery_fee_amount`/`discount_amount` and their `purchase_groups` counterparts are storage columns written from server calculations only; delivery/discount rules are supplied by the caller at checkout and snapshotted rather than seeded.
 
@@ -596,7 +597,7 @@ Covered cases:
 | Conservative verification defaults | inspection verification starts `UNVERIFIED`, grade source defaults to `INSPECTOR`, and evidence disclosure defaults to `false` |
 | Verified public traceability facts | a verified public batch returns only verified, publicly disclosed events |
 | Operational history | `RECEIPT` movement quantity/reference and reconciliation counted/system difference are preserved |
-| Migration and seed state | eleven applied migrations, no drift, logistics/warehouse/quality/traceability objects, and stable 22/50/479/13 counts |
+| Migration and seed state | eleven applied migrations, no drift, logistics/warehouse/quality/traceability objects, and stable 22/51/486/13 counts |
 
 ## Validation performed
 
@@ -607,7 +608,7 @@ The final review run completed the following checks:
 3. `prisma generate` — Prisma Client generated successfully.
 4. `prisma migrate deploy` on a fresh temporary PostgreSQL 17 + PostGIS 3.5 instance — all eleven migrations applied, including indexes, functions, triggers, validated checks, nullable email, the new OTP purpose, organization/profile tables, farm soil/irrigation tables, area/soil/irrigation checks, farm geometry/tenant guards, crop calendars, recommendations, expense guards, catalog attribute types, marketplace constraints, catalog/marketplace tenant guards, warehouse movement/settlement functions, append-only movement triggers, low-stock alert uniqueness, cooperative tables, parent checkouts, seller fulfillments, append-only status history, atomic listing availability helpers, payment history/callbacks, immutable journals, bucket balances, reconciliation expectations, database financial invariants, logistics providers/services/shipments/deliveries/audits, warehouse locations/staff/conditions/reconciliations, quality inspections/evidence/audits, and traceability batches/events/audits.
 5. `prisma migrate diff --from-migrations --to-schema-datamodel` — empty diff; no drift between migrations and schema.
-6. Idempotent seed run twice — stable counts: 1 country, 8 divisions, 64 districts, 64 upazilas, 64 unions, 22 roles (12 canonical + 10 aliases), 50 permissions, 479 assignments, 13 product categories, 10 ledger accounts, and 2 platform settings.
+6. Idempotent seed run twice — stable counts: 1 country, 8 divisions, 64 districts, 64 upazilas, 64 unions, 22 roles (12 canonical + 10 aliases), 51 permissions, 486 assignments, 13 product categories, 10 ledger accounts, and 2 platform settings.
 7. `npm run db:test` — 45/45 database tests passed (13 integrity/concurrency, 6 farm/PostGIS, 5 agriculture persistence/guards, 5 catalog/marketplace persistence/guards, 4 cart/order invariants, 4 ledger invariants, 3 payment invariants, and 5 logistics/warehouse/quality/traceability invariants).
 8. `npm run test -w @cropsy/api` — 71/71 API tests passed, including default-deny, tenant scoping, conservative public verification, PostGIS-backed nearby discovery, append-only history behavior, and QR output.
 9. `CROPSY_RUN_DB_TESTS=1 npm run verify` — boundary check, lint, format check, builds, API/AI tests, containerized database tests, and live health checks passed.
@@ -626,9 +627,16 @@ The final review run completed the following checks:
 - `LOGISTICS_STORE` selects the logistics module's persistence adapter. `memory` is the local/test default; production requires `LOGISTICS_STORE=prisma` so providers/services/shipments/deliveries/audits and nearby PostGIS queries use these tables.
 - `QUALITY_STORE` selects the quality module's persistence adapter. `memory` is the local/test default; production requires `QUALITY_STORE=prisma` so inspections, evidence, grading, verification, and audits use these tables.
 - `TRACEABILITY_STORE` selects the traceability module's persistence adapter. `memory` is the local/test default; production requires `TRACEABILITY_STORE=prisma` so batches/events/audits and public verification use these tables. `WEB_PUBLIC_URL` controls the QR verification base URL and defaults to `http://localhost:3000`.
+- `BILLING_STORE` selects the billing module's persistence adapter. `memory` starts empty for local/tests; production requires `BILLING_STORE=prisma` so configurable plans, tenant subscriptions, invoices, and usage records use these tables. Plan prices, billing-cycle overrides, entitlements, limits, and provider codes are always caller-supplied; the migration seeds no commercial policy.
+- `ANALYTICS_STORE` selects the analytics module's persistence adapter. `memory` starts empty for local/tests; production requires `ANALYTICS_STORE=prisma` so reports read parameterized SQL aggregations from the tables below. The follow-up `20261128000000_analytics_reporting_indexes` adds tenant/time/entity composite indexes only; it seeds no facts, metrics, or predictions.
 - Append-only history applies to `inventory_movements`, `order_status_changes`, payment status history, and ledger journals/lines/audits. Cleanup must retain immutable rows and avoid implicit updates from parent deletes (for example, deleting an inventory fires the movement's `ON DELETE SET NULL` update and is rejected).
 - First migration needs a role that can `CREATE EXTENSION postgis`.
 - `Unsupported` geometry fields are not available through Prisma Client. Use `$queryRaw` / `$executeRaw` for geometry reads and writes, and manage spatial indexes in raw SQL migrations.
-- The initial migration is the immutable baseline; `20261125120000_review_hardening`, `20261125130000_auth_identity`, `20261125140000_organization_profile_management`, `20261125150000_farm_management`, `20261125160000_crop_cultivation_expense_management`, `20261125170000_catalog_marketplace`, `20261125180000_inventory_cooperative`, `20261126000000_cart_order_management`, `20261126010000_payment_ledger_infrastructure`, and
-`20261126020000_logistics_warehouse_quality_traceability` are follow-ups. Future schema or invariant
-changes require new migrations; do not edit any applied migration in place.
+- The initial migration is the immutable baseline; `20261125120000_review_hardening`, `20261125130000_auth_identity`, `20261125140000_organization_profile_management`, `20261125150000_farm_management`, `20261125160000_crop_cultivation_expense_management`, `20261125170000_catalog_marketplace`, `20261125180000_inventory_cooperative`, `20261126000000_cart_order_management`, `20261126010000_payment_ledger_infrastructure`,
+`20261126020000_logistics_warehouse_quality_traceability`,
+`20261127000000_billing_subscription_management`, and
+`20261128000000_analytics_reporting_indexes` are follow-ups. The billing follow-up adds only
+nullable/configurable columns and check constraints for caller-supplied cycle and invoice-period
+policy; no plan rows, prices, entitlements, or limits are inserted. The analytics follow-up adds
+composite indexes only. Future schema or invariant changes require new migrations; do not edit any
+applied migration in place.

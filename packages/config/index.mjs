@@ -57,6 +57,8 @@ const apiSchema = sharedSchema
     LOGISTICS_STORE: z.enum(['memory', 'prisma']).default('memory'),
     QUALITY_STORE: z.enum(['memory', 'prisma']).default('memory'),
     TRACEABILITY_STORE: z.enum(['memory', 'prisma']).default('memory'),
+    BILLING_STORE: z.enum(['memory', 'prisma']).default('memory'),
+    ANALYTICS_STORE: z.enum(['memory', 'prisma']).default('memory'),
     // Provider metadata is environment-supplied. The mock adapter is enabled
     // only by automated tests and is rejected in production configuration.
     PAYMENT_PROVIDER_MODE: z.enum(['configured', 'mock']).default('configured'),
@@ -194,6 +196,20 @@ const apiSchema = sharedSchema
           code: z.ZodIssueCode.custom,
           path: ['TRACEABILITY_STORE'],
           message: 'Production must use the Prisma traceability store',
+        });
+      }
+      if (value.BILLING_STORE !== 'prisma') {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['BILLING_STORE'],
+          message: 'Production must use the Prisma billing store',
+        });
+      }
+      if (value.ANALYTICS_STORE !== 'prisma') {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['ANALYTICS_STORE'],
+          message: 'Production must use the Prisma analytics store',
         });
       }
       if (value.PAYMENT_PROVIDER_MODE !== 'configured') {

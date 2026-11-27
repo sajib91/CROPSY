@@ -21,6 +21,7 @@ export function useResource(
   });
   const loaderRef = useRef(loader);
   loaderRef.current = loader;
+  const generationRef = useRef(0);
 
   const key = typeof cacheKey === 'string' ? cacheKey : JSON.stringify(cacheKey);
   const depsKey = JSON.stringify(deps);
@@ -28,6 +29,8 @@ export function useResource(
   const load = useCallback(
     async (options = {}) => {
       const { force = false } = options;
+      const generation = generationRef.current + 1;
+      generationRef.current = generation;
       setState((previous) => ({
         ...previous,
         loading: previous.data === null,
@@ -38,13 +41,23 @@ export function useResource(
       let cached = null;
       if (key) {
         cached = await readCache(key, { maxAgeMs: ttlMs });
+        if (generation !== generationRef.current) return cached;
         if (cached !== null) {
           setState((previous) => ({
             ...previous,
             data: previous.data ?? cached,
             fromCache: true,
             loading: false,
+            refreshing: force,
           }));
+          if (!force) {
+            setState((previous) => ({
+              ...previous,
+              refreshing: false,
+              error: null,
+            }));
+            return cached;
+          }
         }
       }
 
@@ -55,6 +68,7 @@ export function useResource(
 
       try {
         const data = (await loaderRef.current()) ?? null;
+        if (generation !== generationRef.current) return data;
         setState({
           data,
           loading: false,
@@ -65,6 +79,7 @@ export function useResource(
         if (key) await writeCache(key, data, { ttlMs });
         return data;
       } catch (error) {
+        if (generation !== generationRef.current) return cached;
         setState((previous) => ({
           ...previous,
           loading: false,

@@ -7,7 +7,7 @@ import binascii
 import hashlib
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.config import Settings, get_settings
 from app.errors import ConfigurationError, DocumentError, IntegrationUnavailableError, UnauthorizedError
@@ -37,7 +37,7 @@ AssetKind = Literal["pdf", "image", "chart", "table", "text", "research_material
 
 
 class MultimodalAssetInput(BaseModel):
-    """Caller-supplied asset. Organization trust is supplied by the gateway."""
+    """Caller-supplied asset. Verification is never caller-supplied."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -48,7 +48,6 @@ class MultimodalAssetInput(BaseModel):
     documentType: DocumentType = "other"
     language: Language = "en"
     version: str = Field(default="v1", min_length=1, max_length=100)
-    status: Literal["VERIFIED", "DRAFT", "UNVERIFIED"] = "UNVERIFIED"
     source: SourceMetadata
     license: LicenseMetadata
     sourceVersion: str = Field(default="", max_length=100)
@@ -56,6 +55,25 @@ class MultimodalAssetInput(BaseModel):
     contentBase64: str = Field(default="", max_length=30_000_000)
     visualQuestion: str = Field(default="", max_length=2000)
     isPlantImage: bool = False
+
+    @model_validator(mode="before")
+    @classmethod
+    def discard_verification_claims(cls, value: Any) -> Any:
+        """Strip self-certification even for direct internal callers."""
+        if not isinstance(value, dict):
+            return value
+        value = dict(value)
+        value.pop("status", None)
+        for field, keys in (
+            ("source", {"authority", "jurisdiction"}),
+            ("license", {"verified"}),
+        ):
+            nested = value.get(field)
+            if isinstance(nested, dict):
+                value[field] = {key: item for key, item in nested.items() if key not in keys}
+            elif isinstance(nested, BaseModel):
+                value[field] = nested.model_dump(exclude=keys)
+        return value
 
 
 class MultimodalAssetRecord(BaseModel):
@@ -142,6 +160,19 @@ class MultimodalRAGService:
             )
         return trusted_organization_id
 
+    @staticmethod
+    def _asset_key(organization_id: str, asset_id: str) -> str:
+        digest = hashlib.sha256(
+            f"{organization_id}\x1f{asset_id}".encode("utf-8")
+        ).hexdigest()[:24]
+        return f"{digest}-{asset_id[:64]}"
+
+    @classmethod
+    def _namespaced_id(cls, organization_id: str, asset_id: str, version: str) -> str:
+        base = cls._asset_key(organization_id, asset_id)
+        digest = hashlib.sha256(f"{base}\x1f{version}".encode("utf-8")).hexdigest()[:12]
+        return f"{base}-{digest}"
+
     def _span(self, trace_id: str, name: str, **details: Any):  # type: ignore[no-untyped-def]
         if self.tracer is not None and trace_id:
             return self.tracer.span(trace_id, name, **details)
@@ -225,24 +256,31 @@ class MultimodalRAGService:
         self,
         value: MultimodalAssetInput,
         *,
+        document_id: str,
         organization_id: str,
         text: str,
         tables: list[dict[str, Any]],
         content_hash: str,
         processor: str,
     ) -> DocumentRecord:
+        # No trusted document registry exists for caller-uploaded assets. Every
+        # record stays unverified and unlicensed regardless of input claims.
+        source = SourceMetadata(
+            **{**value.source.model_dump(), "authority": "", "jurisdiction": ""}
+        )
+        license_data = LicenseMetadata(**{**value.license.model_dump(), "verified": False})
         return DocumentRecord(
-            documentId=value.assetId,
+            documentId=document_id,
             title=value.title,
             documentType=value.documentType,
             classifiedType=value.documentType,
             classificationConfidence=0.0,
             language=value.language,
             version=value.version,
-            status=value.status,
+            status="UNVERIFIED",
             provenance={
-                "source": value.source.model_dump(),
-                "license": value.license.model_dump(),
+                "source": source.model_dump(),
+                "license": license_data.model_dump(),
                 "ingestedBy": "system",
                 "originalFilename": value.filename,
                 "contentHash": content_hash,
@@ -250,7 +288,11 @@ class MultimodalRAGService:
             },
             text=text,
             tables=tables,
-            extractedMetadata={"organizationId": organization_id, "tableCount": len(tables)},
+            extractedMetadata={
+                "organizationId": organization_id,
+                "assetId": value.assetId,
+                "tableCount": len(tables),
+            },
             processor=processor,
             createdAt=utc_now(),
             updatedAt=utc_now(),
@@ -269,6 +311,9 @@ class MultimodalRAGService:
             raise ConfigurationError("Multimodal RAG requires configured vector and keyword indexes.")
         if len(self._assets) >= self.settings.multimodal_max_assets:
             raise DocumentError("The multimodal asset limit has been reached.")
+        asset_key = self._asset_key(organization_id, value.assetId)
+        document_id = self._namespaced_id(organization_id, value.assetId, value.version)
+        previous = self._assets.get(asset_key)
 
         with self._span(trace_id, "multimodal.preprocess", assetId=value.assetId):
             preprocessed = None
@@ -318,12 +363,12 @@ class MultimodalRAGService:
                 )
         else:
             processing_input = DocumentProcessingInput(
-                documentId=value.assetId,
+                documentId=document_id,
                 title=value.title,
                 documentType=value.documentType,
                 language=value.language,
                 version=value.version,
-                status=value.status,
+                status="UNVERIFIED",
                 source=value.source,
                 license=value.license,
                 sourceVersion=value.sourceVersion,
@@ -344,6 +389,7 @@ class MultimodalRAGService:
         )
         record = self._build_record(
             value,
+            document_id=document_id,
             organization_id=organization_id,
             text=text,
             tables=tables,
@@ -363,8 +409,8 @@ class MultimodalRAGService:
         chunks: list[DocumentChunk] = []
         for index, ((section, chunk_text_value), vector) in enumerate(zip(raw_chunks, vectors)):
             chunk = DocumentChunk(
-                chunkId=f"{value.assetId}:{value.version}:text:{index}",
-                documentId=value.assetId,
+                chunkId=f"{document_id}:t{index}",
+                documentId=document_id,
                 version=value.version,
                 text=chunk_text_value,
                 position=index,
@@ -391,8 +437,8 @@ class MultimodalRAGService:
         if preprocessed is not None and self.settings.multimodal_enabled:
             visual_vector = await self.image_embeddings.embed(preprocessed.content)
             visual_chunk = DocumentChunk(
-                chunkId=f"{value.assetId}:{value.version}:visual",
-                documentId=value.assetId,
+                chunkId=f"{document_id}:visual",
+                documentId=document_id,
                 version=value.version,
                 text=(
                     f"Visual signature for {value.title}; OCR text and model observations are "
@@ -423,6 +469,20 @@ class MultimodalRAGService:
                 )
             )
 
+        if previous is not None:
+            # Version changes must not leave orphaned chunks in either index.
+            old_document_id = self._namespaced_id(
+                previous.organizationId, previous.assetId, previous.version
+            )
+            for chunk_id in previous.chunkIds:
+                self._chunks.pop(chunk_id, None)
+                self._payloads.pop(chunk_id, None)
+            self._records.pop(old_document_id, None)
+            if hasattr(self.vector_index, "delete_document"):
+                await self.vector_index.delete_document(old_document_id)  # type: ignore[attr-defined]
+            if hasattr(self.keyword_index, "delete_document"):
+                await self.keyword_index.delete_document(old_document_id)  # type: ignore[attr-defined]
+
         for point in points:
             self._payloads[point.id] = point.payload
         await self.vector_index.upsert(points)
@@ -430,7 +490,7 @@ class MultimodalRAGService:
             await self.keyword_index.upsert(point.id, point.payload["text"], point.payload)
 
         record.chunkIds = [chunk.chunkId for chunk in chunks]
-        self._records[value.assetId] = record
+        self._records[document_id] = record
         self._chunks.update({chunk.chunkId: chunk for chunk in chunks})
         asset = MultimodalAssetRecord(
             assetId=value.assetId,
@@ -440,7 +500,7 @@ class MultimodalRAGService:
             version=value.version,
             language=value.language,
             mimeType=effective_mime,
-            status=value.status,
+            status="UNVERIFIED",
             chunkIds=record.chunkIds,
             contentHash=content_hash,
             processors=processors,
@@ -454,7 +514,7 @@ class MultimodalRAGService:
             citationEligible=eligible,
             citationEligibilityReason=reason,
         )
-        self._assets[value.assetId] = asset
+        self._assets[asset_key] = asset
         return MultimodalIngestionResult(
             **asset.model_dump(),
             chunkCount=len(chunks),
@@ -476,7 +536,7 @@ class MultimodalRAGService:
         return {
             "chunkId": chunk.chunkId,
             "documentId": record.documentId,
-            "assetId": record.documentId,
+            "assetId": record.extractedMetadata["assetId"],
             "version": record.version,
             "text": chunk.text,
             "section": chunk.section,

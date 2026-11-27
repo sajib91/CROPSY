@@ -48,8 +48,8 @@ function registerOrdersInfrastructure({ container }) {
   container.register(OrdersStoreToken, (resolver) => {
     const env = resolver.resolve(ConfigToken);
     if (env.ORDERS_STORE === 'prisma') {
-      const { PrismaClient } = require('@prisma/client');
-      return new OrdersPrismaStore({ prisma: new PrismaClient() });
+      const { getPrismaClient } = require('../../shared/database/prisma');
+      return new OrdersPrismaStore({ prisma: getPrismaClient(resolver.resolve(ConfigToken)) });
     }
     return new OrdersInMemoryStore({
       listingStock: resolver.resolve(MarketplaceListingStockToken),

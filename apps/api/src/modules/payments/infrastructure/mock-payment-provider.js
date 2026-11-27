@@ -18,9 +18,15 @@ class MockPaymentProvider {
     assertProvider(this);
   }
 
-  _digest(eventId, payload) {
+  _digest(eventId, payload, rawBody) {
+    const signedBody =
+      rawBody === undefined || rawBody === null
+        ? JSON.stringify(payload)
+        : Buffer.isBuffer(rawBody)
+          ? rawBody.toString('utf8')
+          : String(rawBody);
     return createHmac('sha256', this.webhookSecret)
-      .update(`${eventId}.${JSON.stringify(payload)}`)
+      .update(`${eventId}.${signedBody}`)
       .digest('hex');
   }
 
@@ -66,13 +72,17 @@ class MockPaymentProvider {
     });
   }
 
-  verifyWebhook({ headers = {}, eventId, payload }) {
+  verifyWebhook({ headers = {}, eventId, payload, rawBody }) {
     const supplied = headers['x-webhook-signature'];
-    const expected = `sha256=${this._digest(eventId, payload)}`;
-    if (typeof supplied !== 'string' || supplied.length !== expected.length) {
-      throw new UnauthorizedError({ message: 'Webhook signature is invalid.' });
-    }
-    if (!timingSafeEqual(Buffer.from(supplied), Buffer.from(expected))) {
+    const match = typeof supplied === 'string' ? /^sha256=([0-9a-f]{64})$/i.exec(supplied) : null;
+    if (!match) throw new UnauthorizedError({ message: 'Webhook signature is invalid.' });
+    const expected = this._digest(eventId, payload, rawBody);
+    const suppliedDigest = Buffer.from(match[1], 'utf8');
+    const expectedDigest = Buffer.from(expected, 'utf8');
+    if (
+      suppliedDigest.length !== expectedDigest.length ||
+      !timingSafeEqual(suppliedDigest, expectedDigest)
+    ) {
       throw new UnauthorizedError({ message: 'Webhook signature is invalid.' });
     }
     return true;

@@ -49,6 +49,46 @@ test('user lookup and role assignment deny cross-organization targets', async (t
   assert.ok(roles.some((assignment) => assignment.role_code === 'FARMER'));
 });
 
+test('tenant admins cannot grant privileged platform roles', async (t) => {
+  const fixture = await createTenantFixture(t);
+  const { app, store, adminToken, adminId, orgA } = fixture;
+
+  const denied = await app.inject({
+    method: 'POST',
+    url: `${BASE}/users/${adminId}/roles`,
+    headers: { ...bearer(adminToken), 'x-organization-id': orgA.id },
+    payload: { roleCode: 'CROPSY_SUPER_ADMIN' },
+  });
+  assert.equal(denied.statusCode, 403);
+  assert.equal(denied.json().meta.details.code, 'privileged_role_assignment_denied');
+
+  const roles = await store.listUserRoles(adminId);
+  assert.ok(!roles.some((role) => role.role_code === 'CROPSY_SUPER_ADMIN'));
+
+  const orgRole = await app.inject({
+    method: 'POST',
+    url: `${BASE}/users/${adminId}/roles`,
+    headers: { ...bearer(adminToken), 'x-organization-id': orgA.id },
+    payload: { roleCode: 'ORGANIZATION_MEMBER', organizationId: orgA.id },
+  });
+  assert.equal(orgRole.statusCode, 200);
+
+  const root = await register(app, { email: 'privileged-root@example.com', roles: ['FARMER'] });
+  await store.addUserRole({
+    userId: root.user.id,
+    roleCode: 'CROPSY_SUPER_ADMIN',
+    grantedBy: root.user.id,
+  });
+  const rootLogin = await loginUser(app, 'privileged-root@example.com');
+  const allowed = await app.inject({
+    method: 'POST',
+    url: `${BASE}/users/${adminId}/roles`,
+    headers: bearer(rootLogin.tokens.accessToken),
+    payload: { roleCode: 'CROPSY_SUPER_ADMIN' },
+  });
+  assert.equal(allowed.statusCode, 200);
+});
+
 test('client-supplied organization identifiers cannot switch tenant context', async (t) => {
   const { app, adminToken, orgA, orgB } = await createTenantFixture(t);
 
@@ -161,9 +201,18 @@ test('platform super admin can inspect every tenant and every user', async (t) =
   assert.ok(matrix.json().data.matrix.length >= 11);
 });
 
-test('role permissions are configurable and take effect on the next request', async (t) => {
+test('role permissions are configurable by super admins and take effect on the next request', async (t) => {
   const fixture = await createTenantFixture(t);
-  const { app, adminToken } = fixture;
+  const { app, store, adminToken } = fixture;
+
+  const root = await register(app, { email: 'config-root@example.com', roles: ['FARMER'] });
+  await store.addUserRole({
+    userId: root.user.id,
+    roleCode: 'CROPSY_SUPER_ADMIN',
+    grantedBy: root.user.id,
+  });
+  const rootLogin = await loginUser(app, 'config-root@example.com');
+  assert.equal(rootLogin.response.statusCode, 200);
 
   const farmer = await register(app, { email: 'config-farmer@example.com', roles: ['FARMER'] });
   const farmerLogin = await loginUser(app, 'config-farmer@example.com');
@@ -176,10 +225,19 @@ test('role permissions are configurable and take effect on the next request', as
   });
   assert.equal(before.json().data.allowed, true);
 
-  const updated = await app.inject({
+  const tenantAdminAttempt = await app.inject({
     method: 'PUT',
     url: `${BASE}/roles/FARMER/permissions`,
     headers: bearer(adminToken),
+    payload: { permissions: ['profile.read'] },
+  });
+  assert.equal(tenantAdminAttempt.statusCode, 403);
+  assert.equal(tenantAdminAttempt.json().meta.details.code, 'global_role_mutation_denied');
+
+  const updated = await app.inject({
+    method: 'PUT',
+    url: `${BASE}/roles/FARMER/permissions`,
+    headers: bearer(rootLogin.tokens.accessToken),
     payload: { permissions: ['profile.read'] },
   });
   assert.equal(updated.statusCode, 200);

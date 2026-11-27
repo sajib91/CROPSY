@@ -5,7 +5,7 @@ import time
 from fastapi.testclient import TestClient
 
 from app.config import get_settings
-from app.main import app
+from app.main import app, container
 from app.security import sign_internal_request
 
 client = TestClient(app)
@@ -258,8 +258,6 @@ def graph_extraction_body(reference: str = "api-graph-v1") -> dict:
         ),
         "source": "Internal agronomy note",
         "sourceReference": reference,
-        "documentStatus": "verified",
-        "licenseVerified": True,
     }
 
 
@@ -270,7 +268,9 @@ def graph_retrieval_body(**overrides: object) -> dict:
         "includeGlobal": False,
         "topK": 10,
         "minConfidence": 0.5,
-        "includeCandidates": False,
+        # Graph build now emits candidate extractions only; opt in so retrieval
+        # can assert that they remain unverified and unvalidated.
+        "includeCandidates": True,
     }
     body.update(overrides)
     return body
@@ -331,18 +331,51 @@ def test_agentic_run_resumes_after_human_approval_over_internal_api() -> None:
             "traceId": trace_id,
             "approval": {
                 "approvalId": approval_id,
-                "approvedBy": "internal-reviewer",
                 "decision": "approved",
                 "scope": ["response_generation"],
             },
         },
     )
     assert response.status_code == 200, payload
-    assert payload["data"]["approval"]["approvedBy"] == "internal-reviewer"
+    assert payload["data"]["approval"]["approvedBy"] == "user-ai-test"
     assert payload["data"]["status"] in {"ok", "insufficient_evidence"}
     assert payload["data"]["traceId"] == trace_id
     usage = payload["data"]["usage"]
     assert not usage or usage.get("totalTokens", 0) >= 0
+
+
+def test_agentic_approval_requires_matching_authorized_reviewer() -> None:
+    run_path = "/api/v1/internal/agentic/run"
+    trace_id = "req-approval-reviewer-check"
+    response, payload = post(
+        run_path,
+        {
+            "query": "Rice irrigation guidance",
+            "language": "en",
+            "useGraph": False,
+            "requireApproval": True,
+        },
+        request_id=trace_id,
+    )
+    assert response.status_code == 200, payload
+    approval_id = payload["data"]["approvalId"]
+    approve_body = {
+        "traceId": trace_id,
+        "approval": {"approvalId": approval_id, "decision": "approved", "scope": []},
+    }
+
+    approve_path = "/api/v1/internal/agentic/approve"
+    other_user = post(approve_path, approve_body, user_id="user-other")
+    assert other_user[0].status_code == 401
+    assert other_user[1]["error"]["details"]["reason"] == "cross_user_approval_denied"
+
+    other_org = post(
+        approve_path,
+        approve_body,
+        organization_id="org-other",
+    )
+    assert other_org[0].status_code == 401
+    assert other_org[1]["error"]["details"]["reason"] == "cross_organization_approval_denied"
 
 
 def test_agentic_requests_reject_farmer_identifiers() -> None:
@@ -370,15 +403,14 @@ def test_graph_extract_build_retrieve_and_context_over_internal_api() -> None:
     build_path = "/api/v1/internal/graph/build"
     response, payload = post(build_path, {"extraction": graph_extraction_body()})
     assert response.status_code == 200, payload
-    assert payload["data"]["status"] == "awaiting_approval"
+    assert payload["data"]["status"] == "built"
     assert payload["data"]["relationshipsWritten"] >= 1
     assert payload["data"]["verifiedRelationships"] == 0
-    assert payload["data"]["validation"]["requiresApproval"] is True
+    assert payload["data"]["validation"]["requiresApproval"] is False
     classes = {
         item["evidenceClass"] for item in payload["data"]["validation"]["accepted"]
     }
-    assert "verified_relationship" not in classes
-    assert "validated_extraction" in classes
+    assert classes == {"candidate_extraction"}
 
     retrieve_path = "/api/v1/internal/graph/retrieve"
     response, payload = post(retrieve_path, graph_retrieval_body())

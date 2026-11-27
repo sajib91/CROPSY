@@ -3,6 +3,10 @@ const LoggerToken = Symbol.for('cropsy.platform.logger');
 const EventBusToken = Symbol.for('cropsy.platform.eventBus');
 const ApiVersionToken = Symbol.for('cropsy.platform.apiVersion');
 
+// Generic request-cost limiter published by IAM and reused by other modules
+// through the shared kernel so they do not import IAM implementation files.
+const RateLimiterToken = Symbol.for('cropsy.iam.rateLimiter');
+
 // Cross-module composition ports. These symbols intentionally live in the
 // shared kernel so business modules can consume IAM capabilities through DI
 // without importing another module's implementation.
@@ -75,11 +79,17 @@ const NotificationQueueToken = Symbol.for('cropsy.platform.notificationQueue');
 const NotificationRealtimeToken = Symbol.for('cropsy.platform.notificationRealtime');
 const NotificationProvidersToken = Symbol.for('cropsy.platform.notificationProviders');
 
+// Read-only entitlement checks published by billing. Routes can opt into
+// feature gating without importing the billing module or assuming every user
+// needs a paid subscription.
+const SubscriptionEntitlementPortToken = Symbol.for('cropsy.platform.subscriptionEntitlement');
+
 module.exports = {
   ConfigToken,
   LoggerToken,
   EventBusToken,
   ApiVersionToken,
+  RateLimiterToken,
   IdentityStoreToken,
   PlatformAuthorizationToken,
   PlatformTokenManagerToken,
@@ -103,4 +113,5 @@ module.exports = {
   NotificationQueueToken,
   NotificationRealtimeToken,
   NotificationProvidersToken,
+  SubscriptionEntitlementPortToken,
 };

@@ -32,7 +32,7 @@ Auth endpoints are under `/api/v1/iam/auth`. All routes outside the explicit
 public allowlist require a valid access token; cookie clients must also send a
 matching `x-csrf-token` for mutations.
 
-All 21 module paths and their dependency direction are documented in
+All 22 module paths and their dependency direction are documented in
 [`../architecture/modules.md`](../architecture/modules.md). Failures return
 `{ "success": false, "error": "<code>", "meta": { ... } }` with a request id.
 
@@ -617,7 +617,8 @@ Failed refunds do not post a journal.
 
 Provider configuration is deployment-owned. `PAYMENT_PROVIDER_MODE=configured`
 is required in production, along with `PAYMENTS_STORE=prisma`,
-`LEDGER_STORE=prisma`, and a non-empty `PAYMENT_PROVIDERS_JSON` array whose
+`LEDGER_STORE=prisma`, `BILLING_STORE=prisma`, `ANALYTICS_STORE=prisma`, and a non-empty
+`PAYMENT_PROVIDERS_JSON` array whose
 entries contain `code`, `methods`, and `webhookSecret`. The built-in
 `HttpPaymentProvider` also accepts configured initiate/verify/refund URLs and
 an auth token; no credentials, endpoints, or provider certifications are
@@ -638,6 +639,100 @@ payloads contain `eventId`, `paymentReference`, `status`, optional `amount`,
 duplicate returns the stored event with `duplicate: true` and posts nothing.
 Mismatched amounts, unknown references, and terminal-state callbacks are
 recorded without a second posting.
+
+## Billing and subscription routes
+
+All routes below are under `/api/v1/billing`. Only `/info` and `/info/:moduleId`
+are public; every other route requires a valid access token and is default-deny.
+Plan reads and tenant subscription/usage reads require `subscriptions.read`;
+subscription lifecycle and usage recording require `subscriptions.manage`;
+invoice reads require `invoices.read`; plan creation/updates require
+`plans.manage`, which is reserved for `CROPSY_SUPER_ADMIN`. Tenant-scoped reads
+require the active organization to match, so an organization administrator
+cannot inspect another tenant's subscription, invoices, or usage. Super admins
+may list across tenants but still require an explicit organization for writes.
+
+Plans are caller-configured through `POST /plans` and `PATCH /plans/:planId`.
+`code`, `name`, `billingInterval`, `currency`, and `priceAmount` are required;
+`billingCycleMonths`, `trialDays`, `segmentCodes`, `entitlements`, `usageLimits`,
+`providerCode`, and `metadata` are optional policy supplied by the caller. The
+segment codes describe intended audiences (individual farmers, cooperatives,
+agricultural businesses, suppliers, and logistics companies) for filtering
+only; they are not hardcoded eligibility rules. No prices, entitlements,
+limits, or plans are seeded, and no role automatically requires a paid plan.
+`GET /plans` supports `search`, `segmentCode`, `isActive`, `sort`, `limit`, and
+`offset`.
+
+`POST /subscriptions` creates one live subscription per organization from a
+plan code and records an invoice from the stored plan price. `GET
+/subscriptions/current` returns the active subscription with its plan, invoices,
+and usage. `POST /subscriptions/:subscriptionId/renew` starts a new period and
+invoice; `POST /subscriptions/:subscriptionId/change-plan` reports `direction`
+as `upgrade`, `downgrade`, or `same` and issues a new invoice; `POST
+/subscriptions/:subscriptionId/cancel` supports cancellation at period end or
+immediately. Cancelled subscriptions cannot be renewed; create a new
+subscription instead. `GET /invoices` and `POST /invoices/:invoiceId/status`
+manage billing records; only an open invoice can move to `PAID`, `VOID`, or
+`UNCOLLECTIBLE`.
+
+`POST /usage` records metered usage with optional `allowOverage` and
+`idempotencyKey`; a replayed key returns the stored record with `duplicate:
+true`. `GET /usage` filters by organization, subscription, metric, and period.
+`POST /entitlements/check` is an authenticated, non-gated inspection that
+returns `allowed`, `reason`, `planCode`, and optional quota usage. Routes may
+independently opt into feature enforcement by declaring `auth.features`; only
+those routes consult `SubscriptionEntitlementPortToken`, so ordinary platform
+features remain available without a subscription. Provider codes on plans and
+subscriptions are validated against the deployment's
+`PaymentProviderRegistryToken`; no credentials or provider SDKs are invented.
+
+## Analytics routes
+
+All routes below are under `/api/v1/analytics`. Only `/info` and `/info/:moduleId`
+are public; every report requires a valid access token and is default-deny.
+Tenant reports require `analytics.read`, which every authenticated self-service
+role receives, and an active organization. Platform reports require
+`analytics.platform.read`, which is reserved for `CROPSY_SUPER_ADMIN`. Tenant
+scope is resolved from authenticated state: a caller cannot switch organizations
+with `organizationId`, and non-administrators are further limited to their own
+farms, orders, payments, and inventory. `organizationId` is meaningful only when
+a super admin explicitly selects a tenant.
+
+Every report accepts `from`, `to`, `grain` (`day`, `week`, or `month`, default
+`month`), `limit` (1–500, default 100), and the optional super-admin-only
+`organizationId`. Responses contain three explicitly separated sections:
+`historical.rows` are recorded rows read from CROPSY tables,
+`calculated.metrics`/`series`/`breakdown` are deterministic aggregates computed
+from those rows, and `predictive` is a one-bucket least-squares extrapolation
+from at least three real time buckets. When fewer than three buckets exist,
+`predictive.available` is `false`, `projectedValue` is `null`, and no value is
+invented. Projections are decision support and are never stored as business
+facts. `ANALYTICS_STORE=memory` starts empty for local/tests; production
+requires `ANALYTICS_STORE=prisma`, which reads parameterized SQL aggregations
+backed by tenant/time/entity composite indexes.
+
+| Endpoint | Scope | Required permission | Purpose |
+| --- | --- | --- | --- |
+| `GET /analytics/farmers/production` | Tenant | `analytics.read` | Harvest quantity by crop and period |
+| `GET /analytics/farmers/crop-yield` | Tenant | `analytics.read` | Harvested kilograms per cultivated hectare |
+| `GET /analytics/farmers/cultivation-expenses` | Tenant | `analytics.read` | Recorded cultivation cost by category; AI estimates are reported separately |
+| `GET /analytics/farmers/profitability` | Tenant | `analytics.read` | Order revenue less recorded cultivation cost |
+| `GET /analytics/farmers/sales` | Tenant | `analytics.read` | Seller order totals |
+| `GET /analytics/buyers/purchase-history` | Tenant | `analytics.read` | Buyer order totals by status |
+| `GET /analytics/buyers/spending` | Tenant | `analytics.read` | Captured payment amounts |
+| `GET /analytics/buyers/supplier-performance` | Tenant | `analytics.read` | Order value and delivery performance by supplier |
+| `GET /analytics/buyers/product-trends` | Tenant | `analytics.read` | Order item value by product |
+| `GET /analytics/sellers/sales-performance` | Tenant | `analytics.read` | Seller order value by status |
+| `GET /analytics/sellers/inventory` | Tenant | `analytics.read` | Available inventory units by product |
+| `GET /analytics/sellers/order-fulfillment` | Tenant | `analytics.read` | Seller orders with shipment state |
+| `GET /analytics/sellers/revenue` | Tenant | `analytics.read` | Captured payment less refund |
+| `GET /analytics/platform/user-growth` | Platform | `analytics.platform.read` | Registered users by period and status |
+| `GET /analytics/platform/marketplace-activity` | Platform | `analytics.platform.read` | Created listings by period and status |
+| `GET /analytics/platform/order-volume` | Platform | `analytics.platform.read` | Seller orders by period and status |
+| `GET /analytics/platform/regional-activity` | Platform | `analytics.platform.read` | Listings and farms by division |
+| `GET /analytics/platform/product-demand` | Platform | `analytics.platform.read` | Order item value by product |
+| `GET /analytics/platform/revenue` | Platform | `analytics.platform.read` | Captured payment less refund |
+| `GET /analytics/platform/ai-usage` | Platform | `analytics.platform.read` | Recommendations, agent executions, and feedback events |
 
 ## Ledger routes
 

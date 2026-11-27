@@ -390,8 +390,8 @@ describeDatabase('database integrity and concurrency', () => {
     `;
     const counts = rows[0];
     assert.equal(Number(counts.roles), 22);
-    assert.equal(Number(counts.permissions), 50);
-    assert.equal(Number(counts.assignments), 479);
+    assert.equal(Number(counts.permissions), 56);
+    assert.equal(Number(counts.assignments), 531);
     assert.equal(Number(counts.countries), 1);
     assert.equal(Number(counts.divisions), 8);
     assert.equal(Number(counts.districts), 64);
@@ -412,11 +412,26 @@ describeDatabase('database integrity and concurrency', () => {
       SELECT code FROM permissions WHERE code IN (
         'organizations.create', 'organizations.verify', 'members.read',
         'members.manage', 'invitations.manage', 'documents.manage',
-        'crops.read', 'crops.manage', 'expenses.read', 'expenses.manage'
+        'crops.read', 'crops.manage', 'expenses.read', 'expenses.manage',
+        'notifications.read', 'notifications.manage', 'subscriptions.read',
+        'subscriptions.manage', 'invoices.read', 'plans.manage',
+        'analytics.read', 'analytics.platform.read'
       )
     `;
     const permissionCodes = permissionRows.map((row) => row.code);
-    assert.equal(permissionCodes.length, 10);
+    assert.equal(permissionCodes.length, 18);
+    assert.ok(permissionCodes.includes('notifications.read'));
+    assert.ok(permissionCodes.includes('notifications.manage'));
+    for (const code of [
+      'subscriptions.read',
+      'subscriptions.manage',
+      'invoices.read',
+      'plans.manage',
+      'analytics.read',
+      'analytics.platform.read',
+    ]) {
+      assert.ok(permissionCodes.includes(code), `missing permission ${code}`);
+    }
   });
 
   test('organization/profile and farm migrations are applied without drift', async () => {
@@ -434,6 +449,11 @@ describeDatabase('database integrity and concurrency', () => {
       '20261125160000_crop_cultivation_expense_management',
       '20261125170000_catalog_marketplace',
       '20261125180000_inventory_cooperative',
+      '20261126000000_cart_order_management',
+      '20261126010000_payment_ledger_infrastructure',
+      '20261126020000_logistics_warehouse_quality_traceability',
+      '20261127000000_billing_subscription_management',
+      '20261128000000_analytics_reporting_indexes',
     ]) {
       assert.ok(names.includes(name), `missing applied migration ${name}`);
     }
@@ -462,6 +482,17 @@ describeDatabase('database integrity and concurrency', () => {
           OR (table_name = 'role_profile_extensions' AND column_name IN (
             'id', 'user_id', 'role_code', 'organization_id', 'scope_key', 'data'
           ))
+          OR (table_name = 'subscription_plans' AND column_name IN (
+            'segment_codes', 'entitlements', 'usage_limits', 'provider_code',
+            'billing_cycle_months', 'metadata'
+          ))
+          OR (table_name = 'subscriptions' AND column_name IN (
+            'provider_code', 'cancel_reason', 'metadata'
+          ))
+          OR (table_name = 'subscription_invoices' AND column_name IN (
+            'provider_code', 'period_start', 'period_end', 'metadata'
+          ))
+          OR (table_name = 'usage_records' AND column_name = 'metadata')
         )
     `;
     const actualColumns = new Set(columns.map((row) => `${row.table_name}.${row.column_name}`));
@@ -472,15 +503,33 @@ describeDatabase('database integrity and concurrency', () => {
       'notification_preferences.event_type',
       'role_profile_extensions.scope_key',
       'role_profile_extensions.data',
+      'subscription_plans.segment_codes',
+      'subscription_plans.entitlements',
+      'subscription_plans.usage_limits',
+      'subscription_plans.provider_code',
+      'subscription_plans.billing_cycle_months',
+      'subscription_plans.metadata',
+      'subscriptions.provider_code',
+      'subscriptions.cancel_reason',
+      'subscriptions.metadata',
+      'subscription_invoices.provider_code',
+      'subscription_invoices.period_start',
+      'subscription_invoices.period_end',
+      'subscription_invoices.metadata',
+      'usage_records.metadata',
     ]) {
       assert.ok(actualColumns.has(column), `missing column ${column}`);
     }
 
     const constraints = await prisma.$queryRaw`
       SELECT conname FROM pg_constraint
-      WHERE conname = 'role_profile_extensions_scope_key_check'
+      WHERE conname IN (
+        'role_profile_extensions_scope_key_check',
+        'subscription_plans_cycle_check',
+        'subscription_invoices_period_check_v2'
+      )
     `;
-    assert.equal(constraints.length, 1);
+    assert.equal(constraints.length, 3);
 
     const indexes = await prisma.$queryRaw`
       SELECT indexname FROM pg_indexes
@@ -493,6 +542,31 @@ describeDatabase('database integrity and concurrency', () => {
       )
     `;
     assert.equal(indexes.length, 5);
+
+    const analyticsIndexes = await prisma.$queryRaw`
+      SELECT indexname FROM pg_indexes
+      WHERE schemaname = 'public' AND indexname IN (
+        'harvests_organization_id_harvested_at_idx',
+        'cultivations_organization_id_harvested_at_idx',
+        'farm_expenses_organization_id_expense_date_category_idx',
+        'products_organization_id_created_at_idx',
+        'product_inventories_organization_id_available_quantity_idx',
+        'product_listings_organization_id_created_at_status_idx',
+        'listing_locations_division_id_district_id_idx',
+        'orders_organization_id_placed_at_status_idx',
+        'orders_organization_id_buyer_user_id_placed_at_idx',
+        'orders_organization_id_seller_user_id_placed_at_idx',
+        'order_items_order_id_product_id_idx',
+        'payments_organization_id_captured_at_status_idx',
+        'shipments_organization_id_status_delivered_at_idx',
+        'warehouse_inventories_product_id_available_quantity_idx',
+        'farms_organization_id_owner_user_id_idx',
+        'ai_recommendations_organization_id_created_at_idx',
+        'agent_executions_organization_id_created_at_idx',
+        'ai_feedback_organization_id_created_at_idx'
+      )
+    `;
+    assert.equal(analyticsIndexes.length, 18);
   });
 
   test('enforces organization document, preference, and profile extension invariants', async () => {
@@ -923,5 +997,152 @@ describeDatabase('database integrity and concurrency', () => {
     const quantities = await warehouseInventoryRow();
     assert.deepEqual(quantities, { onHand: 10, reserved: 4, available: 6 });
     assert.equal(await countWarehouseMovements(), before + 1);
+  });
+
+  test('notification and outbox rows enforce enum, length, foreign key, and cascade invariants', async () => {
+    const notificationId = uuid(6001);
+    const outboxId = uuid(6002);
+    const cascadeUserId = uuid(6003);
+    const cascadePreferenceId = uuid(6004);
+    const unknownUserId = uuid(6005);
+    const unknownOrganizationId = uuid(6006);
+
+    await prisma.$executeRaw`
+      INSERT INTO notifications (
+        id, organization_id, user_id, channel, type, title, body, data, created_at, updated_at
+      )
+      VALUES (
+        ${notificationId}::uuid, ${ID.orgA}::uuid, ${ID.userA}::uuid, 'PUSH',
+        'DBTEST_NOTIFICATION', 'Database test notification', 'Notification body',
+        '{"source":"dbtest"}'::jsonb, NOW(), NOW()
+      )
+    `;
+    const notificationRows = await prisma.$queryRaw`
+      SELECT status, read_at, sent_at, data
+      FROM notifications
+      WHERE id = ${notificationId}::uuid
+    `;
+    assert.equal(notificationRows[0].status, 'PENDING');
+    assert.equal(notificationRows[0].read_at, null);
+    assert.equal(notificationRows[0].sent_at, null);
+    assert.equal(notificationRows[0].data.source, 'dbtest');
+
+    await expectSqlState(['22P02', '23514'], async () => {
+      await prisma.$executeRaw`
+        INSERT INTO notifications (
+          id, organization_id, user_id, channel, type, title, body, created_at, updated_at
+        )
+        VALUES (
+          ${uuid(6007)}::uuid, ${ID.orgA}::uuid, ${ID.userA}::uuid, 'CARRIER_PIGEON',
+          'DBTEST_NOTIFICATION', 'Invalid channel', 'Notification body', NOW(), NOW()
+        )
+      `;
+    });
+    await expectSqlState('22001', async () => {
+      await prisma.$executeRaw`
+        INSERT INTO notifications (
+          id, organization_id, user_id, channel, type, title, body, created_at, updated_at
+        )
+        VALUES (
+          ${uuid(6008)}::uuid, ${ID.orgA}::uuid, ${ID.userA}::uuid, 'IN_APP',
+          ${'X'.repeat(81)}, 'Overlong type', 'Notification body', NOW(), NOW()
+        )
+      `;
+    });
+    await expectSqlState('23503', async () => {
+      await prisma.$executeRaw`
+        INSERT INTO notifications (
+          id, organization_id, user_id, channel, type, title, body, created_at, updated_at
+        )
+        VALUES (
+          ${uuid(6009)}::uuid, ${ID.orgA}::uuid, ${unknownUserId}::uuid, 'IN_APP',
+          'DBTEST_NOTIFICATION', 'Unknown user', 'Notification body', NOW(), NOW()
+        )
+      `;
+    });
+
+    await prisma.$executeRaw`
+      INSERT INTO outbox_events (
+        id, organization_id, aggregate_type, aggregate_id, event_type, payload, created_at, updated_at
+      )
+      VALUES (
+        ${outboxId}::uuid, ${ID.orgA}::uuid, 'ORDER', 'dbtest-order-1',
+        'orders.order.placed', '{"orderId":"dbtest-order-1"}'::jsonb, NOW(), NOW()
+      )
+    `;
+    const outboxRows = await prisma.$queryRaw`
+      SELECT status, attempts, available_at, published_at
+      FROM outbox_events
+      WHERE id = ${outboxId}::uuid
+    `;
+    assert.equal(outboxRows[0].status, 'PENDING');
+    assert.equal(Number(outboxRows[0].attempts), 0);
+    assert.ok(outboxRows[0].available_at);
+    assert.equal(outboxRows[0].published_at, null);
+
+    await expectSqlState('23514', async () => {
+      await prisma.$executeRaw`
+        INSERT INTO outbox_events (
+          id, organization_id, aggregate_type, aggregate_id, event_type, payload, attempts, created_at, updated_at
+        )
+        VALUES (
+          ${uuid(6010)}::uuid, ${ID.orgA}::uuid, 'ORDER', 'dbtest-order-2',
+          'orders.order.placed', '{}'::jsonb, -1, NOW(), NOW()
+        )
+      `;
+    });
+    await expectSqlState(['22P02', '23514'], async () => {
+      await prisma.$executeRaw`
+        INSERT INTO outbox_events (
+          id, organization_id, aggregate_type, aggregate_id, event_type, payload, status, created_at, updated_at
+        )
+        VALUES (
+          ${uuid(6011)}::uuid, ${ID.orgA}::uuid, 'ORDER', 'dbtest-order-3',
+          'orders.order.placed', '{}'::jsonb, 'QUEUED', NOW(), NOW()
+        )
+      `;
+    });
+    await expectSqlState('22001', async () => {
+      await prisma.$executeRaw`
+        INSERT INTO outbox_events (
+          id, organization_id, aggregate_type, aggregate_id, event_type, payload, created_at, updated_at
+        )
+        VALUES (
+          ${uuid(6012)}::uuid, ${ID.orgA}::uuid, 'ORDER', 'dbtest-order-4',
+          ${'Y'.repeat(121)}, '{}'::jsonb, NOW(), NOW()
+        )
+      `;
+    });
+    await expectSqlState('23503', async () => {
+      await prisma.$executeRaw`
+        INSERT INTO outbox_events (
+          id, organization_id, aggregate_type, aggregate_id, event_type, payload, created_at, updated_at
+        )
+        VALUES (
+          ${uuid(6013)}::uuid, ${unknownOrganizationId}::uuid, 'ORDER', 'dbtest-order-5',
+          'orders.order.placed', '{}'::jsonb, NOW(), NOW()
+        )
+      `;
+    });
+
+    await prisma.$executeRaw`
+      INSERT INTO users (id, email, password_hash, created_at, updated_at)
+      VALUES (${cascadeUserId}::uuid, 'dbtest-notification-cascade@example.com', 'test-hash', NOW(), NOW())
+    `;
+    await prisma.$executeRaw`
+      INSERT INTO notification_preferences (
+        id, user_id, channel, event_type, enabled, created_at, updated_at
+      )
+      VALUES (${cascadePreferenceId}::uuid, ${cascadeUserId}::uuid, 'EMAIL', 'CASCADE_EVENT', true, NOW(), NOW())
+    `;
+    await prisma.$executeRaw`
+      DELETE FROM users WHERE id = ${cascadeUserId}::uuid
+    `;
+    const remainingPreferences = await prisma.$queryRaw`
+      SELECT COUNT(*)::int AS "count"
+      FROM notification_preferences
+      WHERE id = ${cascadePreferenceId}::uuid
+    `;
+    assert.equal(Number(remainingPreferences[0].count), 0);
   });
 });

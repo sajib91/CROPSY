@@ -24,8 +24,8 @@ function registerCatalogInfrastructure({ container }) {
     container.register(CatalogStoreToken, (resolver) => {
       const env = resolver.resolve(ConfigToken);
       if (env.CATALOG_STORE === 'prisma') {
-        const { PrismaClient } = require('@prisma/client');
-        return new CatalogPrismaStore({ prisma: new PrismaClient() });
+        const { getPrismaClient } = require('../../shared/database/prisma');
+        return new CatalogPrismaStore({ prisma: getPrismaClient(resolver.resolve(ConfigToken)) });
       }
       return new CatalogInMemoryStore();
     });

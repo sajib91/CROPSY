@@ -324,9 +324,10 @@ test('checkout splits sellers, ignores client totals, and is idempotent', async 
   assert.equal(checkout.currency, 'BDT');
   assert.equal(checkout.orders.length, 2);
   assert.equal(checkout.subtotalAmount, 350);
-  assert.equal(checkout.discountAmount, 35);
-  assert.equal(checkout.deliveryFeeAmount, 10);
-  assert.equal(checkout.totalAmount, 325);
+  assert.equal(checkout.discountAmount, 0);
+  assert.equal(checkout.deliveryFeeAmount, 0);
+  assert.equal(checkout.totalAmount, 350);
+  assert.deepEqual(checkout.pricing.rules, []);
   assert.equal(checkout.pricing.derivedFrom, 'server-calculated-cart-lines');
 
   const ordersBySeller = new Map(checkout.orders.map((order) => [order.sellerUserId, order]));
@@ -335,13 +336,13 @@ test('checkout splits sellers, ignores client totals, and is idempotent', async 
   assert.ok(orderA);
   assert.ok(orderB);
   assert.equal(orderA.subtotalAmount, 200);
-  assert.equal(orderA.discountAmount, 20);
-  assert.equal(orderA.deliveryFeeAmount, 10);
-  assert.equal(orderA.totalAmount, 190);
+  assert.equal(orderA.discountAmount, 0);
+  assert.equal(orderA.deliveryFeeAmount, 0);
+  assert.equal(orderA.totalAmount, 200);
   assert.equal(orderB.subtotalAmount, 150);
-  assert.equal(orderB.discountAmount, 15);
+  assert.equal(orderB.discountAmount, 0);
   assert.equal(orderB.deliveryFeeAmount, 0);
-  assert.equal(orderB.totalAmount, 135);
+  assert.equal(orderB.totalAmount, 150);
 
   const duplicate = await success(
     app,
@@ -461,8 +462,8 @@ test('checkout splits sellers, ignores client totals, and is idempotent', async 
   const receipt = await success(app, 'GET', `${ORDERS}/orders/${orderB.id}/receipt`, buyerToken);
   assert.equal(receipt.referenceKey, 'checkout-orders-001');
   assert.equal(receipt.checkout.id, checkout.id);
-  assert.equal(receipt.checkout.totalAmount, 325);
-  assert.equal(receipt.order.totalAmount, 135);
+  assert.equal(receipt.checkout.totalAmount, 350);
+  assert.equal(receipt.order.totalAmount, 150);
   assert.equal(receipt.items.length, 1);
 
   const mismatch = await request(

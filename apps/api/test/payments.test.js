@@ -165,9 +165,12 @@ test('initiation is idempotent and verification posts one capture journal', asyn
     `${PAYMENTS}/payments/${initiated.id}/history`,
     rootToken,
   );
+  // INITIATED is the durable claim written before the provider call; it
+  // prevents a second request from creating another provider payment.
   assert.deepEqual(history.history.map((entry) => entry.to_status).sort(), [
     'AUTHORIZED',
     'CAPTURED',
+    'INITIATED',
   ]);
 });
 

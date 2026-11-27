@@ -54,7 +54,8 @@ boundary.
 | `market-intelligence` | `/market-intelligence` | Agricultural Market Intelligence | `catalog`, `marketplace`, `intelligence` | `market-intelligence.initialized`, `market-intelligence.analysis.requested`, `market-intelligence.forecast.requested` | — |
 | `knowledge` | `/knowledge` | Knowledge Management | `agriculture`, `intelligence`, `organizations` | `knowledge.initialized`, `knowledge.article.published` | — |
 | `notifications` | `/notifications` | Notifications | `users`, `iam` | `notifications.initialized`, `notifications.queued` | `*` |
-| `billing` | `/billing` | Subscription and SaaS Billing | `organizations`, `payments`, `ledger` | `billing.initialized`, `billing.subscription.changed` | — |
+| `billing` | `/billing` | Subscription and SaaS Billing | `organizations`, `payments`, `ledger` | `billing.initialized`, `billing.plan.created`, `billing.plan.updated`, `billing.subscription.created`, `billing.subscription.renewed`, `billing.subscription.changed`, `billing.subscription.cancelled`, `billing.invoice.issued`, `billing.invoice.updated`, `billing.usage.recorded` | — |
+| `analytics` | `/analytics` | Business Intelligence and Analytics | `agriculture`, `catalog`, `farmers`, `intelligence`, `logistics`, `marketplace`, `orders`, `payments`, `warehouse` | `analytics.initialized`, `analytics.report.requested` | — |
 | `administration` | `/administration` | Administration | `iam`, `organizations` | `administration.initialized`, `administration.audit.recorded` | `*` |
 
 `notifications` and `administration` subscribe to the wildcard topic for cross-cutting
@@ -135,6 +136,16 @@ holdout, reporting MAE, RMSE, and MAPE only where MAPE is mathematically defined
 external evidence comes from the provenance-gated retrieval path and is marked unavailable
 rather than fabricated when the AI service cannot supply it.
 
+The 22nd module, `analytics`, is read-only. It exposes farmer, buyer, seller, and platform reports
+from recorded CROPSY tables through parameterized SQL aggregations and tenant/time/entity
+composite indexes. Tenant reports resolve the organization from authenticated state, reject
+cross-organization requests, and further narrow non-administrator results to the caller's own
+farms, orders, payments, and inventory. Platform reports require `analytics.platform.read`, which
+is granted only to the platform super-admin role. Every response separates `historical` rows,
+`calculated` aggregates, and `predictive` projections. Projections are deterministic one-bucket
+linear extrapolations from at least three real time buckets; when history is insufficient the
+predictive section is explicitly unavailable and no value is invented.
+
 Weather intelligence is exposed through the authenticated `intelligence` AI gateway and the
 shared `FarmAccessPortToken`/`AgricultureAccessPortToken`. The business API resolves the farm,
 enforces owner/same-tenant policy, and supplies farm coordinates or region to the AI service
@@ -160,6 +171,8 @@ iam ──> users ──> organizations ──> farmers ──> agriculture ─�
 
 `market-intelligence` consumes the marketplace observation port and the shared AI gateway, so it
 depends on both `marketplace` and `intelligence` without importing either module's source.
+`analytics` depends conceptually on the data-owning modules but reaches their tables only through
+its own read-only SQL port; it imports no other module source.
 
 Administration observes the whole event stream for audit visibility. The arrows describe declared
 knowledge/integration dependencies, not runtime method calls.
@@ -218,11 +231,13 @@ which exposes only expectation recording, journal posting, balance reads, and ac
 lookups; payments consumes it to record financial effects without importing ledger source,
 changing accounts, or editing posted entries. The `payments` module publishes
 `PaymentProviderRegistryToken`, whose provider adapters are supplied by deployment
-configuration or DI; no provider SDK is imported from another module. The shared `ConfigToken`
-supplies `FARM_STORE`, `AGRICULTURE_STORE`, `CATALOG_STORE`, `MARKETPLACE_STORE`,
-`WAREHOUSE_STORE`, `ORDERS_STORE`, `PAYMENTS_STORE`, `LEDGER_STORE`, `LOGISTICS_STORE`,
-`QUALITY_STORE`, and `TRACEABILITY_STORE`; each module registers its own store token and
-defaults to `memory` for development/tests while production requires `prisma`. Traceability QR
+configuration or DI; no provider SDK is imported from another module. The `billing` module publishes
+`SubscriptionEntitlementPortToken`, a read-only entitlement/usage port that other modules can use
+for opt-in feature gating without importing billing. The shared `ConfigToken` supplies `FARM_STORE`,
+`AGRICULTURE_STORE`, `CATALOG_STORE`, `MARKETPLACE_STORE`, `WAREHOUSE_STORE`, `ORDERS_STORE`,
+`PAYMENTS_STORE`, `LEDGER_STORE`, `BILLING_STORE`, `LOGISTICS_STORE`, `QUALITY_STORE`, and
+`TRACEABILITY_STORE`; each module registers its own store token and defaults to `memory` for
+development/tests while production requires `prisma`. Traceability QR
 URLs use `WEB_PUBLIC_URL` (default `http://localhost:3000`). Provider metadata comes from
 `PAYMENT_PROVIDER_MODE` and `PAYMENT_PROVIDERS_JSON`, and
 chart-of-account structure can be overridden with `LEDGER_ACCOUNTS_JSON`. Cart items, one parent checkout (`purchase_groups`), and

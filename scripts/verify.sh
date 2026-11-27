@@ -75,6 +75,12 @@ npm run format:check
 echo "== Localization parity =="
 npm run check:i18n
 
+echo "== API contracts =="
+npm run contracts:check
+npm run contracts:breaking
+npm run contracts:clients
+npm run test:contracts
+
 echo "== Build =="
 npm run build
 
