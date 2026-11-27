@@ -1,37 +1,65 @@
 const { randomUUID } = require('node:crypto');
 
+
 class InProcessNotificationQueue {
   constructor({ logger } = {}) {
     this.logger = logger;
     this.handler = null;
     this.pending = new Set();
+    this.timers = new Map();
   }
 
   setHandler(handler) {
-    if (typeof handler !== 'function') throw new TypeError('A queue handler is required.');
+    if (typeof handler !== 'function') {
+      throw new TypeError('A queue handler is required.');
+    }
+
     this.handler = handler;
   }
 
   async enqueue(payload, { delayMs = 0 } = {}) {
-    if (!this.handler) throw new Error('Notification queue handler is not configured.');
-    const job = { id: payload.jobId || randomUUID(), data: payload };
+    if (!this.handler) {
+      throw new Error('Notification queue handler is not configured.');
+    }
+
+    const job = {
+      id: payload.jobId || randomUUID(),
+      data: payload,
+    };
+
     this.pending.add(job.id);
+
     const timer = setTimeout(async () => {
       this.pending.delete(job.id);
+      this.timers.delete(job.id);
+
       try {
         await this.handler(job);
       } catch (error) {
-        this.logger?.error({ err: error, jobId: job.id }, 'Notification job failed');
+        this.logger?.error(
+          { err: error, jobId: job.id },
+          'Notification job failed',
+        );
       }
-    }, delayMs);
-    timer.unref?.();
+    }, Math.max(0, Number(delayMs) || 0));
+
+    this.timers.set(job.id, timer);
+
+    // Do not unref this timer.
+    // Pending notification jobs must keep the event loop alive.
     return job.id;
   }
 
   async close() {
+    for (const timer of this.timers.values()) {
+      clearTimeout(timer);
+    }
+
+    this.timers.clear();
     this.pending.clear();
   }
 }
+
 
 class BullMqNotificationQueue {
   constructor({ env, logger, queueName = 'cropsy-notifications' }) {

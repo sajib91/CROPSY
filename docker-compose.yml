@@ -1,0 +1,50 @@
+services:
+  postgres:
+    image: postgis/postgis:16-3.4
+    container_name: cropsy-postgres
+    environment:
+      POSTGRES_USER: cropsy
+      POSTGRES_PASSWORD: "e02fa8f57b0bb10256ac123b3b60a1ab67d8f937bed90dc5bd2664a04ebd6cfb"
+      POSTGRES_DB: cropsy
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U cropsy -d cropsy"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: cropsy-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+
+  qdrant:
+    image: qdrant/qdrant:latest
+    container_name: cropsy-qdrant
+    ports:
+      - "6333:6333"
+    volumes:
+      - qdrant_data:/qdrant/storage
+
+  neo4j:
+    image: neo4j:5-community
+    container_name: cropsy-neo4j
+    environment:
+      NEO4J_AUTH: "neo4j/5f56bd881b7bfd4032da6a58b6c7fe677f4c2cb07734e78fad984541dfbf5839"
+    ports:
+      - "7474:7474"
+      - "7687:7687"
+    volumes:
+      - neo4j_data:/data
+
+volumes:
+  postgres_data:
+  redis_data:
+  qdrant_data:
+  neo4j_data:
